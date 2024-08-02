@@ -12,7 +12,7 @@ Imagine following pseudocode:
 2. Right click to `decrypt` call and select *"Mass strings decryption"*
 3. Dialog box is appeared with bunch of options:![Mass strings decryption dlg](appcall-dlg.png)
 	* Decryptor engine
-      - [hrt] decryptor  - useful for known (by the plugin) cipher, on following step you will be asked for use one of decryptors described in [Strings/data/const decryption](doc/decr.md) section
+      - [hrt] decryptor  - useful for known (by the plugin) cipher, on following step you will be asked for use one of decryptors described in [Strings/data/const decryption](decr.md) section
       - Appcall debugger - currently selected IDA debugger be used to run `decrypt` procedure with found parameters.
 	* Amount
       - All xrefs - all `decrypt` calls will be processed
@@ -37,7 +37,7 @@ As arguments are accepted:
 	* `number` (dec/hex/oct/bits) - be passed as an argument to `decrypt` with size according `decrypt` arguments typeinfo
 	* `*number` - number will be treated as de-referencing of pointer to pointer type value ie "`*(void**)(number)`". ![Calls loop](appcall-dlgL.png)  
 For example, imagine array of pointers to encrypted strings. You able decrypt all of them at once with "Custom calls loop" specifying `*array_address` as pointer to encrypted data, `pointer_size` as loop step increment and `array_size/pointer_size` as loops count.
-5. Optionally, if "[hrt] decryptor" engine was selected, you will be asked for cipher and decryption related details. See details in [Strings/data/const decryption](doc/decr.md) section.
+5. Optionally, if "[hrt] decryptor" engine was selected, you will be asked for cipher and decryption related details. See details in [Strings/data/const decryption](decr.md) section.
 6. Then, if "All xrefs" was selected, all `decrypt` calls arguments be collected by decompiling subroutines where `decrypt` is called. So, each `decrypt` call have to belong to correctly decompilable by Hex-Rays subroutine. Please look for warnings in the IDA's "Output window" if something went wrong.
 7. Next, in case of "Appcall debugger" engine usage, the currently selected debugger is started. Watch for warnings and messages related to used debugger - there may be hints to solve problems. Check "Application" and "Input file" fields under "Debugger/Process options" menu. Try to change `decrypt` arguments/return type to `void*` or to `int`.
 8. After debugger done calls of all requested decryptions the results window appeared. For "Single call" it is just a dialog box with decrypted string and buttons "Patch" and "Comment". For "All xrefs" and "Custom calls loop" there is window with list of Patch-Locations and decrypted strings or errors. Right click in this window offers following options:

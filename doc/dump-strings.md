@@ -36,7 +36,7 @@ And shell script `dump_strings_idb.sh` like this:
       $idapath/$idaexe -A -Sdump_strings.idc "$tmpdir/$fname"
       rm -r "$tmpdir"
 ```
-Install [Recall desktop search tool](www.recoll.org) and [learn it how do dial with idb/i64 files](https://www.lesbonscomptes.com/recoll/usermanual/usermanual.html#RCL.INSTALL.CONFIG.EXAMPLES)  
+Install [Recall desktop search tool](https://www.recoll.org) and [learn it how do dial with idb/i64 files](https://www.lesbonscomptes.com/recoll/usermanual/usermanual.html#RCL.INSTALL.CONFIG.EXAMPLES)  
 Then:
  + add to `[index]` section of `~/.recoll/mimeconf` file following line:
 ```
