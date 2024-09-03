@@ -74,18 +74,18 @@ static bool isNameGood1(const char* name)
 		name += 2;
 	if(!strncmp(name, "fld_", 4))
 		return false;
-#endif
+#endif // IDA_SDK_VERSION == 760
 
 	//register name with optional suffix (ex: ecx0)
 	size_t nlen = qstrlen(name);
 	if(nlen > 1 && nlen <= 4) {
 		const char* n = name;
 		if(n[0] == 'e' || (is64bit() && n[0] == 'r' && !qisdigit(n[1]))) {
-			n++; //ph.reg_names doesnt contain rax, eax form
+			n++; //PH.reg_names doesnt contain rax, eax form
 			nlen--;
 		}
-		for(int32 i = 0; i < ph.regs_num; i++) {
-			const char *r = ph.reg_names[i];
+		for(int32 i = 0; i < PH.regs_num; i++) {
+			const char *r = PH.reg_names[i];
 			size_t rlen = qstrlen(r);
 			if(nlen >= rlen && strneq(n, r, rlen) &&
 			   (n[rlen] == 0 ||
@@ -389,7 +389,8 @@ static bool renameUdtMemb(ea_t refea, const char* funcname, tinfo_t type, uint32
 
 	udm_t memb;
 	memb.offset = offset;
-	if(-1 == type.find_udm(&memb, STRMEM_AUTO)) {
+	int midx = type.find_udm(&memb, STRMEM_AUTO);
+	if(-1 == midx) {
 		qstring typeStr;
 		type.print(&typeStr);
 		msg("[hrt] renameUdtMemb no %x offset inside \"%s\"\n", offset, typeStr.c_str());
@@ -421,13 +422,17 @@ static bool renameUdtMemb(ea_t refea, const char* funcname, tinfo_t type, uint32
 		udm_t m;
 		m.name = newName;
 		if(-1 == type.find_udm(&m, STRMEM_NAME)) {
-			qstring typeStr;
-			type.print(&typeStr);
-			typeStr.append('.');
-			typeStr.append(memb.name);
-			struc_t* st = get_member_struc(typeStr.c_str());
+			qstring oldName;
+			type.print(&oldName);
+			oldName.append('.');
+			oldName.append(memb.name);
+#if IDA_SDK_VERSION >= 900
+			if(TERR_OK == type.rename_udm(midx, newName.c_str())) {
+#else //IDA_SDK_VERSION < 900
+			struc_t* st = get_member_struc(oldName.c_str());
 			if(st && set_member_name(st, offset, newName.c_str())) {
-				msg("[hrt] %a %s: struct \"%s\" member at 0x%x was renamed to %s\n", refea, funcname, typeStr.c_str(), offset, newName.c_str());
+#endif //IDA_SDK_VERSION >= 900
+				msg("[hrt] %a %s: struct \"%s\" member at 0x%x was renamed to %s\n", refea, funcname, oldName.c_str(), offset, newName.c_str());
 				return true;
 			}
 			//msg("[hrt] renameUdtMemb fail%d (struct \"%s\" member at 0x%x)\n", st ? 1 : 0, typeStr.c_str(), offset);

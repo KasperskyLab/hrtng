@@ -22,7 +22,6 @@
 
 #include "warn_off.h"
 #include <hexrays.hpp>
-#include <struct.hpp>
 #include <bytes.hpp>
 #include <kernwin.hpp>
 #include <pro.h>
@@ -117,34 +116,7 @@ ea_t get_ea(ea_t ea)
 	return (ea_t)get_dword(ea);
 }
 
-struc_error_t add_struc_member_ea(struc_t *sptr, const char *fieldname, ea_t offset)
-{
-	flags64_t flag;
-	asize_t nbytes;
-	if(is64bit()) {
-		flag = qword_flag();
-		nbytes = 8;
-	} else {
-		flag = dword_flag();
-		nbytes = 4;
-	}
-	return add_struc_member(sptr, fieldname, offset, flag, NULL, nbytes);
-}
-
-bool set_member_name_ex(struc_t *sptr, ea_t offset,const char *name)
-{
-	if(set_member_name(sptr, offset, name))
-		return true;
-	for(int i = 1; i < 100; i++) {
-		qstring newName = name;
-		newName.cat_sprnt("_%d", i);
-		if(!get_member_by_name(sptr, newName.c_str()))
-			return set_member_name(sptr, offset, newName.c_str());
-	}
-	return false;
-}
-
-void create_type_from_size(tinfo_t* t, uint32 size)
+void create_type_from_size(tinfo_t* t, asize_t size)
 {
 	t->clear();
 	switch (size) {
@@ -166,7 +138,7 @@ void create_type_from_size(tinfo_t* t, uint32 size)
 	default:
 		tinfo_t byteType;
 		byteType.create_simple_type(BT_INT8);
-		t->create_array(byteType, size);
+		t->create_array(byteType, (uint32)size);
 	}
 }
 
@@ -195,13 +167,13 @@ void stripNum(qstring* name)
 		l -= 3;
 		name->resize(l);
 	}
-#else
+#else //IDA_SDK_VERSION >= 830
 	//strip "LL" suffix
 	if(l > 2 && !qstrcmp(name->c_str() + l - 2, "LL")) {
 		l -= 2;
 		name->resize(l);
 	}
-#endif
+#endif //IDA_SDK_VERSION < 830
 	//strip "u" suffix
 	if(l > 1 && name->at(l - 1) == 'u') {
 		name->resize(l - 1);
@@ -271,10 +243,10 @@ bool isX86()
 	if (cache == -1) {
 #if IDA_SDK_VERSION < 730
 		char *buf = inf.procname;
-#else
+#else //IDA_SDK_VERSION < 730
 		char buf[IDAINFO_PROCNAME_SIZE];
 		getinf_buf(INF_PROCNAME, buf, sizeof(buf));
-#endif
+#endif //IDA_SDK_VERSION < 730
 		cache = !qstrcmp(buf, "metapc");
 	}
 	return (bool)cache;

@@ -275,7 +275,7 @@ void Appcaller::doneDbg()
 		vdui_t * ui = COMPAT_open_pseudocode_REUSE(saveViewProcEa);
 		if(ui && savePlace)
 			jumpto(ui->ct, savePlace, saveX, saveY);
-#endif
+#endif //IDA_SDK_VERSION < 750
 	}
 	set_debugger_options(oldDebuggerOptions);
 }
@@ -322,7 +322,7 @@ bool Appcaller::getArgv(cexpr_t *call, qvector<idc_value_t> &argv, ea_t* patchea
 			argv[i].set_int64(arg->obj_ea);
 #ifdef FIRST_PATCH_EA
 			if(*patchea == BADADDR && i != keyArgNum - 1)
-#endif
+#endif //FIRST_PATCH_EA
 			{
 				*patchea = arg->obj_ea;
 			}
@@ -332,7 +332,7 @@ bool Appcaller::getArgv(cexpr_t *call, qvector<idc_value_t> &argv, ea_t* patchea
 				argv[i].set_int64(arg->x->obj_ea);
 #ifdef FIRST_PATCH_EA
 				if(*patchea == BADADDR && i != keyArgNum - 1)
-#endif
+#endif //FIRST_PATCH_EA
 				{
 					*patchea = arg->x->obj_ea;
 				}
@@ -369,9 +369,9 @@ bool Appcaller::getArgv(cexpr_t *call, qvector<idc_value_t> &argv, ea_t* patchea
 	}
 	qstring funcname = get_short_name(funcea);
 	msg("[hrt] %a: prep dbg_appcall %s(%s)\n", call->ea, funcname.c_str(), argsStr.c_str());
-#else
+#else //DEBUG_AC
 	}
-#endif
+#endif //DEBUG_AC
 	return true;
 }
 
@@ -384,7 +384,7 @@ bool Appcaller::getString(idc_value_t &r, qstring *decodedStr, qstring &error)
 		ea_t ea = r.vtype == VT_LONG ? r.num : (ea_t)r.i64;
 #if DEBUG_AC
 		msg("[hrt] getString VT_LONG/VT_INT64 %a\n", ea);
-#endif
+#endif //DEBUG_AC
 		if(is_mapped(ea)) {
 			if(resDisp != acsdArray) { //acsdAuto || acsdPointer
 				ea_t ea2 = get_ea(ea);
@@ -405,7 +405,7 @@ bool Appcaller::getString(idc_value_t &r, qstring *decodedStr, qstring &error)
 		{
 #if DEBUG_AC
 			msg("[hrt] getString VT_STR %d '%s'\n", r.qstr().length(),  r.c_str());
-#endif
+#endif //DEBUG_AC
 			if(resDisp != acsdArray && r.qstr().size() >= ea_size) { //acsdAuto || acsdPointer
 				ea_t ea2 = *(ea_t*)r.qstr().begin();
 				if(is_mapped(ea2)) {
@@ -427,7 +427,7 @@ bool Appcaller::getString(idc_value_t &r, qstring *decodedStr, qstring &error)
 		{
 #if DEBUG_AC
 		msg("[hrt] getString VT_REF \n");
-#endif
+#endif //DEBUG_AC
 			idc_value_t *v  = deref_idcv(&r, VREF_ONCE);
 			bool ret = getString(*v, decodedStr, error);
 
@@ -800,7 +800,7 @@ bool Appcaller::runLoop(cexpr_t *call)
 				if(is_loaded((ea_t)ac.args[i].i64)) {
 #ifdef FIRST_PATCH_EA
 					if(ac.patchea == BADADDR)
-#endif
+#endif //FIRST_PATCH_EA
 					{
 						ac.patchea = (ea_t)ac.args[i].i64;
 					}
@@ -1021,7 +1021,7 @@ bool do_appcall2(vdui_t *vu)
 	appcaller.saveViewProcEa = vu->cfunc->entry_ea;
 	place_t *place =  get_custom_viewer_place(vu->ct, false, &appcaller.saveX, &appcaller.saveY);
 	appcaller.savePlace = (simpleline_place_t*)place->clone();
-#endif
+#endif //IDA_SDK_VERSION < 750
 
 	bool res = appcaller.run(dstea, call);
 	//delete appcaller.savePlace; //LEAK can't correctly delete memory allocated by simpleline_place_t::clone()

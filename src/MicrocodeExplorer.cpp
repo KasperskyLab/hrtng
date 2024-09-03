@@ -241,14 +241,14 @@ static ssize_t idaapi migr_callback(void *ud, int code, va_list va)
 	case grcode_user_gentext:
 		result = true;
 		break;
-#endif
+#endif //IDA_SDK_VERSION < 760
 
 		// refresh user-defined graph nodes and edges
 	case grcode_user_refresh:
-		// in:  mutable_graph_t *g
+		// in:  interactive_graph_t *g
 		// out: success
 	{
-		mutable_graph_t *mg = va_arg(va, mutable_graph_t *);
+		interactive_graph_t* mg = va_arg(va, interactive_graph_t*);
 
 		// we have to resize
 		mg->resize(microg->m_NumBlocks);
@@ -262,14 +262,14 @@ static ssize_t idaapi migr_callback(void *ud, int code, va_list va)
 
 	// retrieve text for user-defined graph node
 	case grcode_user_text:
-		//mutable_graph_t *g
+		//interactive_graph_t *g
 		//      int node
 		//      const char **result
 		//      bgcolor_t *bg_color (maybe NULL)
 		// out: must return 0, result must be filled
 		// NB: do not use anything calling GDI!
 	{
-		va_arg(va, mutable_graph_t *);
+		va_arg(va, interactive_graph_t*);
 		int node = va_arg(va, int);
 		const char **text = va_arg(va, const char **);
 
@@ -323,14 +323,14 @@ static ssize_t idaapi mgr_callback(void *ud, int code, va_list va)
 	case grcode_user_gentext:
 		result = true;
 		break;
-#endif
+#endif // IDA_SDK_VERSION < 760
 
 		// refresh user-defined graph nodes and edges
 	case grcode_user_refresh:
-		// in:  mutable_graph_t *g
+		// in:  interactive_graph_t *g
 		// out: success
 	{
-		mutable_graph_t *mg = va_arg(va, mutable_graph_t *);
+		interactive_graph_t*mg = va_arg(va, interactive_graph_t*);
 
 		// we have to resize
 		mg->resize(mba->qty);
@@ -345,14 +345,14 @@ static ssize_t idaapi mgr_callback(void *ud, int code, va_list va)
 
 	// retrieve text for user-defined graph node
 	case grcode_user_text:
-		//mutable_graph_t *g
+		//interactive_graph_t *g
 		//      int node
 		//      const char **result
 		//      bgcolor_t *bg_color (maybe NULL)
 		// out: must return 0, result must be filled
 		// NB: do not use anything calling GDI!
 	{
-		va_arg(va, mutable_graph_t *);
+		va_arg(va, interactive_graph_t*);
 		int node = va_arg(va, int);
 		const char **text = va_arg(va, const char **);
 
@@ -391,7 +391,7 @@ static void cv_jump(sample_info_t* si)
 		hist.set_place(newplace);
 		custom_viewer_jump(si->cv, hist, CVNF_JUMP);
 	}
-#endif
+#endif //IDA_SDK_VERSION >= 740
 }
 
 static bool idaapi ct_dblclick(TWidget* cv, int shift, void* ud)
@@ -461,7 +461,7 @@ static bool idaapi ct_keyboard(TWidget * /*v*/, int key, int shift, void *ud)
 				return true;
 			}
 			break;
-#endif
+#endif //IDA_SDK_VERSION >= 740
 		case 'I':
 		{
 			if (si->mba == NULL)
@@ -609,7 +609,7 @@ void showMicrocodeExplorer(mbl_array_t* mba, bool keepMba, const char* name)
 	display_widget(si->cv, WOPN_TAB | WOPN_NOT_CLOSED_BY_ESC);
 #else
 	display_widget(si->cv, WOPN_DP_TAB | WOPN_NOT_CLOSED_BY_ESC, "IDA View-A");
-#endif
+#endif //IDA_SDK_VERSION < 730
 }
 
 void ShowMicrocodeExplorer(mbl_array_t* mba, const char* name)

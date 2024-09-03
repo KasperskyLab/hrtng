@@ -1056,7 +1056,7 @@ bool RemoveSingleGotos(mbl_array_t* mba)
 		mba->dump_mba(true, "[hrt] after RemoveSingleGotos");
 		// combine_blocks or remove_empty_and_unreachable_blocks produce itsown dumps
 		mba->combine_blocks(); //mba->remove_empty_and_unreachable_blocks();
-#endif
+#endif //IDA_SDK_VERSION < 760
 	}
 	return iRetVal != 0;
 }
@@ -1894,7 +1894,7 @@ struct ida_local CFUnflattener
 			MSG_UF3(("[I] Removed unreachable %d blocks\n", nRemoved));
 #else
 			mba->remove_empty_and_unreachable_blocks();
-#endif
+#endif //IDA_SDK_VERSION < 760
 		}
 #endif
 

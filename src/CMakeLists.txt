@@ -32,6 +32,7 @@ ADD_IDA_PLUGIN(hrtng
   microavx.cpp
   msig.cpp
   opt.cpp
+  structures.cpp
   rename.cpp
   unflat.cpp
   )

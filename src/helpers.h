@@ -21,8 +21,10 @@
 
 #pragma once
 #include "warn_off.h"
-#include <struct.hpp>
 #include <hexrays.hpp>
+#if IDA_SDK_VERSION < 900
+#include <struct.hpp>
+#endif
 #include "warn_on.h"
 
 
@@ -40,31 +42,38 @@
 	};\
 	static name ## _t name;
 
+#if IDA_SDK_VERSION < 900
+#define interactive_graph_t mutable_graph_t
+#define get_named_type_tid(x) get_struc_id(x)
+#define get_tid_name(x, y) get_struc_name(x, y)
+#endif // IDA_SDK_VERSION < 900
+
 #if IDA_SDK_VERSION < 840
   #define udm_t udt_member_t
   #define find_udm find_udt_member
-#endif
+#endif // IDA_SDK_VERSION < 840
 
 #if IDA_SDK_VERSION < 830
 #define flags64_t flags_t
-#endif
+#endif // IDA_SDK_VERSION < 830
 
 #if IDA_SDK_VERSION < 750
 #define COMPAT_register_and_attach_to_menu(a,b,c,d,e,f,g) register_and_attach_to_menu(a,b,c,d,e,f,g)
 #define COMPAT_open_pseudocode_REUSE(a) open_pseudocode(a, 0);
 #define COMPAT_open_pseudocode_REUSE_ACTIVE(a) open_pseudocode(a, -1);
 #define COMPAT_open_pseudocode_NEW(a) open_pseudocode(a, 1);
-#else
+#define PH ph
+#else //IDA_SDK_VERSION < 750
 #define COMPAT_register_and_attach_to_menu(a,b,c,d,e,f,g) register_and_attach_to_menu(a,b,c,d,e,f,g, ADF_OT_PLUGIN)
 #define COMPAT_open_pseudocode_REUSE(a) open_pseudocode(a, OPF_REUSE);
 #define COMPAT_open_pseudocode_REUSE_ACTIVE(a) open_pseudocode(a, OPF_REUSE_ACTIVE);
 #define COMPAT_open_pseudocode_NEW(a) open_pseudocode(a, OPF_NEW_WINDOW);
-#endif
+#endif //IDA_SDK_VERSION < 750
 
 #if IDA_SDK_VERSION < 740
 #define PRTYPE_COLORED 0
 #define DECOMP_ALL_BLKS 0
-#endif
+#endif //IDA_SDK_VERSION < 740
 
 #if IDA_SDK_VERSION < 730
 #define inf_set_appcall_options(x) inf.appcall_options = x
@@ -80,9 +89,9 @@
 #define inf_get_cc_defalign()      inf.cc.defalign
 #define WOPN_DP_TAB                WOPN_TAB
 #define REFRESH_FUNC_CTEXT(pvu)    pvu->refresh_view(false)
-#else
+#else //IDA_SDK_VERSION >= 730
 #define REFRESH_FUNC_CTEXT(pvu)    pvu->cfunc->refresh_func_ctext()
-#endif
+#endif //IDA_SDK_VERSION < 730
 
 bool at_atoea(const char * str, ea_t * pea );
 bool strtobx(const char *str, uint8 *b);
@@ -123,10 +132,7 @@ bool isX86();
 
 bool is_ea(flags64_t flg);
 ea_t get_ea(ea_t ea);
-struc_error_t add_struc_member_ea(struc_t *sptr, const char *fieldname, ea_t offset);
-bool set_member_name_ex(struc_t *sptr, ea_t offset,const char *name);
-
-void create_type_from_size(tinfo_t* t, uint32 size);
+void create_type_from_size(tinfo_t* t, asize_t size);
 void stripName(qstring* name);
 void stripNum(qstring* name);
 int namecmp(const char* name, const char* cmpWith);

@@ -44,12 +44,12 @@ void SerializeOp(const mop_t& op, bytevec_t& buf)
 		append_db(buf, mop_S);
 	else
 		append_db(buf, op.t);
-#else
+#else //IDA_SDK_VERSION < 730
 	if (op.t == mop_r || op.t == mop_v || op.t == mop_S)
 		buf.pack_db(mop_S);
 	else
 		buf.pack_db(op.t);
-#endif
+#endif //IDA_SDK_VERSION < 730
 
 	buf.append(&op.size, sizeof(op.size));
 
@@ -103,9 +103,9 @@ void SerializeInsn(const minsn_t* insn, bytevec_t& buf)
 {
 #if IDA_SDK_VERSION < 730
 	append_db(buf, insn->opcode);
-#else
+#else //IDA_SDK_VERSION >= 730
 	buf.pack_db(insn->opcode);
-#endif
+#endif //IDA_SDK_VERSION < 730
 	SerializeOp(insn->l, buf);
 	SerializeOp(insn->r, buf);
 	SerializeOp(insn->d, buf);

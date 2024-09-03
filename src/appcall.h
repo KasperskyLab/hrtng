@@ -63,7 +63,7 @@ struct ida_local Appcaller
 	ea_t saveViewProcEa;
 	simpleline_place_t * savePlace;
 	int saveX, saveY;
-#endif
+#endif //IDA_SDK_VERSION < 750
 	int isDbgRunning;
 	uint oldDebuggerOptions;
 	ea_t funcea;

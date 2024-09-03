@@ -389,7 +389,7 @@ ACT_DEF(show_appcall_view)
 	display_widget(acv->cv, WOPN_TAB);
 #else
 	display_widget(acv->cv, WOPN_DP_TAB, "IDA View-A");
-#endif
+#endif //IDA_SDK_VERSION < 730
 	return 1;
 }
 

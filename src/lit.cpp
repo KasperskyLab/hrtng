@@ -20,7 +20,9 @@
 #include "warn_off.h"
 #include <hexrays.hpp>
 #include <diskio.hpp>
+#if IDA_SDK_VERSION < 900
 #include <enum.hpp>
+#endif // IDA_SDK_VERSION < 900
 #include "warn_on.h"
 
 #include "helpers.h"
@@ -233,7 +235,7 @@ struct ida_local lit_visitor_t : public ctree_visitor_t
 	}
 	virtual int idaapi visit_expr(cexpr_t *expr);
 	bool chkCallArg(cexpr_t *expr, qstring &comment);
-	bool chkStrucMemb(cexpr_t *expr, cexpr_t *memb, cexpr_t *cons, qstring &comment);
+	bool chkStrucMemb(cexpr_t *memb, cexpr_t *cons, qstring &comment);
 	bool chkConstType(cexpr_t *expr, cexpr_t *cons, qstring &comment);
 	cexpr_t* getLiteralExp(cexpr_t *constexp, const literals_t& l, bool exclusive);
 	cexpr_t* makeEnumExpr(const char* name, uint64 val, cexpr_t *constexp);
@@ -268,60 +270,73 @@ static qstring getLiteralString(uint64 val, const literals_t& l, bool exclusive)
 	return str;
 }
 
-static bool importEnumFromTil(til_t *til, const char* name, uint64 val)
+static const char* importEnumFromTil(til_t *til, const char* name, uint64 val)
 {
 	enable_numbered_types(til, true);
 
-	uint32 ordinal = 1;
+#if IDA_SDK_VERSION < 840
+	uint32 limit = get_ordinal_qty(til) + 1;
+	if (limit == 0)
+		return NULL;
+#else //IDA_SDK_VERSION >= 840
+	uint32 limit = get_ordinal_limit(til);
+	if (limit == (uint32)-1)
+		return NULL;
+#endif //IDA_SDK_VERSION < 840
+	for(uint32 ordinal = 1; ordinal < limit; ++ordinal)	{
 	const type_t *type;
 	const p_list *fields;
-	while(get_numbered_type(til, ordinal, &type, &fields))
-	{
-		if(type && is_type_enum(*type) && fields) {
+		if(get_numbered_type(til, ordinal, &type, &fields) && type && is_type_enum(*type) && fields) {
 			tinfo_t t;
-			if (t.deserialize(til, &type, &fields))
-			{
+			if (t.deserialize(til, &type, &fields)) {
 				enum_type_data_t ed;
 				if (t.get_enum_details(&ed)) {
 					for (auto memb = ed.begin(); memb != ed.end(); memb++) {
 						if (val == memb->value && !qstrcmp(name, memb->name.c_str())) {
 							const char* typeName = get_numbered_type_name(til, ordinal);
 							if (typeName) {
+#if IDA_SDK_VERSION < 900
 								import_type(til, -1, typeName);
+#else //IDA_SDK_VERSION >= 900
+								//is it need??? if(til != get_idati()) copy_named_type
+#endif //IDA_SDK_VERSION < 900
 								msg("[hrt] import enum \"%s\" from til \"%s\"\n", typeName, til->name);
-								return true;
+								return typeName;
 							}
 							msg("[hrt] not named enum for \"%s\" 0x%x \n", name, val);
-							return false;
+							return NULL;
 						}
 					}
 				}
 			}
 		}
-		++ordinal;
 	}
-	return false;
+	return NULL;
 }
 
-static bool importEnumFromTils(const char* name, uint64 val)
+static const char* importEnumFromTils(const char* name, uint64 val)
 {
 	msg("[hrt] find enum memb %s (0x%x) in tils\n", name, val);
 	til_t *til = (til_t *)get_idati();
-	if(importEnumFromTil(til, name, val))
-		return true;
+	const char* typeName = importEnumFromTil(til, name, val);
+	if(typeName)
+		return typeName;
 
-	for(int i = 0; i < til->nbases; i++)
-		if(importEnumFromTil(til->base[i], name, val))
-			return true;
+	for (int i = 0; i < til->nbases; i++) {
+			const char* typeName = importEnumFromTil(til->base[i], name, val);
+			if (typeName)
+				return typeName;
+	}
 
 	//load_til,	load_til2, add_base_tils
 
 	//TODO: cache not found names, to not search again
-	return false;
+	return NULL;
 }
 
 cexpr_t* lit_visitor_t::makeEnumExpr(const char* name, uint64 val, cexpr_t *constexp)
 {
+#if IDA_SDK_VERSION < 900
 	const_t memb = get_enum_member_by_name(name);
 	if(memb == BADNODE) {
 		if(!importEnumFromTils(name, val)) 
@@ -337,18 +352,27 @@ cexpr_t* lit_visitor_t::makeEnumExpr(const char* name, uint64 val, cexpr_t *cons
 	qstring enName = get_enum_name(en);
 	if(enName.empty())
 		return NULL;
+	auto serial = get_enum_member_serial(memb);
+#else //IDA_SDK_VERSION >= 900
+	//FIXME: I've not found fast way to get enum type-name from member-name, maybe need to implement some cashing?
+	const char* typeName = importEnumFromTils(name, val);
+	if(!typeName)
+		return NULL;
+	uchar serial = 0; //FIXME: does it matter???
+	qstring enName = typeName;
+#endif //IDA_SDK_VERSION < 900
 
 	cexpr_t* newexp = new cexpr_t();
 	newexp->ea = constexp->ea;
-	newexp->put_number(func, val, constexp->n->nf.org_nbytes); //ph.get_default_enum_size(inf.cc.cm);
+	newexp->put_number(func, val, constexp->n->nf.org_nbytes); //PH.get_default_enum_size(inf.cc.cm);
 	newexp->n->nf.org_nbytes = constexp->n->nf.org_nbytes;
 	newexp->n->nf.flags = enum_flag();
-	newexp->n->nf.serial = get_enum_member_serial(memb);
+	newexp->n->nf.serial = serial;
 	newexp->n->nf.type_name = enName;
 #if IDA_SDK_VERSION >= 750
 	newexp->n->nf.props |= NF_VALID; // no any other way to set enum, but ida 7.5 raise INTERR 52381 w/o NF_VALID flag
 	newexp->type = create_typedef(enName.c_str()); // ida 7.5 raise INTERR 52378 w/o this
-#endif
+#endif // IDA_SDK_VERSION >= 750
 	return newexp;
 }
 
@@ -434,7 +458,7 @@ bool lit_visitor_t::chkCallArg(cexpr_t *expr, qstring &comment)
 }
 
 //check struct members
-bool lit_visitor_t::chkStrucMemb(cexpr_t *expr, cexpr_t *memb, cexpr_t *cons, qstring &comment)
+bool lit_visitor_t::chkStrucMemb(cexpr_t *memb, cexpr_t *cons, qstring &comment)
 {
 	tinfo_t type = memb->x->type;
 	type.remove_ptr_or_array();
@@ -536,7 +560,7 @@ bool lit_visitor_t::chkConstType(cexpr_t *expr, cexpr_t *cons, qstring &comment)
 		//TODO: add more typenames here
 		return false;
 	}
-#endif
+#endif // IDA_SDK_VERSION < 750
 	if (!l)
 		return false;
 
@@ -562,7 +586,7 @@ int idaapi lit_visitor_t::visit_expr(cexpr_t *expr)
 		if(cons) {
 			cexpr_t *memb = expr->theother(cons);
 			if(memb->op == cot_memref || memb->op == cot_memptr)
-				changed |= chkStrucMemb(expr, memb, cons, comment);
+				changed |= chkStrucMemb(memb, cons, comment);
 			else 
 				changed |= chkConstType(expr, cons, comment);
 		}

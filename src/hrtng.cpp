@@ -35,6 +35,7 @@
 #include "warn_on.h"
 
 #include "helpers.h"
+#include "structures.h"
 #include "cast.h"
 #include "lit.h"
 #include "decr.h"
@@ -52,11 +53,11 @@
 
 #if IDA_SDK_VERSION >= 750
 #include "microavx.h"
-#endif
+#endif // IDA_SDK_VERSION >= 750
 
 #if IDA_SDK_VERSION < 760
 hexdsp_t *hexdsp = NULL;
-#endif
+#endif //IDA_SDK_VERSION < 760
 
 bool is_call(vdui_t *vu, cexpr_t **call);
 bool is_recastable(vdui_t *vu, tinfo_t * ts);
@@ -67,7 +68,7 @@ bool is_number(vdui_t *vu);
 bool is_gap_field(vdui_t *vu, tinfo_t *ts, udm_t* memb);
 bool is_patched();
 bool create_dec_file();
-bool is_VT_assign(vdui_t *vu, struc_t** pstruc, ea_t *vt_ea);
+bool is_VT_assign(vdui_t *vu, tid_t *struc_id, ea_t *vt_ea);
 bool has_if42blocks(ea_t funcea);
 
 //-------------------------------------------------------------------------
@@ -93,8 +94,10 @@ ACT_DECL(jmp2xref, return ((ctx->widget_type == BWN_DISASM || ctx->widget_type =
 //ACT_DECL(kill_toolbars, AST_ENABLE_ALW)
 
 //dynamically attached actions
-ACT_DECL(convert_to_usercall , AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
+#if IDA_SDK_VERSION < 900
 ACT_DECL(convert_to_golang_call , AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
+#endif // IDA_SDK_VERSION < 900
+ACT_DECL(convert_to_usercall , AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
 ACT_DECL(jump_to_indirect_call  , AST_ENABLE_FOR(is_call(vu, NULL)))
 ACT_DECL(zeal_doc_help       , AST_ENABLE_FOR(is_call(vu, NULL)))
 ACT_DECL(add_VT              , AST_ENABLE_FOR(is_VT_assign(vu, NULL, NULL)));
@@ -118,7 +121,7 @@ ACT_DECL(uf_disable              , AST_ENABLE_FOR(ufIsInWL(vu->mba->entry_ea)))
 #if IDA_SDK_VERSION >= 750
 ACT_DECL(mavx_enable             , AST_ENABLE_FOR(isMicroAvx_avail() && !isMicroAvx_active()))
 ACT_DECL(mavx_disable            , AST_ENABLE_FOR(isMicroAvx_avail() &&  isMicroAvx_active()))
-#endif
+#endif //IDA_SDK_VERSION >= 750
 ACT_DECL(msigAdd                 , AST_ENABLE_FOR_PC)
 ACT_DECL(selection2block         , return (ctx->widget_type != BWN_PSEUDOCODE ? AST_DISABLE_FOR_WIDGET : (ctx->has_flag(ACF_HAS_SELECTION) ? AST_ENABLE : AST_DISABLE)))
 ACT_DECL(clear_if42blocks         , AST_ENABLE_FOR(has_if42blocks(vu->cfunc->entry_ea)))
@@ -131,8 +134,10 @@ ACT_DECL(clear_if42blocks         , AST_ENABLE_FOR(has_if42blocks(vu->cfunc->ent
 // action_desc_t descriptions
 static const action_desc_t actions[] =
 {
-	ACT_DESC("[hrt] Convert to __usercall",          "U", convert_to_usercall),
+#if IDA_SDK_VERSION < 900
 	ACT_DESC("[hrt] Convert to __usercall golang",   "Shift-G", convert_to_golang_call),
+#endif //IDA_SDK_VERSION < 900
+	ACT_DESC("[hrt] Convert to __usercall",          "U", convert_to_usercall),
 	ACT_DESC("[hrt] Jump to indirect call",          "J", jump_to_indirect_call),
 	ACT_DESC("[hrt] Zeal offline API help (zealdocs.org)",  "Ctrl-F1", zeal_doc_help),
 	ACT_DESC("[hrt] Add VT",                         NULL, add_VT),
@@ -156,9 +161,9 @@ static const action_desc_t actions[] =
 #if IDA_SDK_VERSION >= 750
   ACT_DESC("[hrt] Enable AVX lifter",              NULL, mavx_enable),
 	ACT_DESC("[hrt] Disable AVX lifter",             NULL, mavx_disable),
-#endif
+#endif //IDA_SDK_VERSION >= 750
 	ACT_DESC("[hrt] Create MSIG for the function",    NULL, msigAdd),
-	ACT_DESC("[hrt] Collapse selection",              NULL, selection2block),
+	ACT_DESC("[hrt] ~C~ollapse selection",              NULL, selection2block),
 	ACT_DESC("[hrt] Remove collapsible 'if(42) ...' blocks",  NULL, clear_if42blocks),
 };
 
@@ -168,7 +173,9 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 {
 	if (vu->item.citype == VDI_FUNC) {
 		attach_action_to_popup(view, p, ACT_NAME(convert_to_usercall));
+#if IDA_SDK_VERSION < 900
 		attach_action_to_popup(view, p, ACT_NAME(convert_to_golang_call));
+#endif //IDA_SDK_VERSION < 900
 	}
 	if(is_call(vu, NULL))
 		attach_action_to_popup(view, p, ACT_NAME(zeal_doc_help));
@@ -223,7 +230,7 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 		else
 			attach_action_to_popup(view, p, ACT_NAME(mavx_enable));
 	}
-#endif
+#endif //IDA_SDK_VERSION >= 750
 	attach_action_to_popup(view, p, ACT_NAME(selection2block));
 	if (has_if42blocks(vu->cfunc->entry_ea))
 		attach_action_to_popup(view, p, ACT_NAME(clear_if42blocks));
@@ -286,9 +293,7 @@ void hrt_unreg_act()
 	unregister_action(ACT_NAME(offsets_tbl));
 	unregister_action(ACT_NAME(create_dummy_struct));
 }
-
 //-------------------------------------------------------------------------
-
 
 static int idaapi jump_to_call_dst(vdui_t *vu)
 {
@@ -310,10 +315,15 @@ static int idaapi jump_to_call_dst(vdui_t *vu)
 		if (t.is_struct()) {
 			qstring sname;
 			if(t.get_type_name(&sname)) {
+#if IDA_SDK_VERSION < 900
 				tid_t id = get_struc_id(sname.c_str());
 				if(id != BADNODE) {
 					qstring comment;
 					get_struc_cmt(&comment, id, true);
+#else //IDA_SDK_VERSION >= 900
+				qstring comment;
+				if (t.get_type_rptcmt(&comment)) {
+#endif //IDA_SDK_VERSION < 900
 					ea_t vt_ea;
 					if (at_atoea(comment.c_str(), &vt_ea)) {
 						ea_t fnc = get_ea(vt_ea + offset);
@@ -348,6 +358,8 @@ ACT_DEF(jump_to_indirect_call)
 	return jump_to_call_dst(get_widget_vdui(ctx->widget));
 }
 
+//-------------------------------------------------------------------------
+
 static const char create_dec_idc_args[] = { 0 };
 static error_t idaapi create_dec_idc(idc_value_t *argv, idc_value_t *res)
 {
@@ -370,7 +382,7 @@ static error_t idaapi dump_strings_idc(idc_value_t *argv, idc_value_t *res)
 		strwinsetup->strtypes.clear();
 		strwinsetup->strtypes.push_back(STRTYPE_C);
 		strwinsetup->strtypes.push_back(STRTYPE_C_16);
-#endif
+#endif //IDA_SDK_VERSION < 760
 		build_strlist();
 		size_t qty = get_strlist_qty();
 		uint32 cnt = 0;
@@ -391,7 +403,7 @@ static error_t idaapi dump_strings_idc(idc_value_t *argv, idc_value_t *res)
 	}
 	msg("[hrt] dump_strings: err\n");
 	return eOS;
-#endif
+#endif //IDA_SDK_VERSION < 760
 }
 static const ext_idcfunc_t dump_strings_desc = { "dump_strings", dump_strings_idc, dump_strings_idc_args, NULL, 0, EXTFUN_BASE };
 
@@ -401,14 +413,14 @@ static const char dump_comments_idc_args[] = { 0 };
 bool idaapi isCommented(flags64_t flags, void *ud)
 #else
 bool idaapi isCommented(flags64_t flags, void *ud)
-#endif
+#endif //IDA_SDK_VERSION < 830
 {
 	return has_cmt(flags);
 }
 static error_t idaapi dump_comments_idc(idc_value_t *argv, idc_value_t *res)
 {
 	msg("[hrt] dump_comments is called \n");
-	for(ea_t ea = inf.min_ea; ea < inf.max_ea; ea = next_that(ea, inf.max_ea, isCommented)) {
+	for(ea_t ea = inf_get_min_ea(); ea < inf_get_max_ea(); ea = next_that(ea, inf_get_max_ea(), isCommented)) {
 		qstring str;
 		//color_t cmttype;
 		if(0 < get_cmt(&str, ea, false) || 0 < get_cmt(&str, ea, true)) {
@@ -529,114 +541,33 @@ ACT_DEF(zeal_doc_help)
   return 1;
 }
 
-tid_t create_VT_struc(ea_t VT_ea, const char *name, uval_t idx = BADADDR)
-{
-	{//check at first is at least one function in vtbl
-		ea_t fncea = get_ea(VT_ea);
-		flags64_t fnc_flags = get_flags(fncea);
-		if (!is_func(fnc_flags)) {
-			msg("[hrt] scan VT at %a failed, !is_func(%a)\n", VT_ea, fncea);
-			return BADNODE;
-		}
-	}
-
-	qstring name_vt(name);
-	if (!name) {
-		if(has_user_name(get_flags(VT_ea))) {
-			name_vt = get_name(VT_ea);
-			if(name_vt.length() > 9 && !strncmp(name_vt.c_str(), "??_7", 4)) {
-				name_vt.remove(0, 4);
-				name_vt.remove(name_vt.find("@@6B@"), 5); //"@@6B@" on the end may be followed by "_0" suffix
-			}
-			if(!strnicmp(name_vt.c_str(), "vtbl_", 5))
-				name_vt.remove(0, 5);
-			if(name_vt.length() > 5 && !stricmp(&name_vt[name_vt.length() - 5], "_vtbl"))
-				name_vt.remove_last(5);
-			if(name_vt[0] >= '0' && name_vt[0] <= '9')
-				name_vt.insert(0, '_');
-		} else {
-			name_vt.sprnt("_x%a", VT_ea);
-		}
-	}
-	qstring name_vtbl = name_vt;
-	name_vtbl += "_vtbl";
-	name_vt += "_VT";
-
-	tid_t newid = get_struc_id(name_vt.c_str());
-	if (newid == BADADDR)
-		newid = add_struc(idx, name_vt.c_str());
-	if (newid == BADADDR) {
-		msg("[hrt] add_struc(%d, \"%s\") failed\n", idx, name_vt.c_str());
-		return BADNODE;
-	}
-	struc_t * newstruc = get_struc(newid);
-	if (!newstruc)
-		return BADNODE;
-
-	ea_t ea = VT_ea;
-	while (1) {
-		ea_t offset = ea - VT_ea;
-		ea_t fncea = get_ea(ea);
-		if (!is_mapped(fncea))
-			break;
-		flags64_t fnc_flags = get_flags(fncea);
-		if(is_data(fnc_flags))
-			break;
-
-		qstring funcname;
-		get_ea_name(&funcname, fncea);
-		add_struc_member_ea(newstruc, NULL, offset);
-		member_t* memb = get_member(newstruc, offset);
-		set_member_name_ex(newstruc, offset, funcname.c_str());
-
-		tinfo_t t;
-		if(get_tinfo(&t, fncea) && t.is_func()) {
-			t = make_pointer(t);
-			set_member_tinfo(newstruc, memb, 0, t, SET_MEMTI_COMPATIBLE);
-		} else {
-			msg("[hrt] %a: no type for VTBL member \"%s\"\n", fncea, funcname.c_str());
-		}
-
-		qstring cmt;
-		cmt.sprnt("0x%a", fncea);
-		set_member_cmt(memb, cmt.c_str(), true);
-
-		ea += ea_size;
-		flags64_t ea_flags = get_flags(ea);
-		if (has_any_name(ea_flags))
-			break;
-	}
-
-	qstring comment;
-	comment.sprnt("@0x%a", VT_ea);
-	set_struc_cmt(newid, comment.c_str(), true);
-	set_name(VT_ea, name_vtbl.c_str(), SN_FORCE);
-	return newid;
-}
-
-ACT_DEF(add_VT_struct)
-{
-	tid_t VT_struct= create_VT_struc(ctx->cur_ea, NULL);
-	if(VT_struct != BADNODE)
-		open_structs_window(VT_struct);
-	return 0;
-}
-
-bool is_VT_assign(vdui_t *vu, struc_t** pstruc, ea_t *vt_ea)
+bool is_VT_assign(vdui_t *vu, tid_t *struc_id, ea_t *vt_ea)
 {
 	if (!vu->item.is_citem())
 		return false;
 
-	struc_t *struc;
-	member_t * member = vu->item.get_memptr(&struc);
-	if(!member || member->soff != 0 || !struc || struc->is_union())
+	tid_t sid;
+#if IDA_SDK_VERSION < 900
+	struc_t *sptr;
+	member_t * member = vu->item.get_memptr(&sptr);
+	if(!member || member->soff != 0)
+		return false;
+	sid = sptr->id;
+#else //IDA_SDK_VERSION >= 900
+	tinfo_t parentTi;
+	uint64 offset;
+	if (vu->item.get_udm(NULL, &parentTi, &offset) == -1 || offset != 0)
+		return false;
+	sid = parentTi.get_tid();
+	if (sid == BADADDR)
+		return false; //parent.force_tid()
+#endif //IDA_SDK_VERSION < 900
+
+	citem_t* parent = vu->cfunc->body.find_parent_of(vu->item.i);
+	if(parent->op != cot_asg)
 		return false;
 
-	citem_t* parentItem = vu->cfunc->body.find_parent_of(vu->item.i);
-	if(parentItem->op != cot_asg)
-		return false;
-
-	cexpr_t *asg = (cexpr_t *)parentItem;
+	cexpr_t *asg = (cexpr_t *)parent;
 	cexpr_t *vt = asg->y;
 	if(vt->op == cot_cast)
 		vt = vt->x;
@@ -645,44 +576,32 @@ bool is_VT_assign(vdui_t *vu, struc_t** pstruc, ea_t *vt_ea)
 	if (vt->op != cot_obj)
 		return false;
 
-	if(pstruc)
-		*pstruc = struc;
+	if(struc_id)
+		*struc_id = sid;
 	if(vt_ea)
 		*vt_ea = vt->obj_ea;
 	return true;
 }
 
-int create_VT(struc_t *struc, ea_t VT_ea)
-{
-	qstring name;
-	get_struc_name(&name, struc->id);
-
-	tid_t vt_struc_id = create_VT_struc(VT_ea, name.c_str(), get_struc_idx(struc->id) + 1);
-	if ( vt_struc_id == BADNODE)
-		return 0;
-
-	//get or add member at offset 0
-	member_t * member = get_member(struc, 0);
-	if (!member) {
-		if (add_struc_member_ea(struc, NULL, 0) != 0)
-			return 0;
-		member = get_member(struc, 0);
-	}
-
-	get_struc_name(&name, vt_struc_id);
-	tinfo_t type = make_pointer(create_typedef(name.c_str()));
-	set_member_tinfo(struc, member, 0, type, SET_MEMTI_MAY_DESTROY);
-	set_member_name(struc, 0, "VT");
-	return 1;
-}
-
 ACT_DEF(add_VT)
 {
 	vdui_t *vu = get_widget_vdui(ctx->widget);
-	struc_t *struc;
+	tid_t struc_id;
 	ea_t vt_ea;
-	if(is_VT_assign(vu, &struc, &vt_ea) && create_VT(struc, vt_ea))
+	if(is_VT_assign(vu, &struc_id, &vt_ea) && create_VT(struc_id, vt_ea))
 		REFRESH_FUNC_CTEXT(vu);
+	return 0;
+}
+
+ACT_DEF(add_VT_struct)
+{
+	tid_t VT_struct= create_VT_struc(ctx->cur_ea, NULL);
+	if(VT_struct != BADNODE)
+#if IDA_SDK_VERSION < 900
+		open_structs_window(VT_struct);
+#else //IDA_SDK_VERSION >= 900
+		open_loctypes_window(get_tid_ordinal(VT_struct));
+#endif //IDA_SDK_VERSION < 900
 	return 0;
 }
 
@@ -727,7 +646,6 @@ struct ida_local undef_var_locator_t : public ctree_visitor_t
 		return 0;
 	}
 };
-
 
 void undefRegs2args(cfuncptr_t cfunc, func_type_data_t *fti)
 {
@@ -804,6 +722,7 @@ ACT_DEF(convert_to_usercall)
 	return 0;
 }
 
+#if IDA_SDK_VERSION < 900
 static const char GO_NETNODE_HASH_IDX[] = "hrt_golang";
 static const nodeidx_t GO_NETNODE_VAL = 0xC01AC01A;
 void golang_add(ea_t ea)
@@ -871,7 +790,7 @@ ACT_DEF(convert_to_golang_call)
 				sval_t prevBgn = prev.argloc.stkoff();
 				sval_t prevEnd = prevBgn + (sval_t)prev.type.get_size();
 				if(stkoff > prevEnd) {
-					create_type_from_size(&prev.type, (uint32)(stkoff - prevBgn));
+					create_type_from_size(&prev.type, stkoff - prevBgn);
 					msg("[hrt] fix arg '%s' size %a\n", prev.name.c_str(), stkoff - prevBgn);
 				}
 			}
@@ -986,6 +905,7 @@ ACT_DEF(convert_to_golang_call)
 #endif
 	return 0;
 }
+#endif //IDA_SDK_VERSION < 900
 
 //-----------------------------------------------------
 bool is_number(vdui_t *vu)
@@ -1164,15 +1084,18 @@ bool set_ea_type(ea_t ea, tinfo_t *ts)
 	return set_tinfo(ea, ts);
 }
 
-bool set_membr_type(struc_t * struc, member_t * member, tinfo_t *ts)
+#if IDA_SDK_VERSION < 900
+bool set_membr_type(struc_t * struc, member_t * member, tinfo_t *ts, bool bSilent = false)
 {
 	tinfo_t oldType;
-	if(get_member_tinfo(&oldType, member)) {
+	if(!bSilent && get_member_tinfo(&oldType, member)) {
+		qstring oldtype;
+		oldType.print(&oldtype);
 		qstring typestr;
 		ts->print(&typestr);
 		qstring name;
 		get_member_fullname(&name, member->id);
-		int answer = ask_yn(ASKBTN_NO, "[hrt] Change type of '%s' to '%s'?", name.c_str(), typestr.c_str());
+		int answer = ask_yn(ASKBTN_NO, "[hrt] Change type of '%s'\nfrom '%s' to '%s'?", name.c_str(), oldtype.c_str(), typestr.c_str());
 		if(answer == ASKBTN_NO || answer ==ASKBTN_CANCEL)
 			return false;
 	}
@@ -1251,6 +1174,18 @@ bool set_membr_type(vdui_t * vu, tinfo_t *ts)
 		return false;
 	return set_membr_type(struc, member, ts);
 }
+#else //IDA_SDK_VERSION >= 900
+bool set_membr_type(vdui_t* vu, tinfo_t* t)
+{
+	udm_t udm;
+	tinfo_t parent;
+	uint64 offset;
+	int idx = vu->item.get_udm(&udm, &parent, &offset);
+	if (idx < 0)
+		return false;
+	return parent.set_udm_type(idx, *t, ETF_MAY_DESTROY) == TERR_OK;
+}
+#endif //IDA_SDK_VERSION < 900
 
 static int idaapi cast_var2(vdui_t *vu, tinfo_t *ts)
 {
@@ -1349,6 +1284,7 @@ ACT_DEF(convert_gap)
 	if(fldType.empty())
 		fldType.create_simple_type(BT_INT8);
 
+#if IDA_SDK_VERSION < 900
 	qstring sname;
 	if(!ts.get_type_name(&sname))
 		return 0;
@@ -1381,8 +1317,41 @@ ACT_DEF(convert_gap)
 	fldname.sprnt("field_%X", fldOff);
 	if(STRUC_ERROR_MEMBER_OK == add_struc_member(struc, fldname.c_str(), fldOff, byte_flag(), NULL, 1)) {
 		member_t *fldM = get_member(struc, fldOff);
-		set_membr_type(struc, fldM, &fldType);
+		set_membr_type(struc, fldM, &fldType, true);
 	}
+#else //IDA_SDK_VERSION >= 900
+	{
+		//??? gap member may not exists, but ida provides fake one
+		asize_t gapSz = memb.size / 8;
+		if (ts.del_udm(ts.find_udm(memb.offset)) == TERR_OK) {
+			if (fldOff > gapOff) {
+				udm_t udm;
+				udm.offset = gapOff * 8;
+				udm.size = (fldOff - gapOff) * 8;
+				udm.name.sprnt("gap%X", gapOff);
+				create_type_from_size(&udm.type, fldOff - gapOff);
+				ts.add_udm(udm);
+			}
+			asize_t fldSz = (asize_t)fldType.get_size();
+			if (fldOff + fldSz < gapOff + gapSz) {
+				gapSz = gapOff + gapSz - (fldOff + fldSz);
+				gapOff = fldOff + fldSz;
+				udm_t udm;
+				udm.offset = gapOff * 8;
+				udm.size = gapSz * 8;
+				udm.name.sprnt("gap%X", gapOff);
+				create_type_from_size(&udm.type, gapSz);
+				ts.add_udm(udm);
+			}
+		}
+	}
+	udm_t udm;
+	udm.offset = fldOff * 8;
+	udm.size = fldType.get_size() * 8;
+	udm.name.sprnt("field_%X", fldOff);
+	udm.type = fldType;
+	ts.add_udm(udm, ETF_MAY_DESTROY);
+#endif //IDA_SDK_VERSION < 900
 	vu->refresh_view(false);
 	return 0;
 }
@@ -1418,7 +1387,7 @@ ACT_DEF(create_inline_gr)
 		return 0;
 
 	graph_viewer_t *gv = ctx->widget; //get_graph_viewer(ctx->widget);
-	mutable_graph_t *gr = get_viewer_graph(gv);
+	interactive_graph_t *gr = get_viewer_graph(gv);
 	if (!gr)
 		return 0;
 
@@ -1482,7 +1451,7 @@ ACT_DEF(create_inline_gr)
 		warning("[hrt] to be 'inline' group must have single entry node (head of 'group')");
 		return 0;
 	}
-#endif
+#endif //IDA_SDK_VERSION < 740
 
 	//How to correctly get group title?
 	node_info_t ni;
@@ -1578,10 +1547,10 @@ static bool save_if42blocks(ea_t funcea, const rangevec_t& ranges)
 #if IDA_SDK_VERSION < 730
 		append_ea(buffer, r.start_ea);
 		append_ea(buffer, r.end_ea);
-#else
+#else //IDA_SDK_VERSION >= 730
 		buffer.pack_ea(r.start_ea);
 		buffer.pack_ea(r.end_ea);
-#endif
+#endif //IDA_SDK_VERSION < 730
 	}
 	if (buffer.size() > MAXSPECSIZE) {
 		msg("[hrt] too many if42blocks\n");
@@ -1721,7 +1690,7 @@ ACT_DEF(selection2block)
 #if IDA_SDK_VERSION < 810 || IDA_SDK_VERSION > 830
 		unmark_selection();                //TODO: IDA 8.1 crash sometimes randomly on these calls, check with other IDA versions
 		jumpto(eaBgn, -1, UIJMP_DONTPUSH); //TODO: IDA 8.3 also
-#endif
+#endif //IDA_SDK_VERSION < 810 || IDA_SDK_VERSION > 830
 		return 0;
 	}
 	warning("[hrt] Bad selection %a - %a\nStart and End addresses must belong to the same block", eaBgn, eaEnd);
@@ -1770,7 +1739,7 @@ ACT_DEF(mavx_disable)
 	vu->refresh_view(true);
 	return 0;
 }
-#endif
+#endif //IDA_SDK_VERSION >= 750
 //-----------------------------------------------------
 
 static cexpr_t* get_assign_or_helper(vdui_t *vu, citem_t* expr, bool check4helper)
@@ -1803,7 +1772,7 @@ qstring dummy_struct_name(size_t size, const char* sprefix)
 		name = dummy_struct_prefix;
 	qstring basename = name;
 	for (char i = 'z'; i > 'f'; i--) {
-		if (get_struc_id(name.c_str()) == BADADDR)
+		if (get_named_type_tid(name.c_str()) == BADADDR)
 			break;
 		name = basename;
 		name.cat_sprnt("%c", i);
@@ -1857,22 +1826,43 @@ ACT_DEF(create_dummy_struct)
 	do {
 		if (1 != ask_form(format, dummy_struct_cb, &size, &name, &dummy_struct_prefix, &empty))
 			return 0;
-		if (get_struc_id(name.c_str()) != BADADDR) {
+		if (get_named_type_tid(name.c_str()) != BADADDR) {
 			msg("[hrt] struct '%s' already exists\n", name.c_str());
 		} else if (size != 0) {
 			break;
 		}
 	} while (1);
 
+#if IDA_SDK_VERSION < 900
 	tid_t id = add_struc(0, name.c_str());
 	struc_t* s = get_struc(id);
 	if (!s)
 		return 0;
+#else //IDA_SDK_VERSION >= 900
+	udt_type_data_t s;
+	s.taudt_bits |= TAUDT_UNALIGNED;
+	s.total_size = s.unpadded_size = size;
+	//s.pack = 1;
+#endif //IDA_SDK_VERSION < 900
 
-	msg("[hrt] struct '%s' was created\n", name.c_str());
 	if (empty || size > 10240) {
+#if IDA_SDK_VERSION < 900
 		add_struc_member(s, "gap", 0, byte_flag(), NULL, (ea_t)(size-1));
 		add_struc_member(s, "field_last", (ea_t)(size - 1), byte_flag(), NULL, 1);
+#else //IDA_SDK_VERSION >= 900
+		udm_t &m0 = s.push_back();
+		//m.make_gap(0, size - 1);
+		m0.name = "gap";
+		m0.size = 8 * (size - 1); //in bits
+		m0.offset = 0;
+		create_type_from_size(&m0.type, size - 1);
+
+		udm_t& m1 = s.push_back();
+		m1.name = "field_last";
+		m1.size = 8; //in bits
+		m1.offset = 8 * (size - 1); //in bits
+		create_type_from_size(&m1.type, 1);
+#endif //IDA_SDK_VERSION < 900
 	} else {
 		ea_t fo = 0;
 		while (size > 0) {
@@ -1896,11 +1886,26 @@ ACT_DEF(create_dummy_struct)
 			}
 			qstring fname;
 			fname.sprnt("field_%a", fo);
+#if IDA_SDK_VERSION < 900
 			add_struc_member(s, fname.c_str(), fo, ft, NULL, fsz);
+#else //IDA_SDK_VERSION >= 900
+			udm_t& m = s.push_back();
+			m.name = fname;
+			m.size = 8 * fsz; //in bits
+			m.offset = 8 * fo; //in bits
+			create_type_from_size(&m.type, fsz);
+#endif //IDA_SDK_VERSION < 900
 			size -= fsz;
 			fo += fsz;
 		}
 	}
+#if IDA_SDK_VERSION < 900
+#else //IDA_SDK_VERSION >= 900
+	tinfo_t ti;
+	if (!ti.create_udt(s) || ti.set_named_type(NULL, name.c_str()) != TERR_OK)
+		return 0;
+#endif //IDA_SDK_VERSION < 900
+	msg("[hrt] struct '%s' was created\n", name.c_str());
 
 	if(vu) {
 		qstring callname;
@@ -2026,7 +2031,11 @@ ACT_DEF(searchNpatch)
 	//unmark_selection();//check, is this need
 	uint32 cnt = 0;
 	for (ea_t found_ea = eaBgn; found_ea < eaEnd; found_ea++) {
+#if IDA_SDK_VERSION < 900
 		found_ea = bin_search2(found_ea, eaEnd, key, BIN_SEARCH_CASE | BIN_SEARCH_FORWARD);
+#else //IDA_SDK_VERSION >= 900
+		found_ea = bin_search3(found_ea, eaEnd, key, BIN_SEARCH_CASE | BIN_SEARCH_FORWARD);
+#endif //IDA_SDK_VERSION < 900
 		if(found_ea == BADADDR)
 			break;
 		qvector<uint8> found;
@@ -2764,16 +2773,18 @@ static int scan_stack_string2(action_activation_ctx_t *ctx, bool bDecrypt)
 			user_numforms_free(numForms);
 		}
 
-		// make array type for var
-		tinfo_t charType, arrType;
-		if(char_size == 2) {
-			charType.create_simple_type(BT_INT16);
-			arrType.create_array(charType, (uint32)wstr.size());
-		} else {
-			charType.create_simple_type(BT_INT8 | BTMT_CHAR);
-			arrType.create_array(charType, (uint32)astr.size());
+		if(single) {
+			// make array type for var
+			tinfo_t charType, arrType;
+			if(char_size == 2) {
+				charType.create_simple_type(BT_INT16);
+				arrType.create_array(charType, (uint32)wstr.size());
+			} else {
+				charType.create_simple_type(BT_INT8 | BTMT_CHAR);
+				arrType.create_array(charType, (uint32)astr.size());
+			}
+			set_var_type(vu, var, &arrType);
 		}
-		set_var_type(vu, var, &arrType);
 
 #if 0 // var will be renamed by comment
 		qstring funcname;
@@ -3245,7 +3256,7 @@ struct ida_local bracketsMatching {
 				idb_utf8(&out, ps[ypos].line.c_str(), -1, IDBDEC_ESCAPE);
 				msg("[hrt] cur line '%s'\n", out.c_str());
 			}
-#endif
+#endif //IDA_SDK_VERSION <= 730
 			if(needRefresh)
 				refresh_custom_viewer(vu.ct);
 			return;
@@ -3406,12 +3417,14 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 #endif
 
 	switch ( event ) {
+#if IDA_SDK_VERSION < 900
 	case hxe_resolve_stkaddrs:
 		{
 			mbl_array_t *mba = va_arg(va, mbl_array_t *);
 			golang_check(mba);
 			break;
 		}
+#endif //IDA_SDK_VERSION < 900
 	case hxe_microcode:
 		{
 			mbl_array_t *mba = va_arg(va, mbl_array_t *);
@@ -3426,28 +3439,6 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 		deob_preoptimized(mba);
 		return MERR_OK;
 	}
-#if 0 //hxe_prealloc is better then hxe_locopt
-	case hxe_locopt:
-	{
-		mbl_array_t* mba = va_arg(va, mbl_array_t*);
-		// doesnt work
-		for (int i = 0; i < mba->qty; i++) {
-			mblock_t* b = mba->get_mblock(i);
-			setflag(b->flags, MBL_VALRANGES, false);
-		}
-		unflattening(mba); //hxe_prealloc is better then hxe_locopt
-		return MERR_OK;
-	}
-#endif
-#if 0 //hxe_glbopt is better then hxe_prealloc
-	case hxe_prealloc:
-		{
-			mbl_array_t *mba = va_arg(va, mbl_array_t *);
-			if (unflattening(mba)) //hxe_glbopt is better then hxe_prealloc
-				return MERR_BLOCK; //Should return: 1 if modified microcode
-			return MERR_OK;
-		}
-#endif
 	case hxe_glbopt:
 		{
 			mbl_array_t *mba = va_arg(va, mbl_array_t *);
@@ -3496,9 +3487,9 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 #if IDA_SDK_VERSION < 760
 	case hxe_text_ready:
 		//marked as obsolete in ida 7.6, tring to move into hxe_refresh_pseudocode
-#else
+#else //IDA_SDK_VERSION >= 760
 	  case hxe_refresh_pseudocode:
-#endif
+#endif //IDA_SDK_VERSION < 760
 		{
 			vdui_t &vu = *va_arg(va, vdui_t *);
 			safeBr(vu.ct, true);
@@ -3522,11 +3513,11 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 		///<  1: hint has been created (should set *implines to nonzero as well)
 		///<  2: hint has been created but the standard hints must be
 		///<     appended by the decompiler
-#else
+#else //IDA_SDK_VERSION >= 760
     ///< Possible return values:
     ///< \retval 0 continue collecting hints with other subscribers
     ///< \retval 1 stop collecting hints
-#endif
+#endif //IDA_SDK_VERSION < 760
 		if (vu->item.is_citem() && vu->item.e->op == cot_helper)
 			return deinline_hint(vu, result_hint, implines);
 		return 0;
@@ -3618,8 +3609,8 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 				com_scan(cfunc);
 			}	else if(new_maturity == CMAT_FINAL)	{
 				apihashes_scan(cfunc);// before autorename_n_pull_comments: so comments be used for renaming
-				lit_scan(cfunc);
 				autorename_n_pull_comments(cfunc);
+				lit_scan(cfunc); // after autorename_n_pull_comments: to search literals in renamed indirect calls
 				make_if42blocks(cfunc);
 			}
 			//cfunc->verify(ALLOW_UNUSED_LABELS, false);
@@ -3713,7 +3704,7 @@ public:
       msg("[hrt] %d %p %s\n", i, curw, title.c_str());
       activate_widget(wdg, true);
     }
-#endif
+#endif //defined __LINUX__  && IDA_SDK_VERSION >= 740 && IDA_SDK_VERSION <= 750
 
     bool checkable;
     bool bb = get_action_checkable("FuncSwitchSync", &checkable);
@@ -3748,7 +3739,7 @@ public:
       show_wait_box("Second waitbox to activate back main window\n after turning on synchronization in Functions window");
       qsleep(100);
       hide_wait_box();
-#endif
+#endif //defined __LINUX__  && IDA_SDK_VERSION >= 740 && IDA_SDK_VERSION <= 750
     }
 		return false; //  remove the request from the queue
 	};
@@ -3818,6 +3809,7 @@ static ssize_t idaapi idp_callback(void *user_data, int ncode, va_list va)
 	return 0;
 }
 
+#if IDA_SDK_VERSION < 900
 //return true to continue struc search for duplicates
 typedef bool idaapi enumStrucMembersCB_t(struc_t * struc, member_t *member, void *user_data);
 void enumStrucMembers(const char* memberName, enumStrucMembersCB_t cb,  void *user_data)
@@ -3872,6 +3864,59 @@ bool idaapi recastStrucMembersCB(struc_t * struc, member_t *member, void *user_d
 	}
 	return false;
 }
+#else //IDA_SDK_VERSION >= 900
+//return true to continue struc search for duplicates
+typedef bool idaapi enumStrucMembersCB_t(tinfo_t t, qstring& fullname, size_t index, void* user_data);
+void enumStrucMembers(const char* memberName, enumStrucMembersCB_t cb, void* user_data)
+{
+	uint32 limit = get_ordinal_limit();
+	if (limit == -1)
+		return;
+	for (uint32 ord = 1; ord < limit; ++ord) {
+		tinfo_t t;
+		if (t.get_numbered_type(ord, BTF_STRUCT, false) && t.is_decl_struct()) {
+			udt_type_data_t udt;
+			if (t.get_udt_details(&udt)) {
+				for (size_t i = 0; i < udt.size(); ++i) {
+					udm_t& member = udt.at(i);
+					if (member.name == memberName || (member.name[0] == 'p' && 0 == qstrcmp(member.name.c_str() + 1, memberName))) {
+						qstring fullname;
+						t.get_type_name(&fullname); // get_numbered_type_name
+						fullname.append('.');
+						fullname.append(member.name);
+						if (!cb(t, fullname, i, user_data))
+							break;
+					}
+				}
+			}
+		}
+	}
+}
+
+bool idaapi countStrucMembersCB(tinfo_t t, qstring& fullname, size_t index, void* cnt)
+{
+	(*(int*)cnt)++;
+	return false;
+}
+
+bool idaapi renameStrucMembersCB(tinfo_t t, qstring& fullname, size_t index, void* new_name)
+{
+	if (t.rename_udm(index, (const char*)new_name) == TERR_OK)
+		msg("[hrt] struc member '%s' renamed to '%s'\n", fullname.c_str(), new_name);
+	return false;
+}
+
+bool idaapi recastStrucMembersCB(tinfo_t t, qstring& fullname, size_t index, void* user_data)
+{
+	tinfo_t* tif = (tinfo_t*)user_data;
+	if (t.set_udm_type(index, *tif) == TERR_OK) {
+		qstring newType;
+		tif->print(&newType);
+		msg("[hrt] struc member '%s' recasted to '%s'\n", fullname.c_str(), newType.c_str());
+	}
+	return false;
+}
+#endif //IDA_SDK_VERSION < 900
 
 // Callback for IDB notifications
 static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
@@ -3880,6 +3925,7 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 
 	idb_event::event_code_t code = (idb_event::event_code_t)ncode;
 	switch (code) {
+#if IDA_SDK_VERSION < 900
 	case idb_event::changing_range_cmt:
 	{
 		range_kind_t kind = (range_kind_t)va_arg(va, int);
@@ -3891,31 +3937,6 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 		}
 		break;
 	}
-		//case idb_event::auto_empty:
-		//FIXME: check ui_ready_to_run
-	case idb_event::compiler_changed:
-	case idb_event::auto_empty_finally:
-		if (isWnd()) {
-			if (!bLitTypesOverridden)
-				bLitTypesOverridden = lit_overrideTypes();
-			//com_init(); //too late here
-		}
-		break;
-	case idb_event::closebase: //doesnt works!
-		bLitTypesOverridden = false;
-		break;
-	case idb_event::savebase:
-		save_inlines();
-		break;
-	case idb_event::make_data: 
-		{
-		ea_t ea = va_arg(va, ea_t);
-		flags64_t flags = va_arg(va, flags64_t);
-		tid_t tid = va_arg(va, tid_t);
-		asize_t len = va_arg(va, asize_t);
-		com_make_data_cb(ea, flags, tid, len);
-		break;
-		}
 	case idb_event::renaming_struc_member:
 		{
 			struc_t  *sptr = va_arg(va, struc_t *);
@@ -3968,6 +3989,81 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 					msg("[hrt] type of '%s.%s' refreshed\n", strucname.c_str(), membName.c_str());
 			}
 			//}
+		  break;
+		}
+#else //IDA_SDK_VERSION >= 900
+	//case idb_event::lt_udm_changed:
+	case idb_event::lt_udm_renamed:
+	{
+		const char* udtname = va_arg(va, const char*);
+		const udm_t* udm    = va_arg(va, const udm_t*);
+		const char* oldname = va_arg(va, const char*);
+		if (udm->is_special_member())
+			break;
+
+		const char* newname = udm->name.c_str();
+		if (!strncmp(newname, "sub_", 4) || !strncmp(newname, "field_", 6))
+			break;
+
+		tinfo_t struc;
+		if (!struc.get_named_type(udtname))
+			break;
+
+		//rename VT method impl together with VT member
+		qstring struCmt;
+		if (struc.get_type_rptcmt(&struCmt)) {
+			ea_t vt_ea;
+			if (at_atoea(struCmt.c_str(), &vt_ea)) {
+				ea_t subEA = get_ea(vt_ea + udm->offset / 8);
+				if (is_func(get_flags(subEA))) {
+					if (subEA == funcRenameEa) {
+						funcRenameEa = 0; //avoid ping-pong renaming
+					}	else if (set_name(subEA, newname, SN_FORCE)) {
+						qstring newGblName = get_name(subEA);
+						msg("[hrt] %a renamed to %s\n", subEA, newGblName.c_str());
+					}
+				}
+			}
+		}
+
+		// set type for new name if new member name is same as lib function or structure
+		tinfo_t t = getType4Name(newname);
+		if (!t.empty()) {
+			int index = struc.find_udm(udm->offset);
+			if (index  != -1) {
+				tinfo_code_t code = struc.set_udm_type(index, t, ETF_COMPATIBLE | ETF_BYTIL);
+				if (code != TERR_OK && ASKBTN_YES == ask_yn(ASKBTN_NO, "[hrt] Set member type of '%s.%s' may destroy other members,\nConfirm?", udtname, newname))
+					code = struc.set_udm_type(index, t, ETF_MAY_DESTROY | ETF_BYTIL);
+				if (code == TERR_OK)
+					msg("[hrt] type of '%s.%s' refreshed\n", udtname, newname);
+			}
+		}
+		break;
+	}
+#endif //IDA_SDK_VERSION < 900
+		//case idb_event::auto_empty:
+		//FIXME: check ui_ready_to_run
+	case idb_event::compiler_changed:
+	case idb_event::auto_empty_finally:
+		if (isWnd()) {
+			if (!bLitTypesOverridden)
+				bLitTypesOverridden = lit_overrideTypes();
+			//com_init(); //too late here
+		}
+		break;
+	case idb_event::closebase: //doesnt works!
+		bLitTypesOverridden = false;
+		break;
+	case idb_event::savebase:
+		save_inlines();
+		break;
+	case idb_event::make_data:
+		{
+		ea_t ea = va_arg(va, ea_t);
+		flags64_t flags = va_arg(va, flags64_t);
+		tid_t tid = va_arg(va, tid_t);
+		asize_t len = va_arg(va, asize_t);
+		com_make_data_cb(ea, flags, tid, len);
 		  break;
 		}
 	  case idb_event::renamed:
@@ -4052,9 +4148,9 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 			}
 			break;
 		}
-#ifndef __EA64__ // only 32bit is affected
 		case idb_event::op_ti_changed:
 		{
+		//FIXME: only 32bit is affected
 			ea_t ea = va_arg(va, ea_t);
 			int n  = va_arg(va, int);
 			const type_t* type = va_arg(va, type_t *);
@@ -4081,7 +4177,6 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 			}
 			break;
 		}
-#endif
 	}
 	return 0;
 }
@@ -4103,9 +4198,9 @@ static bool inited = false;
 
 #if IDA_SDK_VERSION < 750
 int
-#else
+#else //IDA_SDK_VERSION >= 750
 plugmod_t*
-#endif
+#endif //IDA_SDK_VERSION < 750
  idaapi init(void)
 {
 	if(inited)
@@ -4138,8 +4233,8 @@ plugmod_t*
 	addon.name = "bes's tools collection";
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
-	addon.url = "";
-	addon.version = "0.0";
+	addon.url = "https://github.com/KasperskyLab/hrtng";
+	addon.version = "1.1.0";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;

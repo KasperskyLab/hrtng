@@ -1374,7 +1374,7 @@ struct ida_local sBBGrpMatcher {
 										}
 										if (ch.is_reg()) {
 											int reg = mreg2reg(ch.get_reg(), ch.width);
-											if (reg == -1 || (ch.width == ph.segreg_size && (ph.reg_first_sreg <= reg && reg <= ph.reg_last_sreg))) {// || (reg == ph.reg_code_sreg || reg == ph.reg_data_sreg)))
+											if (reg == -1 || (ch.width == PH.segreg_size && (PH.reg_first_sreg <= reg && reg <= PH.reg_last_sreg))) {// || (reg == ph.reg_code_sreg || reg == ph.reg_data_sreg)))
 												MSG_DI2(("[hrt] ignore bad and segment registers\n"));
 												continue; //break;
 											}
@@ -1407,7 +1407,7 @@ struct ida_local sBBGrpMatcher {
 										MSG_DI2(("[hrt]  %a: %3d defs ext use %3d %s\n", b->start, b->serial, ch.at(i), ch.dstr()));;
 										if (!bHave1Ret && ch.is_reg()) {
 											int reg = mreg2reg(ch.get_reg(), ch.width);
-											if (reg == -1 || (ch.width == ph.segreg_size && (ph.reg_first_sreg <= reg && reg <= ph.reg_last_sreg)))// || (reg == ph.reg_code_sreg || reg == ph.reg_data_sreg)))
+											if (reg == -1 || (ch.width == PH.segreg_size && (PH.reg_first_sreg <= reg && reg <= PH.reg_last_sreg)))// || (reg == PH.reg_code_sreg || reg == PH.reg_data_sreg)))
 												break; // ignore bad and segment registers
 											ci->return_type = get_unk_type(ch.width);
 											if (ci->return_type.empty()) {
@@ -1475,7 +1475,7 @@ struct ida_local sBBGrpMatcher {
 						}
 						int reg = mreg2reg(*ur, sz);
 						if (reg == -1 || 
-							(sz == ph.segreg_size && (ph.reg_first_sreg <= reg && reg <= ph.reg_last_sreg)))// || (reg == ph.reg_code_sreg || reg == ph.reg_data_sreg)))
+							(sz == PH.segreg_size && (PH.reg_first_sreg <= reg && reg <= PH.reg_last_sreg)))// || (reg == PH.reg_code_sreg || reg == PH.reg_data_sreg)))
 							continue; // ignore bad and segment registers
 
 						mcallarg_t ma;
@@ -1888,12 +1888,12 @@ int deinline_hint(vdui_t *vu, qstring *result_hint, int *implines)
 	  ///<  2: hint has been created but the standard hints must be
 	  ///<     appended by the decompiler
 	return 2;
-#else
+#else //IDA_SDK_VERSION >= 760
     ///< Possible return values:
     ///< \retval 0 continue collecting hints with other subscribers
     ///< \retval 1 stop collecting hints
   return 0;
-#endif
+#endif //IDA_SDK_VERSION < 760
 }
 
 bool inl_create_from_whole_mba(mbl_array_t *mba, const char* name, qstring* errorStr)

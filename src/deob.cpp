@@ -122,7 +122,7 @@ struct ida_local deobfuscation_optimizer_t : public optinsn_t
 	virtual int idaapi func(mblock_t *blk, minsn_t *ins)
 #else
 	virtual int idaapi func(mblock_t *blk, minsn_t *ins, int optflags)
-#endif
+#endif //IDA_SDK_VERSION < 750
 	{
 		int res = 0;
 		//check only top level instructions here (ins)
@@ -770,7 +770,7 @@ static bool add_bb(ea_t eaBgn, rangeset_t &ranges)
 		}
 		ea += insn.size;
 
-		//is_basic_block_end has many additional checks (ph.is_basic_block_end(insn, false) doesnt work at all !!!)
+		//is_basic_block_end has many additional checks (PH.is_basic_block_end(insn, false) doesnt work at all !!!)
 		// returnd true if next ins flags is !FF_FLOW || !FF_CODE || FF_REF,  checks: try blocks and crefs
 
 		// May seems to be a good idea to try create next insn forward before is_basic_block_end check

@@ -119,7 +119,9 @@ void com_init()
 			add_til("vc10_64", ADDTIL_INCOMP);
 		else
 			add_til("vc6win", ADDTIL_INCOMP);
+#if IDA_SDK_VERSION < 900 // not shure from which version it is not necessary to import_type
 		import_type(get_idati(), -1, "IDispatchVtbl", 0);
+#endif //IDA_SDK_VERSION < 900
 	}
 }
 
@@ -141,25 +143,27 @@ static bool isGUIDtype(const tinfo_t &ti)
 	return isGUIDtypeName(typeName.c_str());
 }
 
-static tid_t com_find_guid_type(ea_t ea, flags64_t flags, qstring* comment = NULL)
+// if type for guis is not found, the "tname" is initialized with GUID string
+static bool com_find_guid_type(ea_t ea, flags64_t flags, qstring* tname = NULL)
 {
 	guid_t guid;
 	if (!guid.fromEa(ea))
-		return BADNODE;
+		return false;
 
 	com_init();
 
 	for (qvector<guid_ex_t>::iterator it = guids.begin(); it != guids.end(); it++) {
 		if (it->uid == guid) {
-			if (comment)
-				*comment = it->name;
+			if (tname)
+				*tname = it->name;
 			if (!has_user_name(flags)) {
-				qstring name("CLSID_");
-				name += it->name;
-				set_name(ea, name.c_str(), SN_NOCHECK | SN_NON_AUTO | SN_NOWARN | SN_FORCE );
-				set_cmt(ea, name.c_str(), true);
-				msg("[hrt] %a: clsid '%s' was found\n", ea, name.c_str());
+				qstring eaname("CLSID_");
+				eaname += it->name;
+				set_name(ea, eaname.c_str(), SN_NOCHECK | SN_NON_AUTO | SN_NOWARN | SN_FORCE );
+				set_cmt(ea, eaname.c_str(), true);
+				msg("[hrt] %a: '%s' was found\n", ea, eaname.c_str());
 			}
+#if IDA_SDK_VERSION < 900
 			qstring vtname = it->name;
 			vtname += "Vtbl";
 			if (BADADDR == get_struc_id(vtname.c_str())) {
@@ -174,16 +178,17 @@ static tid_t com_find_guid_type(ea_t ea, flags64_t flags, qstring* comment = NUL
 				msg("[hrt] %a: type %s was %s\n", ea, it->name.c_str(), verb);
 
 			}
-			return res;
+#endif // IDA_SDK_VERSION < 900
+			return true;
 		}
 	}
 	qstring cmt;
 	guid.print(&cmt);
-	if (comment)
-		*comment = cmt;
+	if (tname)
+		*tname = cmt;
 	set_cmt(ea, cmt.c_str(), true);
 	msg("[hrt] %a: clsid '%s' was not found \n", ea, cmt.c_str());
-	return BADNODE;
+	return false;
 }
 
 void com_make_data_cb(ea_t ea, flags64_t flags, tid_t tid, asize_t len)
@@ -191,11 +196,11 @@ void com_make_data_cb(ea_t ea, flags64_t flags, tid_t tid, asize_t len)
 	if (!is_struct(flags) || len != 16)
 		return;
 
-	qstring tname = get_struc_name(tid);
-	if(tname.empty())
+	qstring tname;
+	if (!get_tid_name(&tname, tid)) 
 		return;
 
-	if (!isGUIDtypeName(tname.c_str()))
+	if (tname.empty() || !isGUIDtypeName(tname.c_str()))
 		return;
 
 	com_find_guid_type(ea, flags);
@@ -254,8 +259,8 @@ bool chkCall(cexpr_t *call, qstring &comment)
 		return false;
 
 	size_t  iRiid, ipObj, nArgs;
-	bool bCreateInstanceCall = isCreateInstanceCall(callProcName.c_str(), &iRiid, &ipObj, &nArgs) && nArgs == args.size();
-	tid_t obj_tid = BADNODE;
+	if (!isCreateInstanceCall(callProcName.c_str(), &iRiid, &ipObj, &nArgs) || nArgs != args.size())
+		return false;
 
 
 	bool has_func_type_data = false;
@@ -267,61 +272,50 @@ bool chkCall(cexpr_t *call, qstring &comment)
 		has_func_type_data = true;
 
 
-	for(size_t i = 0; i < args.size(); i++) {
-		cexpr_t *argRiid = &args[i];
-		if (argRiid->op == cot_cast) //ignore typecast
-			argRiid = argRiid->x;
-		if (argRiid->op == cot_ref) // skip ref
-			argRiid = argRiid->x;
-		//try getExpType(func, arg);
-		if (argRiid->op == cot_obj) {
-			ea_t ea = argRiid->obj_ea;
-      if (is_mapped(ea)) {
-        flags64_t flg = get_flags(ea);
-        tinfo_t eaType;
-				if (has_ti(ea))
-					get_tinfo(&eaType, ea);
-				if (is_unknown(flg) && has_func_type_data)
-					eaType = remove_pointer(fi[i].type);
-
-				if (isGUIDtype(eaType)) {
-					qstring cmt;
-					tid_t tid = com_find_guid_type(ea, flg, &cmt);
-					if (bCreateInstanceCall && i == iRiid)
-						obj_tid = tid;
-					if (tid == BADNODE) {
-						cmt.insert("unknown type of clsid: ");
-						appendComment(comment, cmt, false);
+	cexpr_t *argRiid = &args[iRiid];
+	if (argRiid->op == cot_cast) //ignore typecast
+		argRiid = argRiid->x;
+	if (argRiid->op == cot_ref) // skip ref
+		argRiid = argRiid->x;
+	//try getExpType(func, arg);
+	if (argRiid->op == cot_obj) {
+		ea_t argRiid_oea = argRiid->obj_ea;
+		if (is_mapped(argRiid_oea)) {
+			flags64_t flg = get_flags(argRiid_oea);
+			tinfo_t oeaType;
+			if (has_ti(argRiid_oea))
+				get_tinfo(&oeaType, argRiid_oea);
+			if (is_unknown(flg) && has_func_type_data)
+				oeaType = remove_pointer(fi[iRiid].type);
+			if (isGUIDtype(oeaType)) {
+				qstring tname;
+				if (com_find_guid_type(argRiid_oea, flg, &tname)) {
+					cexpr_t *argObj = &args[ipObj];
+					if (argObj->op == cot_cast) //ignore typecast
+						argObj = argObj->x;
+					if (argObj->op == cot_ref)
+						argObj = argObj->x;
+					if (argObj->op == cot_var) {
+						lvar_t& var = func->get_lvars()->at(argObj->v.idx);
+						tinfo_t &oldType = var.type();
+						if (oldType.is_unknown() || oldType.is_pvoid() || oldType.is_scalar()) {
+							tinfo_t t = make_pointer(create_typedef(tname.c_str()));
+							if (var.set_lvar_type(t)) {
+								(&args[ipObj])->calc_type(false); //recalc arg type
+								qstring typeStr;
+								t.print(&typeStr);
+								msg("[hrt] %a %s: Var %s was recast to \"%s\"\n", call->ea, funcname.c_str(), var.name.c_str(), typeStr.c_str());
+								return true;
+							}
+						}
 					}
+				}	else {
+					tname.insert("unknown type of clsid: ");
+					appendComment(comment, tname, false);
 				}
 			}
 		}
 	}
-
-	if (bCreateInstanceCall && obj_tid != BADNODE) {
-		cexpr_t *argObj = &args[ipObj];
-		if (argObj->op == cot_cast) //ignore typecast
-			argObj = argObj->x;
-		if (argObj->op == cot_ref) {
-			argObj = argObj->x;
-		}
-		if (argObj->op == cot_var) {
-			lvar_t& var = func->get_lvars()->at(argObj->v.idx);
-			tinfo_t &oldType = var.type();
-			if (oldType.is_unknown() || oldType.is_pvoid() || oldType.is_scalar()) {
-				qstring tname = get_struc_name(obj_tid);
-				tinfo_t t = make_pointer(create_typedef(tname.c_str()));
-				if (var.set_lvar_type(t)) {
-					(&args[ipObj])->calc_type(false); //recalc arg type
-					qstring typeStr;
-					t.print(&typeStr);
-					msg("[hrt] %a %s: Var %s was recast to \"%s\"\n", call->ea, funcname.c_str(), var.name.c_str(), typeStr.c_str());
-					return true;
-				}
-			}
-		}
-	}
-	
 	return false;
 }
 

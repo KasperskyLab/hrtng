@@ -1114,7 +1114,7 @@ struct ida_local InstOptimizer : public optinsn_t
 	virtual int idaapi func(mblock_t* blk, minsn_t* ins)
 #else
 	virtual int idaapi func(mblock_t* blk, minsn_t* ins, int optflags)
-#endif
+#endif //IDA_SDK_VERSION < 750
 	{
 
 		//This checks only top lelel instructions

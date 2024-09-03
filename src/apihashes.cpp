@@ -224,7 +224,7 @@ static uint64	halfMD5_HashFunc(const char* libraryName, const char* functionName
 	MD5Update(&ctx, (const uchar *)functionName, qstrlen(functionName));
 #else
 	MD5Update(&ctx, functionName, qstrlen(functionName));
-#endif
+#endif //IDA_SDK_VERSION < 770
 	MD5Final(hash, &ctx);
 	return *(uint64*)hash;
 }

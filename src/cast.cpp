@@ -21,8 +21,9 @@
 #include <hexrays.hpp>
 #include "warn_on.h"
 
-#include "cast.h"
 #include "helpers.h"
+#include "cast.h"
+#include "structures.h"
 
 /*-------------------------------------------------------------------------------------------------------------------------*/
 
@@ -142,41 +143,6 @@ bool can_be_reincast(vdui_t *vu)
 	return can_be_reincasted(vu->cfunc, e) != NULL;
 }
 
-asize_t struct_get_member(struc_t * str, asize_t offset, member_t ** last_member, qvector<member_t *> *trace = NULL, asize_t adjust = 0)
-{
-	asize_t strctSz = get_struc_size(str);
-	if (strctSz <= offset) {
-		if (*last_member && strctSz < (*last_member)->eoff - (*last_member)->get_soff()) {
-			//Struct size not greater then offset. This possible then last_member is array of structs. Adjust offset
-			asize_t newoff = offset % strctSz;
-			adjust += offset - newoff;
-			offset = newoff;
-		} else {
-			return offset + adjust;
-		}
-	}
-
-	member_t * member = get_member(str, offset);
-	if (!member)
-		return offset + adjust;
-	*last_member = member;
-
-	struc_t * membstr = get_sptr(member);
-	if (!membstr) {
-		if (member->get_soff() == offset) {
-			if (trace)
-				trace->push_back(member);
-			return adjust;
-		}
-		*last_member = NULL; // offset is in the middle of member
-		return offset + adjust;
-	}
-
-	if (trace)
-		trace->push_back(member);
-	return struct_get_member(membstr, offset - member->get_soff(), last_member, trace);
-}
-
 void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 {
 	struct ida_local conv_offsetof_reincasts_t : public ctree_parentee_t
@@ -193,7 +159,7 @@ void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 		// or 
 		//  "&(reinterpret_cast<struc*>x)->member.submemb1.submemb2" "(char*)&(reinterpret_cast<struc*>x)->member + remainder"
 		//where "n" - can be zero
-		cexpr_t* convert(cexpr_t *x, uint64 n, struc_t *struc, ea_t ea, bool reinterpret, bool chkXptrSz)
+		cexpr_t* convert(cexpr_t *x, uint64 n, tid_t strucId, ea_t ea, bool reinterpret, bool chkXptrSz)
 		{
 			if (n && chkXptrSz) {
 				if (x->type.is_ptr_or_array()) {
@@ -206,16 +172,18 @@ void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 					return NULL;
 			}
 
-			qvector<member_t *> trace;
-			member_t *last_member = NULL;
-			asize_t remainder = struct_get_member(struc, (asize_t)n, &last_member, &trace);
-			if (!last_member) {
+			tidvec_t trace;
+			tid_t last_member = BADNODE;
+			asize_t remainder = struct_get_member(strucId, (asize_t)n, &last_member, &trace);
+			if (last_member == BADNODE) {
 				//msg("[hrt] reincast convert: no member at %d\n", n);
 				return NULL;
 			}
 
 			cexpr_t *cast;
-			qstring struc_name = get_struc_name(struc->id);
+			qstring struc_name;
+			if (!get_tid_name(&struc_name, strucId))
+				return NULL;
 			tinfo_t ti_cast_to = make_pointer(create_typedef(struc_name.c_str()));
 			if (reinterpret) {
 				carglist_t* arglist = new carglist_t();
@@ -238,13 +206,26 @@ void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 				//res->ptrsize = 8; //is it need?
 			} else {
 				for (size_t i = 0; i < trace.size(); i++) {
-					member_t * smem = trace[i];
+#if IDA_SDK_VERSION < 900
+					member_t * smem = get_member_by_id(trace[i]);
+					res->m = (uint32)smem->soff; // set offset 
 					if (!get_member_type(smem, &res->type)) {
 						res->cleanup();
 						delete res;
 						return NULL;
 					}
-					res->m = (uint32)smem->soff; // set offset 
+#else //IDA_SDK_VERSION < 900
+					udm_t udm;
+					tinfo_t imembStrucType;
+					ssize_t imembIdx = imembStrucType.get_udm_by_tid(&udm, trace[i]);
+					if(imembIdx == -1) {
+						res->cleanup();
+						delete res;
+						return NULL;
+					}
+					res->m = (uint32)(udm.offset / 8);
+					res->type = udm.type;
+#endif //IDA_SDK_VERSION < 900
 					if (res->type.is_array()) {
 						tinfo_t elemT = res->type;
 						elemT = elemT.get_array_element();
@@ -293,15 +274,11 @@ void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 			if (!num->nf.is_stroff())// || add_exp->x->op == cot_cast)
 				return false;
 
-			tid_t tid = get_struc_id(num->nf.type_name.c_str());
-			if (tid == BADNODE)
+			tid_t strucId = get_named_type_tid(num->nf.type_name.c_str());
+			if (strucId == BADNODE)
 				return false;
 
-			struc_t * struc = get_struc(tid);
-			if (!struc)
-				return false;
-
-			cexpr_t *res = convert(add_exp->x, num->_value, struc, add_exp->ea, false, true);
+			cexpr_t *res = convert(add_exp->x, num->_value, strucId, add_exp->ea, false, true);
 			if (!res)
 				return false;
 			replaceExp(func, add_exp, res);
@@ -315,9 +292,6 @@ void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 
 			tid_t cast_to;
 			if (!find_cached_reincast(exp->ea, &cast_to))
-				return false;
-			struc_t * struc = get_struc(cast_to);
-			if (!struc)
 				return false;
 			//printExp2Msg(func, exp, "cached_reincast");
 
@@ -353,7 +327,7 @@ void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 			//casted = new cexpr_t(var->v.mba,  vars->at(var->v.idx)); //IDABUG: this constructor declared but doesnt exist
 			//IDABUG: manually copy var becouse cexpr_t::assign() (and copy constructor) does 
 			//casted->type = var->type; //IDABUG: "typeinfo leak detected and fixed" causes heap corruption
-			cexpr_t *res = convert(x, n, struc, exp->ea, true, chkXptrSz);
+			cexpr_t *res = convert(x, n, cast_to, exp->ea, true, chkXptrSz);
 			if (!res)
 				return false;
 			if (ptr) {
@@ -402,11 +376,21 @@ ACT_DEF(insert_reinterpret_cast)
 	//choose_local_tinfo
 	qstring title;
 	title.sprnt("[hrt] %s of \"%s\"", reincast_HELPERNAME, printExp(vu.cfunc, e).c_str());
+#if IDA_SDK_VERSION < 900
 	struc_t * struc = choose_struc(title.c_str());
 	if(!struc)
 		return 0;
+	tid_t tid = struc->id;
+#else //IDA_SDK_VERSION >= 900
+	tinfo_t ti;
+	if (!choose_struct(&ti, title.c_str()))
+		return 0;
+	tid_t tid = ti.force_tid();
+	if (tid == BADADDR)
+		return 0;
+#endif //IDA_SDK_VERSION < 900
 
-	add_cached_reincast(anchor->ea, struc->id);
+	add_cached_reincast(anchor->ea, tid);
 	//msg("[hrt] add_cached_reincast at %a\n", anchor->ea);
 	vu.refresh_view(false);
 	return 0;

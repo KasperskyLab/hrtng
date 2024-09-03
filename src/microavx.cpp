@@ -115,12 +115,12 @@ bool store_operand_hack(codegen_t &cdg, int n, const mop_t &mop, int flags=0, mi
 			*outins = ins;
     return true;
 }
-#else
+#else //IDA_SDK_VERSION >= 760
 bool store_operand_hack(codegen_t &cdg, int n, const mop_t &mop, int flags=0, minsn_t **outins=nullptr)
 {
 	return cdg.store_operand(n, mop, flags, outins);
 }
-#endif
+#endif //IDA_SDK_VERSION < 760
 
 // This class helps with generating simple intrinsic calls in microcode.
 struct ida_local AVXIntrinsic
@@ -949,7 +949,7 @@ struct ida_local AVXLifter : microcode_filter_t {
 
 bool isMicroAvx_avail()
 {
-  if (ph.id != PLFM_386 || !inf_is_64bit())
+  if (PH.id != PLFM_386 || !inf_is_64bit())
     return false;
   return true;
 }
