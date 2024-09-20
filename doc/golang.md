@@ -1,7 +1,7 @@
 ## Set calling conventions a bit closer to Go-lang
 Context menu *"Convert to __usercall golang (Shift-G)"*
-> ⚠️ Probably obsolete since IDA 7.6 properly support  golang binaries analysis. But may be helpful in cases when IDA doesnt recognize golang binaries.
-> ⚠️ This feature is (temporary?) turned off since IDA 9.0 (too many things need to rewrite to new IDA API)
+> ⚠️ Probably obsolete since IDA 7.6 properly support  golang binaries analysis. But may be helpful in cases when IDA doesnt recognize golang binaries.  
+> ⚠️ This feature is turned off since IDA 9.0
 
 This feature has been added for anayizing binaries produced by [Go compiler](https://golang.org). Press "Shift-G" on the first line of pseudocode and:
 - Calling convention of the function will be changed to `__usercall`

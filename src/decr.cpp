@@ -401,6 +401,9 @@ static bool decr_set_key(bytevec_t &key, ea_t keyEa, size_t keyLen, qstring *err
 //convert IV representation
 static bool decr_set_iv(bytevec_t &iv, ea_t ivEa, size_t ivLen, qstring *error)
 {
+	if(bCbc == 0)
+		return true;
+
   eAlg algo = (eAlg)alg;
   if(!ivLen) {
     if(algo == eAlg_Chacha || algo == eAlg_Salsa)
