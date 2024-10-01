@@ -390,9 +390,9 @@ static bool decr_set_key(bytevec_t &key, ea_t keyEa, size_t keyLen, qstring *err
 			} else if (str2ea(&keyEa, keystr.c_str(), BADADDR)) {
 				*(ea_t*)(key.begin()) = keyEa;
 			} else {
-      error->sprnt("bad key: '%s', numeric value is expected", keystr.c_str());
-      return false;
-    }
+				error->sprnt("bad key: '%s', numeric value is expected", keystr.c_str());
+				return false;
+			}
 		}
   }
   return true;
@@ -424,7 +424,7 @@ static bool decr_set_iv(bytevec_t &iv, ea_t ivEa, size_t ivLen, qstring *error)
       iv.resize(ivLen);
       if(ivLen == get_bytes(iv.begin(), ivLen, ivEa, GMB_READALL))
         break;
-      }
+    }
     if(ivstr.length() > 2 && ivstr[0] == '\'' && ivstr.last() == '\'') {
 			iv.qclear();
       iv.append(ivstr.c_str() + 1, ivstr.length() - 2);
@@ -586,6 +586,8 @@ static int64 decr_core(ea_t ea, const char *inBuf, int64 len, bytevec_t &key, by
   case eAlg_Tea:
   case eAlg_XTea: {
     show_hex(key.begin(), key.size(), "[hrt] Tea key length %d :\n", (int)key.size());
+		if(bCbc)
+			show_hex( iv.begin(),  iv.size(), "[hrt] iv  length %d :\n",  (int)iv.size());
     if(!tea_decr(dec_bufA, (size_t)len, key.begin(), key.size(), iv.begin(), bCbc, algo == eAlg_XTea, err)) {
       *error = err.c_str();
       return 0;
@@ -594,6 +596,8 @@ static int64 decr_core(ea_t ea, const char *inBuf, int64 len, bytevec_t &key, by
   break;
   case eAlg_AES: {
     show_hex(key.begin(), key.size(), "[hrt] AES key length %d :\n", (int)key.size());
+		if(bCbc)
+			show_hex( iv.begin(),  iv.size(), "[hrt] iv  length %d :\n",  (int)iv.size());
     if(!aes_decr(dec_bufA, (size_t)len, key.begin(), key.size(), iv.begin(), bCbc, err)) {
       *error = err.c_str();
       return 0;
