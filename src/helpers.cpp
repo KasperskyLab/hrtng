@@ -237,22 +237,6 @@ void patch_wstr(ea_t ea, const wchar16_t *str, sval_t len, bool bZeroTerm)
 	add_extra_cmt(ea, true, "; patched 0x%x", len * 2);
 }
 
-bool isX86() 
-{
-	static int cache = -1; // -1 unk, 0 - false, 1 - true;
-	if (cache == -1) {
-#if IDA_SDK_VERSION < 730
-		char *buf = inf.procname;
-#else //IDA_SDK_VERSION < 730
-		char buf[IDAINFO_PROCNAME_SIZE];
-		getinf_buf(INF_PROCNAME, buf, sizeof(buf));
-#endif //IDA_SDK_VERSION < 730
-		cache = !qstrcmp(buf, "metapc");
-	}
-	return (bool)cache;
-}
-
-
 bool isWnd()
 {
 	filetype_t ft = inf_get_filetype();

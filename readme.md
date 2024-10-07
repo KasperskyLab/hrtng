@@ -61,7 +61,7 @@ Special thanks to following peoples for their great plugins were used as base fo
   * [AVX lifter](doc/avx.md)
   * [Dump strings, comments and names from the IDA database](doc/dump-strings.md)
   * [Offsets table creation](doc/offsets-tbl.md)
-  * [Convert function to __usercall or __userpurge](doc/usercall.md)
+  * [Convert function to __usercall, detect spoiled registers](doc/usercall.md)
   * [Set calling conventions bit closer to Go-lang](doc/golang.md)
 
 ### Patching

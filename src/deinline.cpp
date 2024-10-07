@@ -677,32 +677,6 @@ public:
 #endif
 };
 
-/// Helper class to convert cfunc_t into a text string
-struct qstr_printer_t : public vd_printer_t
-{
-	bool strip_tags;
-	qstring &s; 
-	qstr_printer_t(qstring &_s, bool tags) : strip_tags(tags), s(_s) {}
-	virtual ~qstr_printer_t() {}
-	AS_PRINTF(3, 4) int hexapi print(int indent, const char *format, ...)
-	{
-		va_list va;
-		va_start(va, format);
-		size_t oldsz = s.size();
-		if(indent)
-			s.resize(s.size() + indent, ' ');
-		if (strip_tags) {
-			qstring curline;
-			curline.vsprnt(format, va);
-			tag_remove(&curline);
-			s.append(curline);
-		} else {
-			s.cat_vsprnt(format, va);
-		}
-		va_end(va);
-		return (int)(s.size() - oldsz);
-	}
-};
 
 // path_t storage
 struct ida_local sInline

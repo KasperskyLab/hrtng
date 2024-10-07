@@ -126,9 +126,7 @@ tinfo_t getType4Name(const char *name);
 #define is64bit()  inf_is_64bit()
 #define is32bit()  inf_is_32bit()
 #define ea_size  (is64bit() ? 8 : 4)
-
-
-bool isX86();
+#define isX86() (PH.id == PLFM_386)
 
 bool is_ea(flags64_t flg);
 ea_t get_ea(ea_t ea);
@@ -153,3 +151,35 @@ qstring printExp(const cfunc_t *func, cexpr_t *expr);
 void printExp2Msg(const cfunc_t *func, cexpr_t *expr, const char* mesg);
 void dump_ctree(cfunc_t* func, const char* fname);
 inline THREAD_SAFE bool isRegOvar(mopt_t mop) { return mop == mop_r || mop == mop_S /*|| mop == mop_l*/; }
+
+struct qstr_printer_t : public vd_printer_t
+{
+	bool strip_tags;
+	size_t cnt = 0;
+	size_t maxcnt;
+	qstring &s;
+	qstr_printer_t(qstring &_s, bool _strip_tags = true, size_t _maxcnt = 0) : strip_tags(_strip_tags), maxcnt(_maxcnt), s(_s) {}
+	virtual ~qstr_printer_t() {}
+	AS_PRINTF(3, 4) int hexapi print(int indent, const char *format, ...)
+	{
+		if(maxcnt && ++cnt > maxcnt)
+			return 0;
+
+		va_list va;
+		va_start(va, format);
+		size_t oldsz = s.size();
+		if(indent)
+			s.resize(s.size() + indent, ' ');
+		if (strip_tags) {
+			qstring curline;
+			curline.vsprnt(format, va);
+			tag_remove(&curline);
+			s.append(curline);
+		} else {
+			s.cat_vsprnt(format, va);
+		}
+		va_end(va);
+		return (int)(s.size() - oldsz);
+	}
+};
+

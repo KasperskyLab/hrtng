@@ -689,6 +689,102 @@ void undefRegs2args(cfuncptr_t cfunc, func_type_data_t *fti)
 	}
 }
 
+void declSpoiledRegs(cfuncptr_t cfunc, func_type_data_t *fti)
+{
+	if(fti->is_noret() || !cfunc->mba || !isX86())
+		return;
+
+#if 0
+	// simple get maybdef.reg list from block-0
+
+	// MMAT_LOCOPT is lowest possible level where maybdef of zero block is calculated
+	// !!! some temporary regs definitions may be optimized away by the local optimization
+	// but the main goal here is to recognize unspoiled registers that may be used in code surrounding this function call
+	// and results are better then searching spoiled registers by eyes
+  mbl_array_t *mba = gen_microcode(cfunc->mba->mbr, NULL, NULL, DECOMP_NO_CACHE | DECOMP_WARNINGS, MMAT_LOCOPT);
+  if(!mba || !mba->qty)
+    return;
+	mblock_t *blk0 = mba->get_mblock(0);
+	if(blk0->type != BLT_1WAY || (blk0->flags & MBL_FAKE) == 0 || blk0->maybdef.reg.empty()) {
+		delete mba;
+		return;
+	}
+	const rlist_t &rlist = blk0->maybdef.reg;
+
+#else
+	// collect all defined registers in early mba then remove from the list registers have been save-restored
+
+	mbl_array_t *mba = gen_microcode(cfunc->mba->mbr, NULL, NULL, DECOMP_NO_CACHE | DECOMP_WARNINGS, MMAT_PREOPTIMIZED);
+  if(!mba || !mba->qty || mba->build_graph() != MERR_OK)
+    return;
+  mba->analyze_calls(ACFL_GUESS);
+
+	// collect all defined registers
+	rlist_t rlist;
+	for (int i = 0; i < mba->qty; i++) {
+		const mblock_t *blk = mba->get_mblock(i);
+		for (const minsn_t *ins = blk->head; ins != NULL; ins = ins->next) {
+			mlist_t def = blk->build_def_list(*ins, MUST_ACCESS);
+			rlist.add(def.reg);
+		}
+	}
+	// remove from the list registers have been save-restored
+	// according ida/plugins/hexrays_sdk/verifier/showmic.cpp mblock_t::print_block_header
+	// this informnation is stored in mba->procinf->sregs NOT publicly declared part of mba_t structure
+	// so, the only way I've found to get it - parse full mba dump
+	qstring s;
+	qstr_printer_t p(s, false, 2); // FIXME: need only second line of the dump
+	mba->print(p); //mba->get_mblock(0)->print(p); //single block print skips header
+	//msg("[hrt] %a mba:\n%s\n", cfunc->entry_ea, s.c_str());
+
+  size_t srb = s.find("SAVEDREGS: ");
+	if(srb != qstring::npos) {
+		qstring sr = s.substr(srb + 11, s.find('\n', srb));
+		tag_remove(&sr, 1);
+		qstrvec_t rnames;
+		sr.split(&rnames, ",", SSF_DROP_EMPTY);
+		for(size_t i = 0; i < rnames.size(); i++) {
+			size_t dot = rnames[i].find('.');
+			if(dot != qstring::npos) {
+				qstring rname = rnames[i].substr(0, dot);
+				int rsize = atoi(rnames[i].c_str() + dot + 1);
+				int ireg = str2reg(rname.c_str());
+				//msg("[hrt] %a : %s.%d (%d)\n", cfunc->entry_ea, rname.c_str(), rsize, ireg);
+				if(ireg != -1)
+					rlist.sub(reg2mreg(ireg), rsize);
+			}
+		}
+	}
+#endif
+
+	//msg("[hrt] %a def regs: %s\n", cfunc->entry_ea, rlist.dstr());
+	fti->spoiled.clear();
+
+	//"for" below iterates each bit in bitset, I need iterate by whole registers
+	//for(auto it = rlist.begin(); it != rlist.end(); rlist.inc(it))
+
+	int rsize = ea_size;
+	mreg_t mregLast = reg2mreg(R_es); //HACK: mregLast is x86 specific
+	if(mregLast == mr_none)
+		mregLast = is64bit() ? 128 : 100;
+	for(mreg_t mreg = mr_first; mreg < mregLast; mreg += rsize) {
+		if(rlist.has_any(mreg, rsize)) {
+			int reg = mreg2reg(mreg, rsize);
+			if(reg != -1 && reg != R_sp) { //HACK: R_sp is x86 specific
+				reg_info_t ri;
+				ri.size = rsize;
+				ri.reg =  reg;
+				fti->spoiled.push_back(ri);
+			}
+		}
+	}
+	if(fti->spoiled.empty())
+		fti->flags &= ~FTI_SPOILED;
+	else
+		fti->flags |= FTI_SPOILED;
+	delete mba;
+}
+
 ACT_DEF(convert_to_usercall)
 {
 	vdui_t *vu = get_widget_vdui(ctx->widget);
@@ -704,6 +800,7 @@ ACT_DEF(convert_to_usercall)
 		return 0;
 
 	undefRegs2args(vu->cfunc, &fti);
+	declSpoiledRegs(vu->cfunc, &fti);
 	qstring funcname;
 	get_func_name(&funcname, vu->cfunc->entry_ea);
 	type.clear();
@@ -4234,7 +4331,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "1.1.0";
+	addon.version = "1.1.1";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;
