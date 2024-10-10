@@ -733,7 +733,7 @@ void declSpoiledRegs(cfuncptr_t cfunc, func_type_data_t *fti)
 	// this informnation is stored in mba->procinf->sregs NOT publicly declared part of mba_t structure
 	// so, the only way I've found to get it - parse full mba dump
 	qstring s;
-	qstr_printer_t p(s, false, 2); // FIXME: need only second line of the dump
+	qstr_printer_t p(s, false, 2); // need only second line of the dump
 	mba->print(p); //mba->get_mblock(0)->print(p); //single block print skips header
 	//msg("[hrt] %a mba:\n%s\n", cfunc->entry_ea, s.c_str());
 
@@ -742,7 +742,15 @@ void declSpoiledRegs(cfuncptr_t cfunc, func_type_data_t *fti)
 		qstring sr = s.substr(srb + 11, s.find('\n', srb));
 		tag_remove(&sr, 1);
 		qstrvec_t rnames;
-		sr.split(&rnames, ",", SSF_DROP_EMPTY);
+		const char *from = sr.begin();
+		const char *end = sr.end();
+		while(from < end) {
+			const char *to =  qstrchr(from, ',');
+			if(!to)
+				to = end;
+			rnames.push_back().append(from, to - from);
+			from = to + 1;
+		}
 		for(size_t i = 0; i < rnames.size(); i++) {
 			size_t dot = rnames[i].find('.');
 			if(dot != qstring::npos) {
@@ -2131,7 +2139,7 @@ ACT_DEF(searchNpatch)
 #if IDA_SDK_VERSION < 900
 		found_ea = bin_search2(found_ea, eaEnd, key, BIN_SEARCH_CASE | BIN_SEARCH_FORWARD);
 #else //IDA_SDK_VERSION >= 900
-		found_ea = bin_search3(found_ea, eaEnd, key, BIN_SEARCH_CASE | BIN_SEARCH_FORWARD);
+		found_ea = bin_search(found_ea, eaEnd, key, BIN_SEARCH_CASE | BIN_SEARCH_FORWARD);
 #endif //IDA_SDK_VERSION < 900
 		if(found_ea == BADADDR)
 			break;

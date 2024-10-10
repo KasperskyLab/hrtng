@@ -1054,8 +1054,8 @@ bool RemoveSingleGotos(mbl_array_t* mba)
 		mba->dump_mba(true, "[hrt] after RemoveSingleGotos");
 #else
 		mba->dump_mba(true, "[hrt] after RemoveSingleGotos");
-		// combine_blocks or remove_empty_and_unreachable_blocks produce itsown dumps
-		mba->combine_blocks(); //mba->remove_empty_and_unreachable_blocks();
+		// merge_blocks (combine_blocks) or remove_empty_and_unreachable_blocks produce itsown dumps
+		mba->merge_blocks(); //mba->remove_empty_and_unreachable_blocks();
 #endif //IDA_SDK_VERSION < 760
 	}
 	return iRetVal != 0;

@@ -86,7 +86,13 @@ struct ida_local guid_ex_t {
 
 qvector<guid_ex_t> guids;
 
+#if IDA_SDK_VERSION < 900
 const char * idaapi read_ioports_cb(const ioports_t &ports, const char *line)
+#else //IDA_SDK_VERSION >= 900
+struct read_ioports_cb_t : public ioports_fallback_t
+{
+  virtual bool handle(qstring *errbuf, const ioports_t &ports, const char *line)
+#endif //IDA_SDK_VERSION < 900
 {
 	guid_ex_t guid;
 	uint32 d5[6];
@@ -101,8 +107,14 @@ const char * idaapi read_ioports_cb(const ioports_t &ports, const char *line)
 	guid.uid.u.m1.d4 = swap16(guid.uid.u.m1.d4);
 	guid.name = name;
 	guids.push_back(guid);
+#if IDA_SDK_VERSION < 900
 	return NULL;
 }
+#else //IDA_SDK_VERSION >= 900
+	return true;
+}
+};
+#endif //IDA_SDK_VERSION < 900
 
 static bool bImported = false;
 void com_init()
@@ -111,6 +123,10 @@ void com_init()
 		return;
 	ioports_t ioports;
 	qstring device;
+#if IDA_SDK_VERSION >= 900
+	read_ioports_cb_t riopcb;
+	read_ioports_cb_t *read_ioports_cb = &riopcb;
+#endif //IDA_SDK_VERSION >= 900
 	read_ioports(&ioports, &device, "clsid.cfg", read_ioports_cb);
 
 	if (!bImported) {

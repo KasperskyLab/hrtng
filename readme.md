@@ -82,7 +82,7 @@ cd src
 git clone https://github.com/abdes/cryptopp-cmake
 ```
 
- * Copy `IDA_DIR/plugins/hexrays_sdk/include/hexrays.hpp` file to the `include` directory of the IDA SDK.
+ * Copy `IDA_DIR/plugins/hexrays_sdk/include/hexrays.hpp` file to the `include` directory of the IDA SDK. (Not necessary for IDA 9.0)
  * Edit `hrtng/src/CMakeLists.txt` file to set correct path and version of used IDA SDK. To build later with another SDK version you may change cmake's `IDASDK_VER` variable with using `cmake -D`, `ccmake` or `cmake-gui` tools.
  * Create build directory, go into it, configure and build cmake project
 ```

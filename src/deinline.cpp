@@ -1274,7 +1274,7 @@ struct ida_local sBBGrpMatcher {
 	bool replaceInlines(mbl_array_t *mba)
 	{
 		bool cm_changed = false;
-		cm_changed = mba->combine_blocks();// does not work
+		cm_changed = mba->merge_blocks();// does not work
 		mba->dump_mba(false, "[hrt] before replaceInlines");
 		std::set<mblock_t *> removeBlocks;
 		bbs_t processedBBs;

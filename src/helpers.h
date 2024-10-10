@@ -46,6 +46,7 @@
 #define interactive_graph_t mutable_graph_t
 #define get_named_type_tid(x) get_struc_id(x)
 #define get_tid_name(x, y) get_struc_name(x, y)
+#define merge_blocks combine_blocks
 #endif // IDA_SDK_VERSION < 900
 
 #if IDA_SDK_VERSION < 840
