@@ -2017,7 +2017,7 @@ ACT_DEF(create_dummy_struct)
 		cexpr_t *call;
 		if(is_call(vu, &call) && getExpName(vu->cfunc, call->x, &callname)) {
 			cexpr_t* asgn = get_assign_or_helper(vu, call, false);
-			if(asgn && (qstring::npos != callname.find("Alloc") || qstring::npos != callname.find("alloc") || qstring::npos != callname.find("new"))) {
+			if(asgn && (stristr(callname.c_str(), "alloc") || callname == "??2@YAPAXI@Z")) {
 				if(renameExp(asgn->ea, "", vu->cfunc, asgn->x, &name, vu)) {
 					return 1;//vu->refresh_view(true);
 				}
@@ -4339,7 +4339,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "1.1.1";
+	addon.version = "1.1.2";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;
