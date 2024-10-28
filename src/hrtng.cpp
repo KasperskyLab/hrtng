@@ -297,19 +297,25 @@ void hrt_unreg_act()
 
 static int idaapi jump_to_call_dst(vdui_t *vu)
 {
-	qstring callname;
-	cexpr_t *call;
-	if(!is_call(vu, &call))
+	if(!vu->item.is_citem())
 		return 0;
 
-	cexpr_t *callee = call->x;
+	// call => cast => memptr/obj/var
+	const citem_t *call = vu->cfunc->body.find_parent_of(vu->item.e);
+	if(call && call->op == cot_cast)
+		call = vu->cfunc->body.find_parent_of(call);
+	if(!call || call->op != cot_call)
+		return 0;
+
+	// jump to VT address in struct comment
 	ea_t dst_ea = BADADDR;
-	if (callee->op == cot_memptr || callee->op == cot_memref) {
-		// try jump to VT address in struct comment
-		uint32 offset = callee->m;
-		if (callee->x->op == cot_idx)
-			callee = callee->x;
-		tinfo_t t = callee->x->type;
+	cexpr_t *e = vu->item.e;
+	if (e->op == cot_memptr || e->op == cot_memref) {
+		int offset = e->m;
+		if (e->x->op == cot_idx)
+			e = e->x;
+		cexpr_t *var = e->x;
+		tinfo_t t = var->type;
 		while (t.is_ptr_or_array())
 			t.remove_ptr_or_array();
 		if (t.is_struct()) {
@@ -337,8 +343,12 @@ static int idaapi jump_to_call_dst(vdui_t *vu)
 			}
 		}
 	}
-	// jump to name
-	if(dst_ea == BADADDR) {
+
+	// jump to name, if callee is clicked. But pass globals handling to IDA because getExpName may strips suffix of name and jump to wrong dest
+	cexpr_t *callee = ((cexpr_t*)call)->x;
+	if(callee->op == cot_cast)
+		callee = callee->x;
+	if(dst_ea == BADADDR && vu->item.e == callee && callee->op != cot_obj) {
 		qstring callname;
 		if(getExpName(vu->cfunc, callee, &callname))
 			dst_ea = get_name_ea(BADADDR, callname.c_str());
@@ -350,6 +360,7 @@ static int idaapi jump_to_call_dst(vdui_t *vu)
 		COMPAT_open_pseudocode_REUSE_ACTIVE(dst_ea);
 		return 1;
 	}
+	//pass unhandled action to IDA
 	return 0;
 }
 
@@ -419,7 +430,7 @@ bool idaapi isCommented(flags64_t flags, void *ud)
 }
 static error_t idaapi dump_comments_idc(idc_value_t *argv, idc_value_t *res)
 {
-	msg("[hrt] dump_comments is called \n");
+	//msg("[hrt] dump_comments is called \n");
 	for(ea_t ea = inf_get_min_ea(); ea < inf_get_max_ea(); ea = next_that(ea, inf_get_max_ea(), isCommented)) {
 		qstring str;
 		//color_t cmttype;
@@ -498,6 +509,8 @@ void unregister_idc_functions()
 	del_idc_func(dump_names_desc.name);
 }
 
+//-------------------------------------------------------------------------
+//be aware, is_call returns true if the cursor is inside call's arguments zone too, as well as in callee expression
 bool is_call(vdui_t *vu, cexpr_t **call)
 {
 	if (!vu->item.is_citem())
@@ -4369,7 +4382,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "1.1.3";
+	addon.version = "1.1.4";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;
