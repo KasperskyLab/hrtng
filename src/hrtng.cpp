@@ -3780,10 +3780,13 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 
 //turn on func window synchronization
 static TWidget *StartWdg = NULL;
-class ida_local FuncSwitchSync_t : public ui_request_t
-{
-public:
-  virtual bool idaapi run()
+#if IDA_SDK_VERSION < 840
+const char* FunctionsToggleSync = "FuncSwitchSync";
+#else
+const char* FunctionsToggleSync = "FunctionsToggleSync";
+#endif
+
+bool idaapi runFuncSwitchSync()
   {
     TWidget *wdg = find_widget("Functions window");
     if(wdg && get_widget_type(wdg) == BWN_FUNCS) {
@@ -3792,6 +3795,15 @@ public:
       msg("[hrt] no funcs wnd\n");
       return false; //  remove the request from the queue
     }
+
+#if 0
+		TWidget * curw = get_current_widget();
+		if(!curw)
+			msg("[hrt] `get_current_widget` does't work\n");
+		else if(curw != wdg)
+			msg("[hrt] `activate_widget` does't work\n");
+#endif
+
 #if defined __LINUX__  && IDA_SDK_VERSION >= 740 && IDA_SDK_VERSION <= 750
     //ida 7.7 works without crutches
     //on ida 7.6 this trick does not works anymore
@@ -3806,32 +3818,38 @@ public:
       qstring title;
       if(curw)
         get_widget_title(&title, curw);
-      msg("[hrt] %d %p %s\n", i, curw, title.c_str());
+      msg("[hrt] %d %p '%s'\n", i, curw, title.c_str());
       activate_widget(wdg, true);
     }
 #endif //defined __LINUX__  && IDA_SDK_VERSION >= 740 && IDA_SDK_VERSION <= 750
 
     bool checkable;
-    bool bb = get_action_checkable("FuncSwitchSync", &checkable);
+    bool bb = get_action_checkable(FunctionsToggleSync, &checkable);
     if(bb && !checkable) {
-			update_action_checkable("FuncSwitchSync", true);
-			bb = get_action_checkable("FuncSwitchSync", &checkable);
+			update_action_checkable(FunctionsToggleSync, true);
+			bb = get_action_checkable(FunctionsToggleSync, &checkable);
 		}
+		qstring lbl;
+		bool bl = get_action_label(&lbl, FunctionsToggleSync);
 #if 0
     action_state_t state;
-    bool bs = get_action_state("FuncSwitchSync", &state);
-    if(state == AST_DISABLE_FOR_WIDGET) {
+    bool bs = get_action_state(FunctionsToggleSync, &state);
+    if(bs && state == AST_DISABLE_FOR_WIDGET) {
       msg("[hrt] AST_DISABLE_FOR_WIDGET\n");
-      //update_action_state(const char *name, action_state_t state);
+      //update_action_state(FunctionsToggleSync, AST_ENABLE_FOR_WIDGET);
     }
     bool checked;
-    bool bc = get_action_checked("FuncSwitchSync", &checked);
+    bool bc = get_action_checked(FunctionsToggleSync, &checked);
     bool visibility;
-    bool bv = get_action_visibility("FuncSwitchSync", &visibility);
-    msg("[hrt] FuncSwitchSync %d-%d, %d-%d, %d-%d, %d-%d\n", bs, state, bb, checkable, bc, checked, bv, visibility);
+    bool bv = get_action_visibility(FunctionsToggleSync, &visibility);
+    msg("[hrt] FuncSwitchSync %d-%d, %d-%d, %d-%d, %d-%d, %d-%s\n", bs, state, bb, checkable, bc, checked, bv, visibility, bl, lbl.c_str());
 #endif
-    if(process_ui_action("FuncSwitchSync"))//, 1, (void*)"Turn on synchronization"))
-      msg("[hrt] turn FuncSwitchSync on\n");
+		if(bl && strneq(lbl.c_str(), "Turn on", 7)) { //"Turn on synchronization"
+			if(process_ui_action(FunctionsToggleSync))
+				msg("[hrt] turn on %s\n", FunctionsToggleSync);
+			else
+				msg("[hrt] fail to turn on %s\n", FunctionsToggleSync);
+		}
 
     if(!StartWdg)
       StartWdg = find_widget("Pseudocode-A");
@@ -3847,6 +3865,20 @@ public:
 #endif //defined __LINUX__  && IDA_SDK_VERSION >= 740 && IDA_SDK_VERSION <= 750
     }
 		return false; //  remove the request from the queue
+}
+
+int idaapi cbRunFuncSwitchSync(void *ud)
+{
+	runFuncSwitchSync();
+	return -1;
+}
+
+class ida_local FuncSwitchSync_t : public ui_request_t
+{
+public:
+  virtual bool idaapi run()
+  {
+		return runFuncSwitchSync();
 	};
 };
 
@@ -3871,12 +3903,10 @@ static ssize_t idaapi ui_callback(void *user_data, int ncode, va_list va)
 	} else if( notification_code == ui_ready_to_run) {
 		//msg("[hrt] ui_ready_to_run\n");
 		StartWdg = get_current_widget();
-#if 1
+#if IDA_SDK_VERSION < 900 //FIXME: find exact IDA version number where switch to timer
 		execute_ui_requests(new FuncSwitchSync_t(), NULL);
 #else
-		ui_requests_t *reqs = new ui_requests_t();
-		reqs->push_back(new FuncSwitchSync_t());
-		execute_ui_requests(reqs);
+		register_timer(1000, cbRunFuncSwitchSync, NULL);
 #endif
 	}
 	return 0;
@@ -4339,7 +4369,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "1.1.2";
+	addon.version = "1.1.3";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;
