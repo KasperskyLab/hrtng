@@ -112,8 +112,13 @@ bool is_ea(flags64_t flg)
 ea_t get_ea(ea_t ea)
 {
 	if(is64bit())
-		return (ea_t)get_qword(ea);
-	return (ea_t)get_dword(ea);
+		ea = (ea_t)get_qword(ea);
+	else
+		ea = (ea_t)get_dword(ea);
+
+	if(isARM() && is_tail(get_flags(ea)))
+		ea = ea & ~1;
+	return ea;
 }
 
 void create_type_from_size(tinfo_t* t, asize_t size)
@@ -144,17 +149,27 @@ void create_type_from_size(tinfo_t* t, asize_t size)
 
 void stripName(qstring* name)
 {
-	if (!strncmp(name->c_str(), "__imp_", 6))
-			name->remove(0, 6);
-
-	if (!strncmp(name->c_str(), "j_", 2))
-		  name->remove(0, 2);
-
 	size_t len = name->length();
+	if (len > 6 && !strncmp(name->c_str(), "__imp_", 6)) {
+		name->remove(0, 6);
+		len -= 6;
+	}
+
+	if (len > 2 && !strncmp(name->c_str(), "j_", 2)) {
+		name->remove(0, 2);
+		len -= 2;
+	}
+
 	if (len > 2) {
 		char last = name->at(len - 1);
-		if(last >= '0' && last <= '9' && name->at(len - 2) == '_')
-			name->remove_last(2);
+		if(last >= '0' && last <= '9') {
+			last = name->at(len - 2);
+			if(last == '_') {
+				name->remove_last(2);
+			} else if (len > 3 && last >= '0' && last <= '9' && name->at(len - 3) == '_') {
+				name->remove_last(3);
+			}
+		}
 	}
 }
 
@@ -165,18 +180,18 @@ void stripNum(qstring* name)
 	//strip "i64" suffix
 	if(l > 3 && !qstrcmp(name->c_str() + l - 3, "i64")) {
 		l -= 3;
-		name->resize(l);
+		name->remove_last(3);
 	}
 #else //IDA_SDK_VERSION >= 830
 	//strip "LL" suffix
 	if(l > 2 && !qstrcmp(name->c_str() + l - 2, "LL")) {
 		l -= 2;
-		name->resize(l);
+		name->remove_last(2);
 	}
 #endif //IDA_SDK_VERSION < 830
 	//strip "u" suffix
 	if(l > 1 && name->at(l - 1) == 'u') {
-		name->resize(l - 1);
+		name->remove_last(1);
 	}
 }
 

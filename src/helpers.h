@@ -125,9 +125,9 @@ size_t get_idx_of_lvar(vdui_t &vu, lvar_t *lvar);
 tinfo_t getType4Name(const char *name);
 
 #define is64bit()  inf_is_64bit()
-#define is32bit()  inf_is_32bit()
 #define ea_size  (is64bit() ? 8 : 4)
 #define isX86() (PH.id == PLFM_386)
+#define isARM() (PH.id == PLFM_ARM)
 
 bool is_ea(flags64_t flg);
 ea_t get_ea(ea_t ea);

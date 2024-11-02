@@ -94,6 +94,7 @@ static bool isNameGood1(const char* name)
 				return false;
 		}
 	}
+
 	if((name[0] == 'F' || name[0] == 'B') && !qstrcmp(name + 1, "link"))
 		return false;
 
@@ -115,9 +116,10 @@ static bool isNameGood2(const char* name)
 {
 	if (!isNameGood1(name))
 		return false;
+
 	for(size_t i = 0; i < qnumber(badArgNames); i++)
 		if(!qstrcmp(name, badArgNames[i]))
-		return false;
+			return false;
 	return true;
 }
 
@@ -190,6 +192,11 @@ static bool getCallName(cfunc_t *func, cexpr_t* call, qstring* name)
 static bool getEaName(ea_t ea, qstring* name)
 {
 	flags64_t flg = get_flags(ea);
+	if(is_tail(flg) && isARM()) {
+		ea = ea & ~1;
+		flg = get_flags(ea);
+	}
+
 	if (has_user_name(flg)) {
 		if (name) {
 			get_ea_name(name, ea);
@@ -248,12 +255,17 @@ static bool renameEa(ea_t refea, const char* funcname, ea_t ea, const qstring* n
 		msg("[hrt] FIXME: renameEa(%a, \"%s\")\n", refea, newName.c_str());
 		return false;
 	}
-
-	if (set_name(ea, newName.c_str(), SN_NOCHECK | SN_AUTO | SN_NOWARN | SN_FORCE)) {
-		make_name_auto(ea);
-	}
-  if (!has_cmt(get_flags(ea)) && newName != *name)
+	if (!has_cmt(get_flags(ea)) && newName != *name)
 		set_cmt(ea, name->c_str(), true);
+
+	if(!strncmp(newName.c_str(), "sub_", 4))
+			newName.insert('p');
+
+	if (!set_name(ea, newName.c_str(), SN_NOCHECK | SN_AUTO | SN_NOWARN | SN_FORCE)) {
+		msg("[hrt] %a %s: fail to rename %a to \"%s\"\n", refea, funcname, ea, newName.c_str());
+		return false;
+	}
+	make_name_auto(ea);
 	msg("[hrt] %a %s: Global at %a was renamed to \"%s\"\n", refea, funcname, ea, newName.c_str());
 	return true;
 }
@@ -279,76 +291,89 @@ bool renameVar(ea_t refea, const char* funcname, cfunc_t *func, ssize_t varIdx, 
 	if (newName.size() > MAX_NAME_LEN)
 		newName.resize(MAX_NAME_LEN);
 	if(!validate_name(&newName, VNT_IDENT)) {
-		msg("[hrt] FIXME: renameVar(%a, \"%s\")\n", refea, newName.c_str());
+		//msg("[hrt] FIXME: renameVar(%a, \"%s\")\n", refea, newName.c_str());
 		return false;
 	}
 
 	//check if proc doesnt already has such name
 	bool acceptName = false;
 	qstring basename = newName;
-	for(int i = 0; i < 20; i++) {
+	for(int i = 0; i < 100; i++) {
 		lvars_t::iterator it = vars->begin();
 		for(; it != vars->end(); it++) {
 			if(it->name == newName) {
-				if(it == var) //why it tries rename again?
+				if(it == var) {//why it tries rename again?
+					//msg("[hrt] FIXME: renameVar(%a, \"%s\") dup\n", refea, newName.c_str());
 					return false;
-				newName = basename;
-				newName.cat_sprnt("_%d", i + 1);
+				}
 				break;
 			}
 		}
 		if(it == vars->end()) {
-			acceptName = true;
-			break;
+			// it seems ida donsnt allow renaming local var to the name of existing proc, but OK with global var
+			ea_t nnea = get_name_ea(BADADDR, newName.c_str());
+			if (nnea == BADADDR || !is_func(get_flags(nnea))) {
+				acceptName = true;
+				break;
+			}
 		}
+		newName = basename;
+		newName.cat_sprnt("_%d", i + 1);
 	}
-	if(acceptName) {
-		//if var is arg it will be useful to rename argument inside function prototype
-		if(var->is_arg_var()) {
-			int vIdx = (int)varIdx;
-			ssize_t argIdx = func->argidx.index(vIdx);
-			if(argIdx != -1) {
-				tinfo_t funcType;
-				if(func->get_func_type(&funcType)) {
-					func_type_data_t fi;
-					if(funcType.get_func_details(&fi) && fi.size() > (size_t)argIdx) {
-						//msg("[hrt] %a %s: Rename arg%d \"%s\" to \"%s\"\n", refea, funcname, argIdx + 1, fi[argIdx].name.c_str(), newName.c_str());
-						fi[argIdx].name = newName;
-						tinfo_t newFType;
-						newFType.create_func(fi);
-						if(newFType.is_correct() && apply_tinfo(func->entry_ea, newFType, TINFO_DEFINITE)) {
-							qstring typeStr;
-							newFType.print(&typeStr);
-							msg("[hrt] %a %s: Function prototype was recast for change arg-name into \"%s\"\n", refea, funcname, typeStr.c_str());
-						}
+	if(!acceptName) {
+		//msg("[hrt] FIXME: renameVar(%a, \"%s\") not accepted\n", refea, newName.c_str());
+		return false;
+	}
+
+	//if var is arg it will be useful to rename argument inside function prototype
+	if(var->is_arg_var()) {
+		int vIdx = (int)varIdx;
+		ssize_t argIdx = func->argidx.index(vIdx);
+		if(argIdx != -1) {
+			tinfo_t funcType;
+			if(func->get_func_type(&funcType)) {
+				func_type_data_t fi;
+				if(funcType.get_func_details(&fi) && fi.size() > (size_t)argIdx) {
+					//msg("[hrt] %a %s: Rename arg%d \"%s\" to \"%s\"\n", refea, funcname, argIdx + 1, fi[argIdx].name.c_str(), newName.c_str());
+					fi[argIdx].name = newName;
+					stripName(&fi[argIdx].name);
+					tinfo_t newFType;
+					newFType.create_func(fi);
+					if(newFType.is_correct() && apply_tinfo(func->entry_ea, newFType, TINFO_DEFINITE)) {
+						qstring typeStr;
+						newFType.print(&typeStr);
+						msg("[hrt] %a %s: Function prototype was recasted for change arg-name into \"%s\"\n", refea, funcname, typeStr.c_str());
 					}
 				}
 			}
 		}
-		msg("[hrt] %a %s: Var \"%s\" was renamed to \"%s\"\n", refea, funcname, var->name.c_str(), newName.c_str());
-		if (vdui) {
-			vdui->rename_lvar(var, newName.c_str(), true); // vdui->rename_lvar can rebuild all internal structures/ call later!!!
-		} else {
-			//this way of renaming/retyping is not stored in databese, use:
-			//restore_user_lvar_settings save_user_lvar_settings modify_user_lvars
-			///< use mbl_array_t::set_nice_lvar_name() and
-			///< mbl_array_t::set_user_lvar_name() to modify it
-			//
-			//CHECKME! mba->set_lvar_name(lvar_t &v, const char *name, int flagbits);  appeared in ida8.3
-			var->name = newName;
-			var->set_user_name();
-
-			if(!var->has_user_type()) {
-				tinfo_t t = getType4Name(newName.c_str());
-				if(!t.empty() && var->accepts_type(t))
-					if(var->set_lvar_type(t, true))
-						msg("[hrt] %a %s: type of var '%s' refreshed\n", refea, funcname, newName.c_str());
-			}
-
-		}
-		return true;
 	}
-	return false;
+
+	bool res = true;
+	qstring oldname = var->name;
+	if (vdui) {
+		res = vdui->rename_lvar(var, newName.c_str(), true); // vdui->rename_lvar can rebuild all internal structures/ call later!!!
+	} else {
+		//this way of renaming/retyping is not stored in databese, use:
+		//restore_user_lvar_settings save_user_lvar_settings modify_user_lvars
+		///< use mbl_array_t::set_nice_lvar_name() and
+		///< mbl_array_t::set_user_lvar_name() to modify it
+		//
+		//CHECKME! mba->set_lvar_name(lvar_t &v, const char *name, int flagbits);  appeared in ida8.3
+		var->name = newName;
+		var->set_user_name();
+
+		if(!var->has_user_type()) {
+			tinfo_t t = getType4Name(newName.c_str());
+			if(!t.empty() && var->accepts_type(t))
+				if(var->set_lvar_type(t, true))
+					msg("[hrt] %a %s: type of var '%s' refreshed\n", refea, funcname, newName.c_str());
+		}
+	}
+	if(res)
+		msg("[hrt] %a %s: Var \"%s\" was renamed to \"%s\"\n", refea, funcname, oldname.c_str(), newName.c_str());
+	//else msg("[hrt] %a %s: Var \"%s\" rename to \"%s\" falied\n", refea, funcname, oldname.c_str(), newName.c_str());
+	return res;
 }
 
 static bool getUdtMembName(tinfo_t type, uint32 offset, qstring* name)
@@ -838,13 +863,9 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			if(call->op != cot_call)
 				return 0;
 			callCnt++;
-			carglist_t &args = *call->a;
-			if(!args.size())
-				return 0;
 
 			ea_t dstea;
 			tinfo_t tif = getCallInfo(call, &dstea);
-
 			bool bAllowTypeChange =  false;
 			if(dstea != BADADDR && !tif.is_from_subtil()) {
 				func_t *f = get_func(dstea);
@@ -879,6 +900,10 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 					}
 				}
 			}
+
+			carglist_t &args = *call->a;
+			if(!args.size())
+				return 0;
 
 			bool bCallAssign = false;
 			qstring anL, anR;
@@ -1052,7 +1077,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			}
 			
 			//rename func itself if it has dummy name and only one statement inside
-			if (stmtCnt == 1 && callCnt == 1 && has_dummy_name(get_flags(func->entry_ea))) {
+			if (stmtCnt <= 1 && callCnt == 1 && has_dummy_name(get_flags(func->entry_ea))) {
 				if (!callProcName.empty() && strncmp(callProcName.c_str(), "psub_", 5)) {
 					qstring newName = callProcName;
 					if (newName.size() > MAX_NAME_LEN - 1)

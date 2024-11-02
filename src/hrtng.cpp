@@ -2634,7 +2634,7 @@ static bool idaapi is_stack_var_assign_int(const cexpr_t * stmt, const lvars_t* 
 	if (val)
 		*val = right;
 	if(size) {
-			*size = BADADDR;
+		*size = BADADDR;
 		if(left->op == cot_var)
 			*size = (sval_t)var->tif.get_size();
 		else if(left->op == cot_ptr)
@@ -2711,6 +2711,7 @@ struct ida_local stack_char_assign_locator_t : public ctree_visitor_t
 		return 0;
 	}
 };
+
 static void assign2wstr(qvector<wchar16_t> &wstr, uint64 _value, sval_t size)
 {
 	wstr.push_back((wchar16_t)_value);
@@ -2794,6 +2795,7 @@ static int scan_stack_string2(action_activation_ctx_t *ctx, bool bDecrypt)
 		nVarsFound++;
 		if(!bDecrypt && !it->second.val) //zeroterminate
 			break;
+
 		cexpr_t* val = it->second.val;
 		last_asgn_size = it->second.sz;
 
@@ -2859,6 +2861,7 @@ static int scan_stack_string2(action_activation_ctx_t *ctx, bool bDecrypt)
 			}
 		}
 	}
+
 	if(nVarsFound) {
 		if(bDecrypt) {
 			const char* inBuf;
@@ -2966,6 +2969,7 @@ bool is_array_char_assign(vdui_t *vu, int* varIdx, ea_t *ea)
 		*ea = ((cexpr_t *)expr)->x->ea;
 	return is_array_char_assign_int(((cexpr_t *)expr)->x, varIdx, NULL, NULL);
 }
+
 struct ida_local valNsize2_t
 {
 	uint64 val;
@@ -3800,7 +3804,7 @@ const char* FunctionsToggleSync = "FunctionsToggleSync";
 #endif
 
 bool idaapi runFuncSwitchSync()
-  {
+{
     TWidget *wdg = find_widget("Functions window");
     if(wdg && get_widget_type(wdg) == BWN_FUNCS) {
       activate_widget(wdg, true);
@@ -3817,7 +3821,7 @@ bool idaapi runFuncSwitchSync()
 			msg("[hrt] `activate_widget` does't work\n");
 #endif
 
-#if defined __LINUX__  && IDA_SDK_VERSION >= 740 && IDA_SDK_VERSION <= 750
+#if defined __LINUX__ && IDA_SDK_VERSION >= 740 && IDA_SDK_VERSION <= 750
     //ida 7.7 works without crutches
     //on ida 7.6 this trick does not works anymore
     //linux IDA 7.4 & 7.5 does not activate widget immediately
@@ -3851,7 +3855,7 @@ bool idaapi runFuncSwitchSync()
       msg("[hrt] AST_DISABLE_FOR_WIDGET\n");
       //update_action_state(FunctionsToggleSync, AST_ENABLE_FOR_WIDGET);
     }
-    bool checked;
+....bool checked;
     bool bc = get_action_checked(FunctionsToggleSync, &checked);
     bool visibility;
     bool bv = get_action_visibility(FunctionsToggleSync, &visibility);
@@ -4382,7 +4386,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "1.1.4";
+	addon.version = "1.1.5";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;

@@ -284,8 +284,8 @@ static const char* importEnumFromTil(til_t *til, const char* name, uint64 val)
 		return NULL;
 #endif //IDA_SDK_VERSION < 840
 	for(uint32 ordinal = 1; ordinal < limit; ++ordinal)	{
-	const type_t *type;
-	const p_list *fields;
+		const type_t *type;
+		const p_list *fields;
 		if(get_numbered_type(til, ordinal, &type, &fields) && type && is_type_enum(*type) && fields) {
 			tinfo_t t;
 			if (t.deserialize(til, &type, &fields)) {

@@ -124,7 +124,7 @@ void add_vt_member(struc_t* sptr, ea_t offset, const char* name, const tinfo_t& 
 			if (!get_member_by_name(sptr, newName.c_str())) {
 				set_member_name(sptr, offset, newName.c_str());
 				break;
-}
+			}
 		}
 	}
 	member_t* memb = get_member(sptr, offset);
