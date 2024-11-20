@@ -164,17 +164,16 @@ static bool getCallName(cfunc_t *func, cexpr_t* call, qstring* name)
 	if (!args.size())
 		return false;
 
-	if (!namecmp(funcname.c_str(), "LoadLibrary") ||
-	    !namecmp(funcname.c_str(), "GetModuleHandle")) {
+	if (!namecmp(funcname.c_str(), "LoadLibrary") || !namecmp(funcname.c_str(), "GetModuleHandle") || !namecmp(funcname.c_str(), "dlopen")) {
 		qstring argName;
-		if (args.size() == 1 && getExpName(func, &args[0], &argName)) {
+		if (args.size() >= 1 && getExpName(func, &args[0], &argName)) {
 			*name = "h";
 			*name += argName;
 			return true;
 		}
 	}
-	else if (!namecmp(funcname.c_str(), "GetProcAddress")) {
-		if (args.size() == 2 && getExpName(func, &args[1], name))
+	else if (!namecmp(funcname.c_str(), "GetProcAddress") || !namecmp(funcname.c_str(), "dlsym")) {
+		if (args.size() >= 2 && getExpName(func, &args[1], name))
 			return true;
 	}
 	else if (!namecmp(funcname.c_str(), "strdup") || !namecmp(funcname.c_str(), "wcsdup")) {
