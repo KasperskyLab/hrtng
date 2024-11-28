@@ -3953,8 +3953,9 @@ static ssize_t idaapi idp_callback(void *user_data, int ncode, va_list va)
 			//const char *new_name = va_arg(va, const char *);
 			//int flags = va_arg(va, int);
 			if(is_func(get_flags(ea))) {
-				funcRenameEa = ea;
 				get_ea_name(&funcRename, ea);
+				if(!funcRename.empty())
+					funcRenameEa = ea;
 			}
 		}
 	}
@@ -4097,7 +4098,8 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 			//msg("[hrt] renaming_struc_member %s\n", newname);
 
 			//rename VT method impl together with VT member
-			if(strncmp(newname, "sub_", 4) &&
+			if(qstrlen(newname) &&
+				 strncmp(newname, "sub_", 4) &&
 				 strncmp(newname, "field_", 6)) {
 				qstring struCmt;
 				get_struc_cmt(&struCmt, sptr->id, true);
@@ -4154,7 +4156,7 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 			break;
 
 		const char* newname = udm->name.c_str();
-		if (!strncmp(newname, "sub_", 4) || !strncmp(newname, "field_", 6))
+		if (udm->name.empty() || !strncmp(newname, "sub_", 4) || !strncmp(newname, "field_", 6))
 			break;
 
 		tinfo_t struc;
@@ -4262,7 +4264,7 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 						}
 					}
 				}
-				if(funcRenameEa == ea) {
+				if(funcRenameEa == ea && !funcRename.empty()) {
 					//rename VT members too
 					int cnt = 0;
 					enumStrucMembers(funcRename.c_str(), countStrucMembersCB, &cnt);
@@ -4386,7 +4388,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "1.1.6";
+	addon.version = "1.1.7";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;
