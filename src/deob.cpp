@@ -733,6 +733,15 @@ void remove_funcs_tails(ea_t ea)
 	if (i > 100 ) msg("[hrt] %a FIXME: remove_funcs_tails loops\n", ea);
 }
 
+enum Add_BB_Stop_Reason {
+	eABBSR_none,
+	eABBSR_unreachBlocks,
+	eABBSR_decode_insn,
+	eABBSR_already_added,
+	eABBSR_del_items,
+	eABBSR_create_insn,
+	eABBSR_bb_end
+};
 
 static bool add_bb(ea_t eaBgn, rangeset_t &ranges)
 {
@@ -743,30 +752,43 @@ static bool add_bb(ea_t eaBgn, rangeset_t &ranges)
 	remove_funcs_tails(eaBgn);
 #endif
 
+	Add_BB_Stop_Reason ABBSR = eABBSR_none;
 	ea_t ea = eaBgn;
 	while (1) {
-		if (unreachBlocks.contains(ea))
+		if (unreachBlocks.contains(ea)) {
+			ABBSR = eABBSR_unreachBlocks;
 			break;
+		}
 
 		insn_t insn;
 		int sz = decode_insn(&insn, ea);
-		if (sz <= 0)
+		if (sz <= 0) {
+			ABBSR = eABBSR_decode_insn;
 			break;
+		}
 		flags64_t flg = get_flags(ea);
 		if (!is_code(flg)) {
-			if (ranges.has_common(range_t(ea, insn.size)))
+			if (ranges.has_common(range_t(ea, insn.size))) {
+				ABBSR = eABBSR_already_added;
 				break;
-#if 1
-			if (!del_items(ea, DELIT_SIMPLE, insn.size))
+			}
+#if 0
+			if (!is_unknown(flg) && !del_items(ea, DELIT_SIMPLE, insn.size)) {
+				ABBSR = eABBSR_del_items;
 				break;
+			}
 #else
 			for (decltype(insn.size) i = 0; i < insn.size; i++) {
-				if (!is_unknown(get_flags(ea + i)) && !del_items(ea + i, DELIT_SIMPLE))
+				if (!is_unknown(get_flags(ea + i)) && !del_items(ea + i, DELIT_SIMPLE)) {
+					ABBSR = eABBSR_del_items;
 					break;
+				}
 			}
 #endif
-			if (!create_insn(ea, &insn))
+			if (!create_insn(ea, &insn)) {
+				ABBSR = eABBSR_create_insn;
 				break;
+			}
 		}
 		ea += insn.size;
 
@@ -778,6 +800,7 @@ static bool add_bb(ea_t eaBgn, rangeset_t &ranges)
 		// I have not good alternative for is_basic_block_end except CFG creation so leave here slower variant
 		if (is_basic_block_end(insn, false)) {
 			disasm_dbl_jc(ea - insn.size);
+			ABBSR = eABBSR_bb_end;
 			break;
 		}
 	}
@@ -785,6 +808,27 @@ static bool add_bb(ea_t eaBgn, rangeset_t &ranges)
 		MSG_DO(("[hrt] new block %a-%a\n", eaBgn, ea));
 		return true;
 	}
+
+#if DEBUG_DO
+	const char* m;
+	switch(ABBSR) {
+	case eABBSR_unreachBlocks:
+		m = "unreachBlocks"; break;
+	case eABBSR_decode_insn:
+		m = "decode_insn"; break;
+	case eABBSR_already_added:
+		m = "already_added"; break;
+	case eABBSR_del_items:
+		m = "del_items"; break;
+	case eABBSR_create_insn:
+		m = "create_insn"; break;
+	case eABBSR_bb_end:
+		m = "bb_end"; break;
+	default:
+		m = "none";
+	}
+	msg("[hrt] add_bb fail at %a with %s\n", ea, m);
+#endif
 	return false;
 }
 
