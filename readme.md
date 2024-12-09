@@ -1,7 +1,7 @@
 # hrtng IDA plugin
 hrtng IDA plugin is a collection of tools, ideas and experiments from different sources I've found interesting and useful in my reversing work.
 
-A practical guide to the reverse of a complex malware using the example of dissecting a FinSpy module wih help of hrtng IDA plagin on [securelist](https://securelist.com/hrtng-ida-pro-plugin/)
+A practical guide to the reverse of a complex malware using the example of dissecting a FinSpy module with help of hrtng IDA plugin on [securelist](https://securelist.com/hrtng-ida-pro-plugin/)
 
 There is no one place in menu where all functionality of the plugin grouped together. hrtng menu items placed closer to logically related standard IDA & Hex-Rays decompiler functions. Messages, menu items, popup windows and dialog boxes belong to this plugin are marked with "`[hrt]`" prefix.  
 
