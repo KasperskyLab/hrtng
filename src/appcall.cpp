@@ -198,9 +198,9 @@ bool Appcaller::init(bool dbg, uint32 keyArg, uint32 keyLenArg, ea_t callea, uin
 bool Appcaller::initDbg()
 {
 	if(!bDbgEngine) {
-		int64 len = -1;
+		int64 itCnt = -1;
 		ushort itSz = strtype == STRTYPE_C_16 ? 1 : 0;
-		return decr_init(&len, &itSz);
+		return decr_init(&itCnt, &itSz);
 	}
 
 	isDbgRunning = get_process_state();

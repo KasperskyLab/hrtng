@@ -3084,7 +3084,14 @@ ACT_DEF(decrypt_const)
 	*(uint64*)&tmpbuf[0] = e->n->_value;
 
 	const char* inBuf = &tmpbuf[0];
-	ushort hint_itSz = 2; // DWORD
+	ushort hint_itSz = 2; // 0 - BYTE, 1 - WORD, 2 - DWORD, 3 - QWORD
+	switch(e->n->nf.org_nbytes) {
+	case 8: hint_itSz = 3;break;
+	case 4: hint_itSz = 2;break;
+	case 2: hint_itSz = 1;break;
+	case 1: hint_itSz = 0;break;
+	}
+
 	qstring result;
 	if (!decrypt_string(vu, BADADDR, inBuf, 1, &hint_itSz, &result)) //do not decrypt last zero
 		return 0;
@@ -4388,7 +4395,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "1.1.8";
+	addon.version = "1.1.9";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;

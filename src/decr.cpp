@@ -242,10 +242,24 @@ static int idaapi decr_str_cb(int field_id, form_actions_t &fa)
       // falldown
     case eAlg_RC4:
     case eAlg_DES:
+		case eAlg_CustomBlk:
+			// set ItemSz to bytes and disable
+		{
+			ushort ItemSz;
+			fa.get_rbgroup_value(2, &ItemSz);
+			if(ItemSz) {
+				int64 cnt;
+				fa.get_int64_value(3, &cnt);
+				if (cnt != 0 && cnt != -1) {
+					cnt = cnt * (1LL << prevItSz);
+					fa.set_int64_value(3, &cnt);
+				}
+				prevItSz = 0;
+				fa.set_rbgroup_value(2, &prevItSz);
+			}
       fa.enable_field(2, false); // disable ItemSz
       break;
-    case eAlg_CustomBlk:
-      break;
+		}
     default:
       // defauls are set above
       break;
@@ -277,7 +291,7 @@ bool   patchExactLen = true;
 bool   patchZeroTerm = false;
 static int itemSize = 1;
 
-bool decr_init(int64 *len, ushort *itSz)
+bool decr_init(int64 *itCnt, ushort *itSz)
 {
   const char format[] =
       "STARTITEM 3\n"
@@ -307,7 +321,7 @@ bool decr_init(int64 *len, ushort *itSz)
       "<#nothing, address (name), 'string', hex-string# ~I~V:q5::32::>\n"
       "<##Mode##ECB:r> <CBC:r>6>\n"
       "\n\n";
-  if (1 != ask_form(format, decr_str_cb, &alg, itSz, len, &keystr, &ivstr, &bCbc))
+  if (1 != ask_form(format, decr_str_cb, &alg, itSz, itCnt, &keystr, &ivstr, &bCbc))
     return false;
 
   itemSize = 1 << *itSz;
@@ -453,17 +467,22 @@ static bool decr_set_iv(bytevec_t &iv, ea_t ivEa, size_t ivLen, qstring *error)
 }
 
 //returns decrypted len, 0 if error
-static int64 decr_core(ea_t ea, const char *inBuf, int64 len, bytevec_t &key, bytevec_t &iv, bytevec_t &decrbuf,  qstring *result, qstring *error)
+static int64 decr_core(ea_t ea, const char *inBuf, int64 itCnt, bytevec_t &key, bytevec_t &iv, bytevec_t &decrbuf,  qstring *result, qstring *error)
 {
   if(ea == BADADDR && !inBuf) {
     error->sprnt("wrong inbuff");
     return false;
   }
 
-  if(len != -1)
-    decrbuf.resize((len + 1) * itemSize); // + zeroterminator!
-  else
+	int64 blkInLen; // input len in bytes for block ciphers
+	int64 outLen;   // decrypted len in bytes
+	if(itCnt != -1) {
+		outLen = blkInLen  = itCnt * itemSize;
+		decrbuf.resize((itCnt + 1) * itemSize); // + zeroterminator!
+  } else {
+		outLen = blkInLen = 0;
     decrbuf.resize(MAXDECLEN);
+	}
   uint8 * dec_bufA = &decrbuf[0];
   uint16 *dec_bufW = (uint16 *)&decrbuf[0];
   uint32 *dec_bufD = (uint32 *)&decrbuf[0];
@@ -473,26 +492,24 @@ static int64 decr_core(ea_t ea, const char *inBuf, int64 len, bytevec_t &key, by
   getNextChar_t *getNextChar   = NULL;
   void *         ctx           = NULL;
   const char *   bufptr        = NULL;
-  int64          rdlen         = len;
   bool           bFwd          = true;
 
   // 1:-----------------------
-  // check len, rdlen, ctx & bufptr
+  // check blkInLen, ctx & bufptr
   eAlg algo = (eAlg)alg;
   switch(algo) {
   case eAlg_Tea:
   case eAlg_XTea:
   case eAlg_DES:
-    len = align_down(len, 8);
-    if(len < 8) {
+    blkInLen = align_down(blkInLen, 8);
+    if(blkInLen < 8) {
       error->sprnt("too short len");
       return 0;
     }
-    rdlen = len;
     break;
   case eAlg_AES:
-    len = align_down(len, 16);
-    if(len < 16) {
+    blkInLen = align_down(blkInLen, 16);
+    if(blkInLen < 16) {
       error->sprnt("too short len");
       return 0;
     }
@@ -500,7 +517,6 @@ static int64 decr_core(ea_t ea, const char *inBuf, int64 len, bytevec_t &key, by
       error->sprnt("wrong key len (%d)", key.size());
       return 0;
     }
-    rdlen = len;
     break;
 	case eAlg_Custom:
 		bFwd = false; //!!!
@@ -509,13 +525,13 @@ static int64 decr_core(ea_t ea, const char *inBuf, int64 len, bytevec_t &key, by
     if(ea != BADADDR) {
       getNextChar = getNextCharEa;
       if (!bFwd)
-        ea += (ea_t)((len - 1) * itemSize);
+        ea += (ea_t)((itCnt - 1) * itemSize);
       ctx = &ea;
     } else if(inBuf) {
       bufptr      = inBuf;
       getNextChar = getNextCharBuf;
       if(!bFwd)
-        bufptr += (len - 1) * itemSize;
+        bufptr += (itCnt - 1) * itemSize;
       ctx = &bufptr;
     }
 	}
@@ -533,14 +549,14 @@ static int64 decr_core(ea_t ea, const char *inBuf, int64 len, bytevec_t &key, by
   case eAlg_Salsa:
   case eAlg_AES:
   case eAlg_DES:
-    if(rdlen <= 0 || len > MAXDECLEN / 4) {
-      error->sprnt("wrong rdlen %d", (int)len);
+    if(blkInLen <= 0 || blkInLen > MAXDECLEN) {
+      error->sprnt("wrong inlen %d", (int)blkInLen);
       return 0;
     }
     if(ea != BADADDR) {
-      get_bytes(dec_bufA, rdlen, ea, GMB_READALL);
+      get_bytes(dec_bufA, blkInLen, ea, GMB_READALL);
     } else if(inBuf) {
-      memcpy(dec_bufA, inBuf, rdlen);
+      memcpy(dec_bufA, inBuf, blkInLen);
     }
     break;
   }
@@ -550,7 +566,7 @@ static int64 decr_core(ea_t ea, const char *inBuf, int64 len, bytevec_t &key, by
   switch(algo) {
   case eAlg_RC4:
     show_hex(key.begin(), key.size(), "[hrt] RC4 key length %d :\n", (int)key.size());
-    if(!rc4(dec_bufA, (size_t)len, key.begin(), key.size(), err)) {
+    if(!rc4(dec_bufA, (size_t)blkInLen, key.begin(), key.size(), err)) {
       *error = err.c_str();
       return 0;
     }
@@ -558,12 +574,12 @@ static int64 decr_core(ea_t ea, const char *inBuf, int64 len, bytevec_t &key, by
   case eAlg_CustomBlk:
     show_hex(key.begin(), key.size(), "[hrt] key length %d :\n", (int)key.size());
     show_hex(iv.begin(),  iv.size(), "[hrt] iv  length %d :\n",  (int)iv.size());
-    //customDecr(dec_bufA, (int)len, keybuf.begin(), (int)keybuf.size());
+    //customDecr(dec_bufA, (int)blkInLen, keybuf.begin(), (int)keybuf.size());
     break;
   case eAlg_Sosemanuk: {
     show_hex(key.begin(), key.size(), "[hrt] Sosemanuk key length %d :\n", (int)key.size());
-    //show_hex(dec_bufA, len, "[hrt] data length %d :\n", (int)len);
-    if(!sosemanuk(dec_bufA, len, key.begin(), key.size(), iv.begin(), iv.size(), err)) {
+    //show_hex(dec_bufA, blkInLen, "[hrt] data length %d :\n", (int)len);
+    if(!sosemanuk(dec_bufA, blkInLen, key.begin(), key.size(), iv.begin(), iv.size(), err)) {
       *error = err.c_str();
       return 0;
     }
@@ -572,13 +588,13 @@ static int64 decr_core(ea_t ea, const char *inBuf, int64 len, bytevec_t &key, by
   case eAlg_Salsa:	{
     show_hex(key.begin(), key.size(), "[hrt] key length %d :\n", (int)key.size());
     show_hex( iv.begin(),  iv.size(), "[hrt] iv  length %d :\n",  (int)iv.size());
-    //show_hex(dec_bufA, len, "[hrt] data length %d :\n", (int)len);
+    //show_hex(dec_bufA, blkInLen, "[hrt] data length %d :\n", (int)len);
     decr_proc_t proc;
     if(algo == eAlg_Chacha)
       proc = chacha;
     else
       proc = salsa;
-    if(!proc(dec_bufA, len, key.begin(), key.size(), iv.begin(), iv.size(), err)) {
+    if(!proc(dec_bufA, blkInLen, key.begin(), key.size(), iv.begin(), iv.size(), err)) {
       *error = err.c_str();
       return 0;
     }
@@ -588,7 +604,7 @@ static int64 decr_core(ea_t ea, const char *inBuf, int64 len, bytevec_t &key, by
     show_hex(key.begin(), key.size(), "[hrt] Tea key length %d :\n", (int)key.size());
 		if(bCbc)
 			show_hex( iv.begin(),  iv.size(), "[hrt] iv  length %d :\n",  (int)iv.size());
-    if(!tea_decr(dec_bufA, (size_t)len, key.begin(), key.size(), iv.begin(), bCbc, algo == eAlg_XTea, err)) {
+    if(!tea_decr(dec_bufA, (size_t)blkInLen, key.begin(), key.size(), iv.begin(), bCbc, algo == eAlg_XTea, err)) {
       *error = err.c_str();
       return 0;
     }
@@ -598,14 +614,14 @@ static int64 decr_core(ea_t ea, const char *inBuf, int64 len, bytevec_t &key, by
     show_hex(key.begin(), key.size(), "[hrt] AES key length %d :\n", (int)key.size());
 		if(bCbc)
 			show_hex( iv.begin(),  iv.size(), "[hrt] iv  length %d :\n",  (int)iv.size());
-    if(!aes_decr(dec_bufA, (size_t)len, key.begin(), key.size(), iv.begin(), bCbc, err)) {
+    if(!aes_decr(dec_bufA, (size_t)blkInLen, key.begin(), key.size(), iv.begin(), bCbc, err)) {
       *error = err.c_str();
       return 0;
     }
   } break;
   case eAlg_DES:
     show_hex(key.begin(), key.size(), "[hrt] DES key length %d :\n", (int)key.size());
-    if(!des_decr(dec_bufA, dec_bufA, (size_t)len, key.begin(), err)) {
+    if(!des_decr(dec_bufA, dec_bufA, (size_t)blkInLen, key.begin(), err)) {
       *error = err.c_str();
       return 0;
     }
@@ -616,27 +632,27 @@ static int64 decr_core(ea_t ea, const char *inBuf, int64 len, bytevec_t &key, by
 		else
       show_hex(key.begin(), itemSize, "[hrt] key length %d :\n", itemSize);
     if(itemSize == 1) {
-      len = decrypt_str(dec_bufA, (int32)len, algo, key, getNextChar, ctx, bFwd);
+      outLen = decrypt_str(dec_bufA, (int32)itCnt, algo, key, getNextChar, ctx, bFwd);
     } else if(itemSize == 2) {
-      len = decrypt_str(dec_bufW, (int32)len, algo, key, getNextChar, ctx, bFwd) * 2;
+      outLen = decrypt_str(dec_bufW, (int32)itCnt, algo, key, getNextChar, ctx, bFwd) * 2;
     } else if(itemSize == 4) {
-      len = decrypt_str(dec_bufD, (int32)len, algo, key, getNextChar, ctx, bFwd) * 4;
+      outLen = decrypt_str(dec_bufD, (int32)itCnt, algo, key, getNextChar, ctx, bFwd) * 4;
     } else if(itemSize == 8) {
-      len = decrypt_str(dec_bufQ, (int32)len, algo, key, getNextChar, ctx, bFwd) * 8;
+      outLen = decrypt_str(dec_bufQ, (int32)itCnt, algo, key, getNextChar, ctx, bFwd) * 8;
     }
     break;
   }
 
-  if (len <= 0 || len > MAXDECLEN) {
-    error->sprnt("bad len: %d", (int)len);
+  if (outLen <= 0 || outLen > MAXDECLEN) {
+    error->sprnt("bad out len: %d", (int)outLen);
     return 0;
   }
 
-  if(dec_bufA[1] == 0 && len > 2)
-    utf16_utf8(result, (const wchar16_t *)dec_bufA, (int)len / 2);
+  if(dec_bufA[1] == 0 && outLen > 2)
+    utf16_utf8(result, (const wchar16_t *)dec_bufA, (int)outLen / 2);
   else
-    result->append((char *)dec_bufA, (size_t)len);
-  return len;
+    result->append((char *)dec_bufA, (size_t)outLen);
+  return outLen;
 }
 
 bool decr_done(vdui_t *vu, ea_t ea, const uint8 * dec_bufA, int64 len, qstring *result)
@@ -677,22 +693,22 @@ bool decr_done(vdui_t *vu, ea_t ea, const uint8 * dec_bufA, int64 len, qstring *
   return false;
 }
 
-bool decrypt_string(vdui_t *vu, ea_t dec_ea, const char *inBuf, int64 hint_len, ushort *itSz, qstring *result)
+bool decrypt_string(vdui_t *vu, ea_t dec_ea, const char *inBuf, int64 hint_itCnt, ushort *itSz, qstring *result)
 {
-  int64 maxLenBytes = hint_len * (1LL << *itSz);
-  int64 len = hint_len;
+  int64 maxLenBytes = hint_itCnt * (1LL << *itSz);
+  int64 itCnt = hint_itCnt;
   qstring error;
   bytevec_t key;
   bytevec_t iv;
   while(1) {
-    if(!decr_init(&len, itSz))
+    if(!decr_init(&itCnt, itSz))
       return false;
-    if((len != -1 && len > MAXDECLEN / itemSize) || len == 0) {
-      warning("[hrt] bad len: %d, max %d\n", (int)len, MAXDECLEN / itemSize);
+    if((itCnt != -1 && itCnt > MAXDECLEN / itemSize) || itCnt == 0) {
+      warning("[hrt] bad in len: %d, max %d\n", (int)itCnt, MAXDECLEN / itemSize);
       continue;
     }
-    if(dec_ea == BADADDR && inBuf && len * itemSize > maxLenBytes) {
-      warning("[hrt] bad len: %d, max %d\n", (int)(len * itemSize), (int)maxLenBytes);
+    if(dec_ea == BADADDR && inBuf && itCnt * itemSize > maxLenBytes) {
+      warning("[hrt] bad in len: %d, max %d\n", (int)(itCnt * itemSize), (int)maxLenBytes);
       continue;
     }
     if(!decr_set_key(key, 0, 0, &error))
@@ -703,7 +719,7 @@ bool decrypt_string(vdui_t *vu, ea_t dec_ea, const char *inBuf, int64 hint_len, 
       break;
   }
 	bytevec_t decrbuf;
-  len = decr_core(dec_ea, inBuf, len, key, iv, decrbuf, result, &error);
+  int64 len = decr_core(dec_ea, inBuf, itCnt, key, iv, decrbuf, result, &error);
   if(!len) {
     warning("[hrt] decrypt error: %s\n", error.c_str());
     return false;
@@ -711,10 +727,10 @@ bool decrypt_string(vdui_t *vu, ea_t dec_ea, const char *inBuf, int64 hint_len, 
   return decr_done(vu, dec_ea, &decrbuf[0], len, result);
 }
 
-bool decr_string_4appcall(ea_t dec_ea, const char *inBuf, int64 len, ea_t keyEa, size_t keyLen, qstring *result, qstring *error)
+bool decr_string_4appcall(ea_t dec_ea, const char *inBuf, int64 itCnt, ea_t keyEa, size_t keyLen, qstring *result, qstring *error)
 {
-  if((len != -1 && len > MAXDECLEN / itemSize) || len == 0) {
-    error->sprnt("bad len: %d, max %d", (int)len, MAXDECLEN / itemSize);
+  if((itCnt != -1 && itCnt > MAXDECLEN / itemSize) || itCnt == 0) {
+    error->sprnt("bad in len: %d, max %d", (int)itCnt, MAXDECLEN / itemSize);
     return false;
   }
   bytevec_t key;
@@ -726,6 +742,6 @@ bool decr_string_4appcall(ea_t dec_ea, const char *inBuf, int64 len, ea_t keyEa,
     return false;
 
 	bytevec_t decrbuf;
-  len = decr_core(dec_ea, inBuf, len, key, iv, decrbuf, result, error);
+  int64 len = decr_core(dec_ea, inBuf, itCnt, key, iv, decrbuf, result, error);
   return len != 0;
 }
