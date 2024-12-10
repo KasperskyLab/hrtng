@@ -318,9 +318,18 @@ static int idaapi jump_to_call_dst(vdui_t *vu)
 		tinfo_t t = var->type;
 		while (t.is_ptr_or_array())
 			t.remove_ptr_or_array();
-		if (t.is_struct()) {
+		if (t.is_struct()) {				
+			auto tid = t.get_tid();
+			auto vt_ea = get_vftable_ea(tid);
+			if (vt_ea != BADADDR) {
+				ea_t fnc = get_ea(vt_ea + offset);
+				if (is_func(get_flags(fnc))) {
+					dst_ea = fnc;
+				}
+			}
+
 			qstring sname;
-			if(t.get_type_name(&sname)) {
+			if(dst_ea == BADADDR && t.get_type_name(&sname)) {
 #if IDA_SDK_VERSION < 900
 				tid_t id = get_struc_id(sname.c_str());
 				if(id != BADNODE) {
@@ -2019,6 +2028,7 @@ ACT_DEF(create_dummy_struct)
 	}
 #if IDA_SDK_VERSION < 900
 #else //IDA_SDK_VERSION >= 900
+	s.set_fixed(true);
 	tinfo_t ti;
 	if (!ti.create_udt(s) || ti.set_named_type(NULL, name.c_str()) != TERR_OK)
 		return 0;
@@ -4395,7 +4405,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "1.1.9";
+	addon.version = "1.1.10";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;
