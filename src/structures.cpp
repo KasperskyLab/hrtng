@@ -227,8 +227,10 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 			return BADNODE;
 	}
 	newstruc.set_type_cmt(struccmt.c_str());
+	auto t_ord = newstruc.get_ordinal();
+	if (t_ord != 0)
+		set_vftable_ea(t_ord, VT_ea);
 #endif //IDA_SDK_VERSION < 900
-	set_vftable_ea(newid, VT_ea);
 	set_name(VT_ea, name_vtbl.c_str(), SN_FORCE);
 
 	ea_t ea = VT_ea;
@@ -283,6 +285,7 @@ int create_VT(tid_t parent, ea_t VT_ea)
 {
 	qstring name;
 	uval_t vtstruc_idx = 0;
+	tid_t vt_struc_id = BADNODE;
 #if IDA_SDK_VERSION < 900
 	struc_t * struc = get_struc(parent);
 	if (!struc || !get_struc_name(&name, parent))
@@ -295,24 +298,34 @@ int create_VT(tid_t parent, ea_t VT_ea)
 		|| !struc.get_type_name(&name))
 		return 0;
 
+	auto vftable_ordinal = get_vftable_ordinal(VT_ea);
+	if (vftable_ordinal != 0) {
+		tinfo_t t;
+		if (t.get_numbered_type(vftable_ordinal)){
+			vt_struc_id = t.get_tid();
+		}
+	}
+
 #endif //IDA_SDK_VERSION < 900
 
-	qstring name_VT = name + "_vtbl";
-	if(VT_ea == BADADDR)
-		VT_ea = get_name_ea(BADADDR, name_VT.c_str());
+	if (vt_struc_id == BADNODE){
+		qstring name_VT = name + "_vtbl";
+		if(VT_ea == BADADDR)
+			VT_ea = get_name_ea(BADADDR, name_VT.c_str());
 
-	if (VT_ea == BADADDR) {
-		name_VT = "??_7";
-		name_VT += name + "@@6B@";
-		VT_ea = get_name_ea(BADADDR, name_VT.c_str());
+		if (VT_ea == BADADDR) {
+			name_VT = "??_7";
+			name_VT += name + "@@6B@";
+			VT_ea = get_name_ea(BADADDR, name_VT.c_str());
+		}
+
+		if (VT_ea == BADADDR) {
+			msg("[hrt] create_VT: bad VT_ea\n");
+				return 0;
+		}
+
+		vt_struc_id = create_VT_struc(VT_ea, name.c_str(), vtstruc_idx);
 	}
-
-	if (VT_ea == BADADDR) {
-		msg("[hrt] create_VT: bad VT_ea\n");
-			return 0;
-	}
-
-	tid_t vt_struc_id = create_VT_struc(VT_ea, name.c_str(), vtstruc_idx);
 	if ( vt_struc_id == BADNODE)
 		return 0;
 

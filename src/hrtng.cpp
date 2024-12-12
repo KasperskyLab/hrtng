@@ -318,15 +318,21 @@ static int idaapi jump_to_call_dst(vdui_t *vu)
 		tinfo_t t = var->type;
 		while (t.is_ptr_or_array())
 			t.remove_ptr_or_array();
-		if (t.is_struct()) {				
-			auto tid = t.get_tid();
-			auto vt_ea = get_vftable_ea(tid);
-			if (vt_ea != BADADDR) {
+		if (t.is_struct()) {	
+			[&] {
+				auto t_ord = t.get_ordinal();
+				if (t_ord == 0)
+					return;
+				auto vt_ea = get_vftable_ea(t_ord);
+				if (vt_ea == BADADDR) 
+					return;
+				if (vt_ea == 0)
+					return;
 				ea_t fnc = get_ea(vt_ea + offset);
-				if (is_func(get_flags(fnc))) {
-					dst_ea = fnc;
-				}
-			}
+				if (!is_func(get_flags(fnc)))
+					return;
+				dst_ea = fnc;
+			}();
 
 			qstring sname;
 			if(dst_ea == BADADDR && t.get_type_name(&sname)) {
