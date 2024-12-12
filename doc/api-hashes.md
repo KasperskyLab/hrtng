@@ -8,8 +8,6 @@ Click menu *"Edit/Other/Turn on APIhashes scan..."*. Hover mouse cursor over has
 
 The plugin reads file `IDADIR/plugins/apilist.txt` and calculates hashes of names from the list. Then, if the constant value shown in pseudocode view is equal of one of hashes the name is source of that hash, it will automatically be shown in comment. In the disasm view these constants are compared at the moment of code/data creation. So, if you want to see hash meaning in disasm - undefine and then recreate code/data.
 
-> ⚠️ Avoid negative 32bits values in pseudocode view, it seems IDA storing it in 64bits sign-extended form. As workaround just convert these negative constants to unsigned hex representation.
-
 ![API hashes](api-hashes.gif)
 
 ![API hashes on data](api-hashes-data.gif)

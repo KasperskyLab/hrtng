@@ -25,9 +25,13 @@
 #include <map>
 #include "helpers.h"
 
+//IDA stores 32bit values in 64bit sign extended form, so store hashesh the same way
+typedef int64 hash_t;
+#define HASH32to64(x) (hash_t)(int32)(x)
+
 //------------------------------------------------------------
 // 5f087e34ab6a470b9e46bcb7c6edfcc5
-static uint64	Custom_HashFunction(const char* libraryName, const char* name, int64 basis, int64 prime)
+static hash_t	Custom_HashFunction(const char* libraryName, const char* name, int64 basis, int64 prime)
 {
 	uint32 h = (uint32)basis;
   uint8 c;
@@ -39,10 +43,10 @@ static uint64	Custom_HashFunction(const char* libraryName, const char* name, int
 		h ^= h >> 16;
 		h *= (uint32)prime;
 	}
-  return h;
+  return HASH32to64(h);
 }
 //------------------------------------------------------------
-static uint64 Ror_HashFunction(const char* libraryName, const char* functionName, int64 basis, int64 prime)
+static hash_t Ror_HashFunction(const char* libraryName, const char* functionName, int64 basis, int64 prime)
 {
 	uint32	result	=	(uint32)basis;
 	const char*	ptr	=	0;
@@ -53,11 +57,11 @@ static uint64 Ror_HashFunction(const char* libraryName, const char* functionName
 			break;
 		result = qrotr(result, prime) + uc;
 	}
-	return result;
+	return HASH32to64(result);
 }
 
 //------------------------------------------------------------
-static uint64 RorUp_HashFunction(const char* libraryName, const char* functionName, int64 basis, int64 prime)
+static hash_t RorUp_HashFunction(const char* libraryName, const char* functionName, int64 basis, int64 prime)
 {
 	uint32	result	=	(uint32)basis;
 	const char*	ptr	=	0;
@@ -70,7 +74,7 @@ static uint64 RorUp_HashFunction(const char* libraryName, const char* functionNa
 			uc -= 0x20;
 		result = qrotr(result, prime) + uc;
 	}
-	return result;
+	return HASH32to64(result);
 }
 
 //------------------------------------------------------------
@@ -105,13 +109,13 @@ static uint32 Metasploit_HashAPI(const char* name, int64 basis, int64 prime)
 	return result;
 }
 
-static uint64	Metasploit_HashFunction(const char* libraryName, const char* functionName, int64 basis, int64 prime)
+static hash_t	Metasploit_HashFunction(const char* libraryName, const char* functionName, int64 basis, int64 prime)
 {
-	return (uint32)(Metasploit_HashLibName(libraryName, basis, prime) + Metasploit_HashAPI(functionName, basis,prime));
+	return HASH32to64(Metasploit_HashLibName(libraryName, basis, prime) + Metasploit_HashAPI(functionName, basis,prime));
 }
 
 //------------------------------------------------------------
-static uint64	RolXor_HashFunction(const char* libraryName, const char* functionName, int64 basis, int64 prime)
+static hash_t	RolXor_HashFunction(const char* libraryName, const char* functionName, int64 basis, int64 prime)
 {
 	uint32	result	=	(uint32)basis;
 	const char*	ptr	=	0;
@@ -124,11 +128,11 @@ static uint64	RolXor_HashFunction(const char* libraryName, const char* functionN
 		result = qrotl(result, prime) ^ uc;
 	}
 
-	return result;
+	return HASH32to64(result);
 }
 
 //------------------------------------------------------------
-static uint64	crc32_HashFunc(const char* libraryName, const char* functionName, int64 basis, int64 prime)
+static hash_t	crc32_HashFunc(const char* libraryName, const char* functionName, int64 basis, int64 prime)
 {
 	uint32 crc = (uint32)basis;
 	const unsigned char* ptr = (unsigned char*)functionName;
@@ -142,13 +146,13 @@ static uint64	crc32_HashFunc(const char* libraryName, const char* functionName, 
 			c >>= 1;
 		}
 	}
-	return (uint64)(uint32)(~crc);
+	return HASH32to64(~crc);
 }
 
 //------------------------------------------------------------
 //sdbm                   hash = hash * 65599 + c
 //Daniel Bernstein (djb) hash = hash * 33 + c
-static uint64	sdbm_djb_hash(const char* libraryName, const char* functionName, int64 basis, int64 prime)
+static hash_t	sdbm_djb_hash(const char* libraryName, const char* functionName, int64 basis, int64 prime)
 {
   uint32 hash = (uint32)basis;
   uint32 c;
@@ -157,12 +161,12 @@ static uint64	sdbm_djb_hash(const char* libraryName, const char* functionName, i
     //hash = c + (hash << 5) + hash; //djb fast
 		//hash = c + (hash << 6) + (hash << 16) - hash;// sdbm fast    // + 1;//f528d185fcb0511403b6ec229c3c693f PL.bin
 	}
-  return hash;
+  return HASH32to64(hash);
 }
 
-static uint64	fnv1a_hash(const char* libraryName, const char* functionName, int64 basis, int64 prime)
+static hash_t	fnv1a_hash(const char* libraryName, const char* functionName, int64 basis, int64 prime)
 {
-  uint64 hash = basis;
+  hash_t hash = basis;
   uint8 c;
 	while ((c = *functionName++) != 0) {
 		hash ^= c;
@@ -172,7 +176,7 @@ static uint64	fnv1a_hash(const char* libraryName, const char* functionName, int6
 }
 
 //------------------------------------------------------------
-static uint64	murmur3_HashFunc(const char* libraryName, const char* functionName, int64 basis, int64 prime)
+static hash_t	murmur3_HashFunc(const char* libraryName, const char* functionName, int64 basis, int64 prime)
 {
   const uint8* key = (const uint8*)functionName;
   size_t len = qstrlen(key);
@@ -210,12 +214,12 @@ static uint64	murmur3_HashFunc(const char* libraryName, const char* functionName
   h ^= h >> 13;
   h *= 0xc2b2ae35;
   h ^= h >> 16;
-  return h;
+  return HASH32to64(h);
 }
 
 //------------------------------------------------------------
 #include <md5.h>
-static uint64	halfMD5_HashFunc(const char* libraryName, const char* functionName, int64 basis, int64 prime)
+static hash_t	halfMD5_HashFunc(const char* libraryName, const char* functionName, int64 basis, int64 prime)
 {
 	uint8 hash[16];
 	MD5Context ctx;
@@ -226,7 +230,7 @@ static uint64	halfMD5_HashFunc(const char* libraryName, const char* functionName
 	MD5Update(&ctx, functionName, qstrlen(functionName));
 #endif //IDA_SDK_VERSION < 770
 	MD5Final(hash, &ctx);
-	return *(uint64*)hash;
+	return *(hash_t*)hash;
 }
 //------------------------------------------------------------
 
@@ -234,7 +238,7 @@ struct ida_local HashFunctionInfo
 {
     const char* name;
     const char* hint;
-    uint64    (*HashFunctionPtr)(const char* libraryName, const char* functionName, int64 basis, int64 prime);
+    hash_t    (*HashFunctionPtr)(const char* libraryName, const char* functionName, int64 basis, int64 prime);
 		int64      basis;
 		int64      prime;
 };
@@ -254,7 +258,7 @@ static const HashFunctionInfo	hashers[]	=	{
 };
 
 //------------------------------------------------------------
-std::map<uint64, qstring> hashes;
+std::map<hash_t, qstring> hashes;
 
 static ssize_t idaapi make_code_callback(va_list va)
 {
@@ -269,8 +273,7 @@ static ssize_t idaapi make_code_callback(va_list va)
 			continue;
 		if ( cmdP->ops[idx].value == 0x0 )
 			continue;
-		uint64 opValue = cmdP->ops[idx].value;
-
+		hash_t opValue = cmdP->ops[idx].value;
 		auto it = hashes.find(opValue);
 		if(it != hashes.end()) {
 			msg("[hrt] %a: Found API hash for %s\n", ea, it->second.c_str());
@@ -289,12 +292,12 @@ static ssize_t idaapi make_data_callback(va_list va)
 	(void)va_arg(va, flags64_t);
 	(void)va_arg(va, tid_t);
 	asize_t	sz = va_arg(va, asize_t);
-	uint64	opValue;
+	hash_t	opValue;
 
 	switch(sz)
 	{
 	case 4:
-		opValue = get_dword(ea);
+		opValue = HASH32to64(get_dword(ea));
 		break;
 	case 8:
 		opValue = get_qword(ea);
@@ -354,7 +357,7 @@ struct ida_local ah_visitor_t : public ctree_visitor_t
 	virtual int idaapi visit_expr(cexpr_t *expr)
 	{
 		if(expr->op == cot_num && expr->n->nf.org_nbytes >= 4) {
-			uint64 val = expr->n->_value; //expr->numval(); !!! do not use sign extension provided by cnumber_t::value()
+			hash_t val = expr->numval();
 			if(val) {
 				auto it = hashes.find(val);
 				if(it != hashes.end()) {
@@ -463,12 +466,12 @@ void apihashes_init()
 			dllName = buf;
 			bNextIsDll = false;
 		}
-		uint64 hash = hashers[alg].HashFunctionPtr(dllName.c_str(), buf, basis, prime);
-		//msg("[hrt] %x %s\n", hash, buf);
+		hash_t hash = hashers[alg].HashFunctionPtr(dllName.c_str(), buf, basis, prime);
+		//msg("[hrt] %" FMT_64 "x %s\n", (int64)hash, buf);
 
 		auto it = hashes.find(hash);
 		if(it != hashes.end() && strcmp(it->second.c_str(), buf)) {
-			msg("[hrt] hash collision %" FMT_64 "x '%s' and '%s'\n", hash, it->second.c_str(), buf);
+			msg("[hrt] hash collision %" FMT_64 "x '%s' and '%s'\n", (int64)hash, it->second.c_str(), buf);
 			++collisions;
 		} else {
 			hashes[hash] = buf;
