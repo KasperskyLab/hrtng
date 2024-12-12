@@ -422,7 +422,7 @@ static bool renameUdtMemb(ea_t refea, const char* funcname, tinfo_t type, uint32
 	}
 
 	//"VT" handled in getUdtMembName as bad for name source, so disable "VT" autorenaming
-	if(memb.name.length() == 2 && memb.name[0] == 'V' && memb.name[1] == 'T')
+	if(memb.name == "VT" || memb.name == VTBL_MEMNAME)
 		return false;
 
 #ifdef _DEBUG

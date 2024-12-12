@@ -318,16 +318,22 @@ static int idaapi jump_to_call_dst(vdui_t *vu)
 		tinfo_t t = var->type;
 		while (t.is_ptr_or_array())
 			t.remove_ptr_or_array();
-		if (t.is_struct()) {				
+		if (t.is_struct()) {
+#if IDA_SDK_VERSION >= 900
+			// actually get_vftable_ea is appeared in ida 7.6 but here will be used from ida9 becouse it probably depends on TAUDT_VFTABLE flag has been set in create_VT_struc
+			// get destination from vftable_ea
 			auto tid = t.get_tid();
-			auto vt_ea = get_vftable_ea(tid);
-			if (vt_ea != BADADDR) {
-				ea_t fnc = get_ea(vt_ea + offset);
-				if (is_func(get_flags(fnc))) {
-					dst_ea = fnc;
+			if(tid != BADADDR) {
+				auto vt_ea = get_vftable_ea(get_tid_ordinal(tid));
+				if (vt_ea != BADADDR) {
+					ea_t fnc = get_ea(vt_ea + offset);
+					if (is_func(get_flags(fnc))) {
+						dst_ea = fnc;
+					}
 				}
 			}
-
+#endif //IDA_SDK_VERSION > 760
+			// get destination from structure comment
 			qstring sname;
 			if(dst_ea == BADADDR && t.get_type_name(&sname)) {
 #if IDA_SDK_VERSION < 900
@@ -2028,7 +2034,8 @@ ACT_DEF(create_dummy_struct)
 	}
 #if IDA_SDK_VERSION < 900
 #else //IDA_SDK_VERSION >= 900
-	s.set_fixed(true);
+	//not sure is need to set_fixed for a dummy_struct that will be modified many times during further reversing
+	//s.set_fixed(true);
 	tinfo_t ti;
 	if (!ti.create_udt(s) || ti.set_named_type(NULL, name.c_str()) != TERR_OK)
 		return 0;
