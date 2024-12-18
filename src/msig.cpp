@@ -128,7 +128,7 @@ struct ida_local msig_t {
 
 	msig_t(mbl_array_t* mba) 
 	{
-		name = get_short_name(mba->entry_ea);
+		name = get_visible_name(mba->entry_ea);
 
 		bytevec_t buf;
 		SerializeMba(mba, buf);

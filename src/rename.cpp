@@ -215,7 +215,7 @@ static bool getEaName(ea_t ea, qstring* name)
 		
 	if (has_user_name(flg) || has_auto_name(flg)) {
 		qstring n;
-		get_short_name(&n, ea);
+		get_ea_name(&n, ea);
 		if(!stristr(n.c_str(), VTBL_SUFFIX)) { // avoid renaming derived class vtbl by the base class assingnmen in ctor/dtor
 			if (name) {
 				*name = n;
@@ -227,7 +227,7 @@ static bool getEaName(ea_t ea, qstring* name)
 
 	//get sub_xxx as well
 	if(is_code(flg) && has_dummy_name(flg)) {
-		qstring n = get_short_name(ea);
+		qstring n = get_name(ea);
 		if(!strncmp(n.c_str(), "sub_", 4)) {
 			if(name) {
 				//n.insert('p');
@@ -885,7 +885,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 				if(callDst->op == cot_obj) {
 					flags64_t flg = get_flags(callDst->obj_ea);
 					if(has_dummy_name(flg)) {
-						qstring n = get_short_name(callDst->obj_ea);
+						qstring n = get_name(callDst->obj_ea);
 						if(!strncmp(n.c_str(), "off_", 4)) {
 							ea_t dest = get_ea(callDst->obj_ea);
 							if(getEaName(dest, &callProcName)) {

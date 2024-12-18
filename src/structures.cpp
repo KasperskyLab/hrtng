@@ -255,9 +255,9 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 		if(is_data(fnc_flags))
 			break;
 
-		//if (!is_func(fnc_flags) || !get_func_name(&funcname, fncea)) //get_func_name returns mangled name
-		if(!get_short_name(&funcname, fncea))
-			funcname.sprnt("func_%a", fncea);
+		if (!is_func(fnc_flags) || !get_func_name(&funcname, fncea)) //get_func_name returns mangled name
+			if(!get_ea_name(&funcname, fncea))
+				funcname.sprnt("func_%a", fncea);
 
 		tinfo_t t;
 		if(get_tinfo(&t, fncea) && t.is_func()) {

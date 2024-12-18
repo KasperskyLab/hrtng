@@ -3989,7 +3989,7 @@ static ssize_t idaapi idp_callback(void *user_data, int ncode, va_list va)
 			//const char *new_name = va_arg(va, const char *);
 			//int flags = va_arg(va, int);
 			if(is_func(get_flags(ea))) {
-				get_short_name(&funcRename, ea);
+				get_ea_name(&funcRename, ea);
 				if(!funcRename.empty())
 					funcRenameEa = ea;
 			}
@@ -4424,7 +4424,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "1.1.13";
+	addon.version = "1.1.14";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;
