@@ -850,7 +850,7 @@ ACT_DEF(convert_to_usercall)
 	undefRegs2args(vu->cfunc, &fti);
 	declSpoiledRegs(vu->cfunc, &fti);
 	qstring funcname;
-	get_func_name(&funcname, vu->cfunc->entry_ea);
+	get_short_name(&funcname, vu->cfunc->entry_ea);
 	type.clear();
 	if (!type.create_func(fti)) {
 		msg("[hrt] %a %s: create func type error!\n", vu->cfunc->entry_ea, funcname.c_str());
@@ -2938,7 +2938,7 @@ static int scan_stack_string2(action_activation_ctx_t *ctx, bool bDecrypt)
 
 #if 0 // var will be renamed by comment
 		qstring funcname;
-		get_func_name(&funcname, vu->cfunc->entry_ea);
+		get_short_name(&funcname, vu->cfunc->entry_ea);
 		renameVar(asgn_ea, funcname.c_str(), vu->cfunc, varIdx, &str, vu);
 #endif
 		//msg("[hrt] %a: build stack string for var '%s' - '%s'\n", vu.cfunc->entry_ea, var->name.c_str(), str.c_str());
@@ -3089,7 +3089,7 @@ ACT_DEF(scan_array_string)
 		return 0;
 
 	qstring funcname;
-	get_func_name(&funcname, vu->cfunc->entry_ea);
+	get_short_name(&funcname, vu->cfunc->entry_ea);
 	renameVar(ea, funcname.c_str(), vu->cfunc, varIdx, &result, vu);
 
 	vu->refresh_view(true);
@@ -3820,7 +3820,7 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 					if(!isPtr)
 						tname.append('_');
 					qstring funcname;
-					get_func_name(&funcname, func->entry_ea);
+					get_short_name(&funcname, func->entry_ea);
 					if(renameVar(func->entry_ea, funcname.c_str(), func, varIdx, &tname, vu))
 						REFRESH_FUNC_CTEXT(vu);
 				}
@@ -3989,7 +3989,7 @@ static ssize_t idaapi idp_callback(void *user_data, int ncode, va_list va)
 			//const char *new_name = va_arg(va, const char *);
 			//int flags = va_arg(va, int);
 			if(is_func(get_flags(ea))) {
-				get_ea_name(&funcRename, ea);
+				get_short_name(&funcRename, ea);
 				if(!funcRename.empty())
 					funcRenameEa = ea;
 			}
@@ -4424,7 +4424,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "1.1.12";
+	addon.version = "1.1.13";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;

@@ -367,7 +367,7 @@ void printExp2Msg(const cfunc_t *func, cexpr_t *expr, const char* mesg)
 {
 	qstring SExp = printExp(func, expr);
 	qstring funcname;
-	get_func_name(&funcname, func->entry_ea);
+	get_short_name(&funcname, func->entry_ea);
 	msg("[hrt] %a %s: %s '%s'\n", expr->ea, funcname.c_str(), mesg, SExp.c_str());
 }
 
@@ -376,7 +376,7 @@ void replaceExp(const cfunc_t *func, cexpr_t *expr, cexpr_t *newExp, bool clean)
 	qstring SoldExp = printExp(func, expr);
 	qstring SnewExp = printExp(func, newExp);;
 	qstring funcname;
-	get_func_name(&funcname, func->entry_ea);
+	get_short_name(&funcname, func->entry_ea);
 	msg("[hrt] %a %s: '%s' was replaced to '%s'\n", expr->ea, funcname.c_str(), SoldExp.c_str(), SnewExp.c_str());
 
 	if (clean)

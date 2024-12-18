@@ -198,7 +198,7 @@ static bool getEaName(ea_t ea, qstring* name)
 
 	if (has_user_name(flg)) {
 		if (name) {
-			get_ea_name(name, ea);
+			get_short_name(name, ea);
 			stripName(name);
 		}
 		return true;
@@ -223,7 +223,7 @@ static bool getEaName(ea_t ea, qstring* name)
 		
 	if (has_auto_name(flg)) {
 		if (name) {
-			get_ea_name(name, ea);
+			get_short_name(name, ea);
 			stripName(name);
 		}
 		return true;
@@ -715,7 +715,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 
 		cblock_visitor_t(cfunc_t *cfunc) : ctree_visitor_t(CV_PARENTS)
 		{
-			get_func_name(&funcname, cfunc->entry_ea);
+			get_short_name(&funcname, cfunc->entry_ea);
 			func = cfunc;
 			cmts = restore_user_cmts(cfunc->entry_ea);
 			if(cmts == NULL)

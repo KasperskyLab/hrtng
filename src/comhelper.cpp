@@ -251,7 +251,7 @@ struct ida_local com_visitor_t : public ctree_visitor_t
 		cmts = restore_user_cmts(cfunc->entry_ea);
 		if (cmts == NULL)
 			cmts = user_cmts_new();
-		get_func_name(&funcname, cfunc->entry_ea);
+		get_short_name(&funcname, cfunc->entry_ea);
 	}
 
 	~com_visitor_t()
