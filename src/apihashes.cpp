@@ -25,7 +25,7 @@
 #include <map>
 #include "helpers.h"
 
-//IDA stores 32bit values in 64bit sign extended form, so store hashesh the same way
+//IDA stores 32bit values in 64bit sign extended form, so store hashes the same way
 typedef int64 hash_t;
 #define HASH32to64(x) (hash_t)(int32)(x)
 
@@ -159,7 +159,7 @@ static hash_t	sdbm_djb_hash(const char* libraryName, const char* functionName, i
 	while ((c = *functionName++) != 0) {
 		hash = hash * (uint32)prime + c;
     //hash = c + (hash << 5) + hash; //djb fast
-		//hash = c + (hash << 6) + (hash << 16) - hash;// sdbm fast    // + 1;//f528d185fcb0511403b6ec229c3c693f PL.bin
+		//hash = c + (hash << 6) + (hash << 16) - hash;// sdbm fast
 	}
   return HASH32to64(hash);
 }

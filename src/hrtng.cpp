@@ -332,7 +332,7 @@ static int idaapi jump_to_call_dst(vdui_t *vu)
 					}
 				}
 			}
-#endif //IDA_SDK_VERSION > 760
+#endif //IDA_SDK_VERSION >= 900
 			// get destination from structure comment
 			qstring sname;
 			if(dst_ea == BADADDR && t.get_type_name(&sname)) {
@@ -359,14 +359,26 @@ static int idaapi jump_to_call_dst(vdui_t *vu)
 		}
 	}
 
-	// jump to name, if callee is clicked. But pass globals handling to IDA because getExpName may strips suffix of name and jump to wrong dest
 	cexpr_t *callee = ((cexpr_t*)call)->x;
 	if(callee->op == cot_cast)
 		callee = callee->x;
-	if(dst_ea == BADADDR && vu->item.e == callee && callee->op != cot_obj) {
-		qstring callname;
-		if(getExpName(vu->cfunc, callee, &callname))
-			dst_ea = get_name_ea(BADADDR, callname.c_str());
+	if(dst_ea == BADADDR && vu->item.e == callee) { //callee is clicked
+		if(callee->op == cot_obj) {
+			flags64_t flg = get_flags(callee->obj_ea);
+			if(is_func(flg))
+				return 0; // if callee is a func pass handling to IDA
+			if(is_data(flg)) {
+				dst_ea = get_ea(callee->obj_ea);
+				if(!is_mapped(dst_ea))
+					dst_ea = BADADDR;
+			}
+		}
+		if(dst_ea == BADADDR) {
+		//last hope, jump to name
+			qstring callname;
+			if(getExpName(vu->cfunc, callee, &callname))
+				dst_ea = get_name_ea(BADADDR, callname.c_str());
+		}
 	}
 
 	if (dst_ea != BADADDR && is_func(get_flags(dst_ea))) {
@@ -4412,7 +4424,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "1.1.11";
+	addon.version = "1.1.12";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;

@@ -395,9 +395,9 @@ static bool getUdtMembName(tinfo_t type, uint32 offset, qstring* name)
 			return false;
 		if(!strncmp(memb.name.c_str(), "fld_",4))
 			return false;
-		if(!strncmp(memb.name.c_str(), "gap",3))
+	} else if(!strncmp(memb.name.c_str(), "gap",3)) {
 			return false;
-	} else if(memb.name.length() == 2 && memb.name[0] == 'V' && memb.name[1] == 'T')
+	} else if(memb.name == "VT" || memb.name == VTBL_MEMNAME)
 		return false;
 
 	if (name) {

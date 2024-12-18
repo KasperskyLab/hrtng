@@ -373,6 +373,8 @@ static bool decr_set_key(bytevec_t &key, ea_t keyEa, size_t keyLen, qstring *err
       key.resize(keystr.length() / 2);
       size_t i, j;
       for(i = 0, j = 0; i < keystr.length(); i += 2) {
+				if(keystr[i] == ' ')
+					++i;
         if(!strtobx(&keystr[i], &key[j++]))
           break;
       }
@@ -454,6 +456,8 @@ static bool decr_set_iv(bytevec_t &iv, ea_t ivEa, size_t ivLen, qstring *error)
       iv.resize(ivstr.length() / 2);
       size_t i, j;
       for(i = 0, j = 0; i < ivstr.length(); i += 2) {
+				if(ivstr[i] == ' ')
+					++i;
         if(!strtobx(&ivstr[i], &iv.at(j++)))
           break;
       }
