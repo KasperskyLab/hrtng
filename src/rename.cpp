@@ -196,15 +196,7 @@ static bool getEaName(ea_t ea, qstring* name)
 		flg = get_flags(ea);
 	}
 
-	if (has_user_name(flg)) {
-		if (name) {
-			get_short_name(name, ea);
-			stripName(name);
-		}
-		return true;
-	}
-
-	if(is_strlit(flg)) {
+	if(!has_user_name(flg) && is_strlit(flg)) {
 		if (name) {
 			opinfo_t oi;
 			if (!get_opinfo(&oi, ea, 0, flg))
@@ -221,12 +213,16 @@ static bool getEaName(ea_t ea, qstring* name)
 		return true;
 	}
 		
-	if (has_auto_name(flg)) {
-		if (name) {
-			get_short_name(name, ea);
-			stripName(name);
+	if (has_user_name(flg) || has_auto_name(flg)) {
+		qstring n;
+		get_short_name(&n, ea);
+		if(!stristr(n.c_str(), VTBL_SUFFIX)) { // avoid renaming derived class vtbl by the base class assingnmen in ctor/dtor
+			if (name) {
+				*name = n;
+				stripName(name);
+			}
+			return true;
 		}
-		return true;
 	}
 
 	//get sub_xxx as well
