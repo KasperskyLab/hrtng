@@ -407,9 +407,25 @@ void apihashes_init()
 	static ushort alg = 0;
 	static int64 basis = 0;
 	static int64 prime = 0;
-	char buf[4096];
-	qstrncpy(buf, idadir(PLG_SUBDIR), 4096);
-	qstrncat(buf, "/apilist.txt", 4096);
+
+	qstring apilistfname, searched;
+	qstrvec_t dirs;
+	get_ida_subdirs(&dirs, PLG_SUBDIR);
+	for (auto dir: dirs) {
+		qstring fname = dir + "/apilist.txt";
+		searched += dir;
+		if (qaccess(fname.c_str(), O_RDONLY) == F_OK) {
+			apilistfname = fname;
+			break;
+		}
+		searched += ';';
+	}
+
+	if (apilistfname.empty()) {
+		warning("[hrt] 'apilist.txt' not found (searched %s)\n", searched.c_str());
+		return;
+	}
+
 	qstring format =
 		"STARTITEM 1\n"
 		//title
@@ -431,12 +447,12 @@ void apihashes_init()
 								"<#Hash modifier value#~P~rime:l3::20::>\n"
 								"<API list file:f::32::>\n\n\n");
 
-	if(1 != ask_form(format.c_str(), dlg_cb, &alg, &basis, &prime, buf))
+	if(1 != ask_form(format.c_str(), dlg_cb, &alg, &basis, &prime, apilistfname.c_str()))
 		return;
 
-	FILE* file = fopenRT(buf);
+	FILE* file = fopenRT(apilistfname.c_str());
 	if(!file) {
-		warning("[hrt] '%s' not found\n", buf);
+		warning("[hrt] '%s' not found\n", apilistfname.c_str());
 		return;
 	}
 
@@ -446,6 +462,7 @@ void apihashes_init()
 	bool bNextIsDll = true;
 	int lines = 0;
 	int collisions = 0;
+	char buf[4096];
 	while(NULL != qfgets(buf, 4096, file)) {
 		lines++;
 		size_t len;

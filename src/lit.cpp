@@ -655,8 +655,24 @@ bool lit_overrideTypes()
 
 void lit_init()
 {
-	qstring litfname = idadir(PLG_SUBDIR);
-	litfname += "/literal.txt";
+	qstring litfname, searched;
+	qstrvec_t dirs;
+	get_ida_subdirs(&dirs, PLG_SUBDIR);
+	for (auto dir: dirs) {
+		qstring fname = dir + "/literal.txt";
+		searched += dir;
+		if (qaccess(fname.c_str(), O_RDONLY) == F_OK) {
+			litfname = fname;
+			break;
+		}
+		searched += ';';
+	}
+
+	if (litfname.empty()) {
+		msg("[hrt] 'literal.txt' not found (searched %s), enum autoresolve is turned off\n", searched.c_str());
+		return;
+	}
+
 	linput_t *litfile = open_linput(litfname.c_str(), false);
 	if (!litfile) {
 		msg("[hrt] Can't open '%s', enum autoresolve is turned off\n", litfname.c_str());
