@@ -3122,7 +3122,7 @@ ACT_DEF(decrypt_const)
 	}
 
 	qstring result;
-	if (!decrypt_string(vu, BADADDR, inBuf, 1, &hint_itSz, &result)) //do not decrypt last zero
+	if (!decrypt_string(vu, BADADDR, inBuf, 1, &hint_itSz, &result, true)) //do not decrypt last zero
 		return 0;
 
 	vu->refresh_view(false);
@@ -4424,7 +4424,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "1.1.14";
+	addon.version = "1.1.15";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;

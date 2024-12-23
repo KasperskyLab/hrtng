@@ -659,7 +659,7 @@ static int64 decr_core(ea_t ea, const char *inBuf, int64 itCnt, bytevec_t &key, 
   return outLen;
 }
 
-bool decr_done(vdui_t *vu, ea_t ea, const uint8 * dec_bufA, int64 len, qstring *result)
+bool decr_done(vdui_t *vu, ea_t ea, const uint8 * dec_bufA, int64 len, qstring *result, bool immConst)
 {
   show_hex(dec_bufA, len > 32 ? 32 : len, "[hrt] decrypted %d :\n", (int)len);
 
@@ -669,10 +669,26 @@ bool decr_done(vdui_t *vu, ea_t ea, const uint8 * dec_bufA, int64 len, qstring *
     ask_res.cat_sprnt("* Patch at %a\nBUTTON NO", ea);
   } else {
     ask_res.append(" NONE\nBUTTON NO*");
-#if 0
-		//temporary hack for displaying DWORD const decryption result
-		if(len == 4) result->cat_sprnt(" (0x%08X)", *(uint32*)dec_bufA);
-#endif
+
+		// display const decryption results
+		if(immConst) {
+			bool printable = true;
+			for(size_t i = 0; i < result->length(); ++i ) {
+				if(result->at(i) < ' ' || result->at(i) > '~') {
+					printable = false;
+					break;
+				}
+			}
+			if(!printable)
+				result->clear();
+			switch(len) {
+			case 1: result->cat_sprnt(" (0x%02X)", *(uint8*)dec_bufA); break;
+			case 2: result->cat_sprnt(" (0x%04X)", *(uint16*)dec_bufA); break;
+			case 4: result->cat_sprnt(" (0x%08X)", *(uint32*)dec_bufA); break;
+			case 8: result->cat_sprnt(" (0x%016" FMT_64 "X)", *(uint64*)dec_bufA); break;
+			default: result->cat_sprnt(" (0x?? - FIXME)"); break;
+			}
+		}
   }
   ask_res.append(" Comment\n"
                  "BUTTON CANCEL Cancel\n"
@@ -697,7 +713,7 @@ bool decr_done(vdui_t *vu, ea_t ea, const uint8 * dec_bufA, int64 len, qstring *
   return false;
 }
 
-bool decrypt_string(vdui_t *vu, ea_t dec_ea, const char *inBuf, int64 hint_itCnt, ushort *itSz, qstring *result)
+bool decrypt_string(vdui_t *vu, ea_t dec_ea, const char *inBuf, int64 hint_itCnt, ushort *itSz, qstring *result, bool immConst)
 {
   int64 maxLenBytes = hint_itCnt * (1LL << *itSz);
   int64 itCnt = hint_itCnt;
@@ -728,7 +744,7 @@ bool decrypt_string(vdui_t *vu, ea_t dec_ea, const char *inBuf, int64 hint_itCnt
     warning("[hrt] decrypt error: %s\n", error.c_str());
     return false;
   }
-  return decr_done(vu, dec_ea, &decrbuf[0], len, result);
+  return decr_done(vu, dec_ea, &decrbuf[0], len, result, immConst);
 }
 
 bool decr_string_4appcall(ea_t dec_ea, const char *inBuf, int64 itCnt, ea_t keyEa, size_t keyLen, qstring *result, qstring *error)

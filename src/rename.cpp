@@ -126,10 +126,10 @@ static bool isNameGood2(const char* name)
 // consider "call(a, b)" is equal to assingment "a = b"
 static bool isCallAssignName(const char* name, size_t* left, size_t* right)
 {
-	if (!namecmp(name, "strcpy") ||
-			!namecmp(name, "wcscpy") ||
-			!namecmp(name, "lstrcpy") ||
-			!namecmp(name, "qmemcpy")
+	if (!qstrcmp(name, "strcpy") ||
+			!qstrcmp(name, "wcscpy") ||
+			!qstrcmp(name, "lstrcpy") ||
+			!qstrcmp(name, "qmemcpy")
 			) {
 		*left = 0; *right = 1;
 		return true;
@@ -146,44 +146,49 @@ static bool getCallName(cfunc_t *func, cexpr_t* call, qstring* name)
 	if (!getExpName(func, call->x, &funcname))
 		return false;
 
-	if (funcname.length() < 4) ///!!!!!! later check relay on this
-		return false;
-
-	if (!namecmp(funcname.c_str(), "GetLastError")) {
-		*name = "err";
-		return true;
-	}
+	stripName(&funcname);
 
 	size_t get = funcname.find("__get");
-	if(get != qstring::npos && funcname.length() - get > 7 ) { //  strlen("::get") + 2
-		*name = funcname.substr(get + 5);
+	if(get != qstring::npos && funcname.length() > get + 7 ) { //  strlen("::get") + 2
+		size_t cnt = 5;
+		if(funcname[get + cnt] == '_') // strip '_' after "get" too
+			++cnt;
+		*name = funcname.substr(get + cnt);
+		//stripName(name); // is it need here?
 		return true;
 	}
 
 	carglist_t &args = *call->a;
+
+	if (args.size() == 0 && funcname == "GetLastError") {
+		*name = "err";
+		return true;
+	}
+
 	if (!args.size())
 		return false;
 
-	if (!namecmp(funcname.c_str(), "LoadLibrary") || !namecmp(funcname.c_str(), "GetModuleHandle") || !namecmp(funcname.c_str(), "dlopen")) {
+	// non zero args below //////////////////
+
+	if (args.size() >= 1 && (funcname == "LoadLibrary" || funcname == "GetModuleHandle" || funcname == "dlopen")) {
 		qstring argName;
-		if (args.size() >= 1 && getExpName(func, &args[0], &argName)) {
+		if (getExpName(func, &args[0], &argName)) {
 			*name = "h";
 			*name += argName;
 			return true;
 		}
+		return false;
 	}
-	else if (!namecmp(funcname.c_str(), "GetProcAddress") || !namecmp(funcname.c_str(), "dlsym")) {
-		if (args.size() >= 2 && getExpName(func, &args[1], name))
-			return true;
-	}
-	else if (!namecmp(funcname.c_str(), "strdup") || !namecmp(funcname.c_str(), "wcsdup")) {
-		if (args.size() == 1 && getExpName(func, &args[0], name))
-			return true;
-	}
-	else if (!namecmp(funcname.c_str() + 4, "code_pointer") || !namecmp(funcname.c_str() + 2, "codePointer")) {
-		if (args.size() == 1 && getExpName(func, &args[0], name))
-			return true;
-	}
+
+	if (args.size() >= 2 && (funcname == "GetProcAddress" || funcname == "dlsym"))
+		return getExpName(func, &args[1], name);
+
+	if (args.size() == 1 &&
+			(funcname == "strdup"
+			 || funcname == "wcsdup"
+			 || (funcname.length() == 16 && !qstrcmp(funcname.c_str() + 4, "code_pointer"))
+			 || (funcname.length() == 13 && !qstrcmp(funcname.c_str() + 2, "codePointer"))))
+		return getExpName(func, &args[0], name);
 
 	return false;
 }
@@ -216,7 +221,7 @@ static bool getEaName(ea_t ea, qstring* name)
 	if (has_user_name(flg) || has_auto_name(flg)) {
 		qstring n;
 		get_ea_name(&n, ea);
-		if(!stristr(n.c_str(), VTBL_SUFFIX)) { // avoid renaming derived class vtbl by the base class assingnmen in ctor/dtor
+		if(!stristr(n.c_str(), VTBL_SUFFIX)) { // avoid renaming derived class vtbl to base one by the redundant assignment in ctor/dtor
 			if (name) {
 				*name = n;
 				stripName(name);
@@ -903,8 +908,11 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			bool bCallAssign = false;
 			qstring anL, anR;
 			size_t  iL, iR;
-			if(!callProcName.empty() && isCallAssignName(callProcName.c_str(), &iL, &iR))
-				bCallAssign = true;
+			if(!callProcName.empty()) {
+				stripName(&callProcName);
+				if(isCallAssignName(callProcName.c_str(), &iL, &iR))
+					bCallAssign = true;
+			}
 
 			tif.remove_ptr_or_array();
 			if(tif.is_decl_func()) {
@@ -1075,12 +1083,18 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			if (stmtCnt <= 1 && callCnt == 1 && has_dummy_name(get_flags(func->entry_ea))) {
 				if (!callProcName.empty() && strncmp(callProcName.c_str(), "psub_", 5)) {
 					qstring newName = callProcName;
-					if (newName.size() > MAX_NAME_LEN - 1)
-						newName.resize(MAX_NAME_LEN - 1);
-					newName.append('_');
-					if (validate_name(&newName, VNT_IDENT) && set_name(func->entry_ea, newName.c_str(), SN_AUTO | SN_NOWARN | SN_FORCE)) {
-						make_name_auto(func->entry_ea);
-						msg("[hrt] %s was renamed to \"%s\"\n", funcname.c_str(), newName.c_str());
+					if (newName.size() > MAX_NAME_LEN - 4)
+						newName.resize(MAX_NAME_LEN - 4);
+					if(validate_name(&newName, VNT_IDENT)) {
+						const type_t *type;
+						if(get_named_type(NULL, newName.c_str(), 0, &type) && is_type_func(*type))
+							newName.append("_wrp"); // '_' in the end may be bad because IDA strips last '_' when checks the funcName is a libName and set a wrong type for this wrapper function
+						else
+							newName.append('_');
+						if (set_name(func->entry_ea, newName.c_str(), SN_AUTO | SN_NOWARN | SN_FORCE)) {
+							make_name_auto(func->entry_ea);
+							msg("[hrt] %s was renamed to \"%s\"\n", funcname.c_str(), newName.c_str());
+						}
 					}
 				}
 			}

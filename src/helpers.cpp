@@ -195,6 +195,7 @@ void stripNum(qstring* name)
 	}
 }
 
+//consider usage stripName + qstrcmp instead of namecmp
 int namecmp(const char* name, const char* cmpWith)
 {
 	size_t len = qstrlen(name);

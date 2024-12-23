@@ -18,6 +18,6 @@
 */
 
 #pragma once
-bool decrypt_string(vdui_t *vu, ea_t dec_ea, const char* inBuf, int64 hint_len, ushort *itSz, qstring* result);
+bool decrypt_string(vdui_t *vu, ea_t dec_ea, const char* inBuf, int64 hint_len, ushort *itSz, qstring* result, bool immConst = false);
 bool decr_init(int64 *itCnt, ushort *itSz);
 bool decr_string_4appcall(ea_t dec_ea, const char *inBuf, int64 len, ea_t keyEa, size_t keyLen, qstring *result, qstring *error);

@@ -224,14 +224,11 @@ void com_make_data_cb(ea_t ea, flags64_t flags, tid_t tid, asize_t len)
 
 static bool isCreateInstanceCall(const char* name, size_t *iRiid, size_t *ipObj, size_t *nArgs)
 {
-	if (!namecmp(name, "CoCreateInstance") ||
-		!namecmp(name, "CoGetClassObject")) {
+	if (!qstrcmp(name, "CoCreateInstance") || !qstrcmp(name, "CoGetClassObject")) {
 		*iRiid = 3; *ipObj = 4; *nArgs = 5;
 		return true;
 	}
-	if (!namecmp(name, "CreateInstance") ||
-        !namecmp(name, "CLRCreateInstance") ||
-        !namecmp(name, "QueryInterface")) {
+	if (!qstrcmp(name, "CreateInstance") || !qstrcmp(name, "CLRCreateInstance") || !qstrcmp(name, "QueryInterface")) {
 		*iRiid = 1; *ipObj = 2; *nArgs = 3;
 		return true;
 	}
