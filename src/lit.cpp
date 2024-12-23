@@ -655,20 +655,20 @@ bool lit_overrideTypes()
 
 void lit_init()
 {
-	qstring litfname = idadir(PLG_SUBDIR);
-	litfname += "/literal.txt";
-	linput_t *litfile = open_linput(litfname.c_str(), false);
-	if (!litfile) {
-		msg("[hrt] Can't open '%s', enum autoresolve is turned off\n", litfname.c_str());
-		return;
+	char litfname[QMAXPATH];
+	if(getsysfile(litfname, 4096, "literal.txt", PLG_SUBDIR)) {
+		linput_t *litfile = open_linput(litfname, false);
+		if (litfile) {
+			lit = new literal_db();
+			bool ld = lit->load(litfile);
+			close_linput(litfile);
+			if (ld)
+				return;
+			delete lit;
+			lit = NULL;
+		}
 	}
-
-	lit = new literal_db();
-	if (!lit->load(litfile)) {
-		delete lit;
-		lit = NULL;
-	}
-	close_linput(litfile);
+	msg("[hrt] Error loading '%s', enum autoresolve is turned off\n", litfname);
 }
 
 void lit_done()
