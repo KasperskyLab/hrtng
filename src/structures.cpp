@@ -16,6 +16,8 @@
 asize_t struct_get_member(tid_t strId, asize_t offset, tid_t* last_member, tidvec_t* trace, asize_t adjust)
 {
 	struc_t *str = get_struc(strId);
+	if(!str)
+		return 0;
 	asize_t strctSz = get_struc_size(str);
 	if (strctSz <= offset) {
 		member_t* lm = get_member_by_id(*last_member);
@@ -140,23 +142,15 @@ void add_vt_member(tinfo_t struc, ea_t offset, const char* name, const tinfo_t &
 	udm.offset = offset * 8;
 	udm.size = is64bit() ? 8 * 8 : 4 * 8;
 	udm.type = type;
-	udm.name = name;
+	udm.name = good_udm_name(struc, name);
 	udm.cmt = comment;
-	if (struc.add_udm(udm, ETF_AUTONAME | ETF_MAY_DESTROY) != TERR_OK) {
-		int index = struc.find_udm((uint64)offset);
-		if (index == -1)
+	if (struc.add_udm(udm, ETF_AUTONAME) != TERR_OK) {
+		// probably already exist
+		int index = struc.find_udm(udm.offset);
+		if (index < 0)
 			return;
-		if (struc.rename_udm(index, name) != TERR_OK) {
-			for (int i = 1; i < 100; i++) {
-				qstring newName = name;
-				newName.cat_sprnt("_%d", i);
-				if (struc.find_udm(newName.c_str()) == -1) {
-					struc.rename_udm(index, newName.c_str());
-					break;
-				}
-			}
-		}
-		struc.set_udm_type(index, type, ETF_COMPATIBLE);
+		struc.rename_udm(index, udm.name.c_str());
+		struc.set_udm_type(index, udm.type);
 		struc.set_udm_cmt(index, comment);
 	}
 }
@@ -299,7 +293,6 @@ int create_VT(tid_t parent, ea_t VT_ea)
 		|| !struc.is_struct()
 		|| !struc.get_type_name(&name))
 		return 0;
-
 #endif //IDA_SDK_VERSION < 900
 
 	qstring name_VT = name + VTBL_SUFFIX;

@@ -158,6 +158,12 @@ static bool getCallName(cfunc_t *func, cexpr_t* call, qstring* name)
 		return true;
 	}
 
+	size_t ctor = funcname.find("::ctor");
+	if(ctor != qstring::npos && ctor != 0) {
+		*name = funcname.substr(0, ctor);
+		return true;
+	}
+
 	carglist_t &args = *call->a;
 
 	if (args.size() == 0 && funcname == "GetLastError") {
@@ -417,7 +423,7 @@ static bool renameUdtMemb(ea_t refea, const char* funcname, tinfo_t type, uint32
 	int midx = type.find_udm(&memb, STRMEM_AUTO);
 	if(-1 == midx) {
 		qstring typeStr;
-		type.print(&typeStr);
+		type.get_type_name(&typeStr);
 		msg("[hrt] renameUdtMemb no %x offset inside \"%s\"\n", offset, typeStr.c_str());
 		return false;
 	}
@@ -433,40 +439,21 @@ static bool renameUdtMemb(ea_t refea, const char* funcname, tinfo_t type, uint32
 	}
 #endif
 
-	qstring newName = *name;
-	if (newName.size() > MAX_NAME_LEN)
-		newName.resize(MAX_NAME_LEN);
-	if(!validate_name(&newName, VNT_UDTMEM)) {
-		msg("[hrt] FIXME: renameUdtMemb(%a, ..., \"%s\")\n", refea, newName.c_str());
-		return false;
-	}
-
-	//check if type already has such name
-	qstring basename = newName;
-	for(int i = 0; i < 20; i++) {
-		udm_t m;
-		m.name = newName;
-		if(-1 == type.find_udm(&m, STRMEM_NAME)) {
-			qstring oldName;
-			type.print(&oldName);
-			oldName.append('.');
-			oldName.append(memb.name);
+	qstring newName = good_udm_name(type, name->c_str());
+	qstring oldName;
+	type.get_type_name(&oldName);
+	oldName.append('.');
+	oldName.append(memb.name);
 #if IDA_SDK_VERSION >= 900
-			if(TERR_OK == type.rename_udm(midx, newName.c_str())) {
+	if(TERR_OK == type.rename_udm(midx, newName.c_str())) {
 #else //IDA_SDK_VERSION < 900
-			struc_t* st = get_member_struc(oldName.c_str());
-			if(st && set_member_name(st, offset, newName.c_str())) {
+	struc_t* st = get_member_struc(oldName.c_str());
+	if(st && set_member_name(st, offset, newName.c_str())) {
 #endif //IDA_SDK_VERSION >= 900
-				msg("[hrt] %a %s: struct \"%s\" member at 0x%x was renamed to %s\n", refea, funcname, oldName.c_str(), offset, newName.c_str());
-				return true;
-			}
-			//msg("[hrt] renameUdtMemb fail%d (struct \"%s\" member at 0x%x)\n", st ? 1 : 0, typeStr.c_str(), offset);
-			return false;
-		}
-		newName = basename;
-		newName.cat_sprnt("_%d", i + 1);
+		msg("[hrt] %a %s: struct \"%s\" member at 0x%x was renamed to %s\n", refea, funcname, oldName.c_str(), offset, newName.c_str());
+		return true;
 	}
-	//msg("[hrt] renameUdtMemb fail2\n");
+	msg("[hrt] %a %s: fail rename struct member \"%s\" at 0x%x to %s\n", refea, funcname, oldName.c_str(), offset, newName.c_str());
 	return false;
 }
 

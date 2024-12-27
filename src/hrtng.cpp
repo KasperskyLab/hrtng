@@ -1320,6 +1320,71 @@ bool set_membr_type(vdui_t * vu, tinfo_t *ts)
 	return set_membr_type(struc, member, ts);
 }
 #else //IDA_SDK_VERSION >= 900
+bool set_membr_type(tinfo_t& struc, int idx, udm_t& member, tinfo_t *newType)
+{
+	asize_t mbsz = member.size / 8;
+	asize_t nsz = 0;
+	if(!struc.is_from_subtil()) {
+		//if new type is smaller then old one - do delete member and re-create field
+		switch(newType->get_decltype()) {
+		case BT_UNK_OWORD:
+		case BTF_INT128:
+		case BTF_UINT128:
+		case BT_INT128: nsz =16; break;
+		case BT_UNK_QWORD:
+		case BTF_INT64:
+		case BTF_UINT64:
+		case BT_INT64: nsz = 8; break;
+		case BT_UNK_DWORD:
+		case BTF_INT32:
+		case BTF_UINT32:
+		case BT_INT32: nsz = 4; break;
+		case BT_UNK_WORD:
+		case BTF_INT16:
+		case BTF_UINT16:
+		case BT_INT16: nsz = 2; break;
+		case BT_UNK_BYTE:
+		case BTF_INT8:
+		case BTF_UINT8:
+		case BTF_CHAR:
+		case BT_INT8:  nsz = 1; break;
+		default:       nsz = 0; break;
+		}
+		if(nsz && nsz < mbsz && (mbsz % nsz == 0)) {
+			asize_t fo = member.offset / 8;
+			qstring fname = member.name;
+			if (struc.del_udm(struc.find_udm(member.offset)) == TERR_OK) {
+				while(1) {
+					udm_t udm;
+					udm.offset = fo * 8;
+					udm.size =  nsz * 8;
+					udm.name = fname;
+					create_type_from_size(&udm.type, nsz);
+					if(TERR_OK != struc.add_udm(udm))
+						break;
+					mbsz -= nsz;
+					if (mbsz <= 0)
+						break;
+					fo   += nsz;
+					fname = good_udm_name(struc, "field_%a", fo);
+				}
+				return true;
+			}
+		}
+	}
+	if(TERR_OK == struc.set_udm_type(idx, *newType))
+		return true;
+
+	qstring oldtype; member.type.print(&oldtype);
+	qstring newTypeS; newType->print(&newTypeS);
+	qstring sname; struc.get_type_name(&sname);
+	int answer = ask_yn(ASKBTN_NO, "[hrt] Change type of '%s.%s'\n from '%s' to '%s'\n may destroy other members.\n Confirm?", sname.c_str(), member.name.c_str(), oldtype.c_str(), newTypeS.c_str());
+	if(answer == ASKBTN_NO || answer ==ASKBTN_CANCEL)
+		return false;
+
+	return (TERR_OK == struc.set_udm_type(idx, *newType, ETF_MAY_DESTROY));
+}
+
 bool set_membr_type(vdui_t* vu, tinfo_t* t)
 {
 	udm_t udm;
@@ -1328,7 +1393,7 @@ bool set_membr_type(vdui_t* vu, tinfo_t* t)
 	int idx = vu->item.get_udm(&udm, &parent, &offset);
 	if (idx < 0)
 		return false;
-	return parent.set_udm_type(idx, *t, ETF_MAY_DESTROY) == TERR_OK;
+	return set_membr_type(parent, idx, udm, t);
 }
 #endif //IDA_SDK_VERSION < 900
 
@@ -1473,7 +1538,7 @@ ACT_DEF(convert_gap)
 				udm_t udm;
 				udm.offset = gapOff * 8;
 				udm.size = (fldOff - gapOff) * 8;
-				udm.name.sprnt("gap%X", gapOff);
+				udm.name = good_udm_name(ts, "gap%X", gapOff);
 				create_type_from_size(&udm.type, fldOff - gapOff);
 				ts.add_udm(udm);
 			}
@@ -1484,7 +1549,7 @@ ACT_DEF(convert_gap)
 				udm_t udm;
 				udm.offset = gapOff * 8;
 				udm.size = gapSz * 8;
-				udm.name.sprnt("gap%X", gapOff);
+				udm.name = good_udm_name(ts, "gap%X", gapOff);
 				create_type_from_size(&udm.type, gapSz);
 				ts.add_udm(udm);
 			}
@@ -1493,9 +1558,11 @@ ACT_DEF(convert_gap)
 	udm_t udm;
 	udm.offset = fldOff * 8;
 	udm.size = fldType.get_size() * 8;
-	udm.name.sprnt("field_%X", fldOff);
+	udm.name = good_udm_name(ts, "field_%X", fldOff);
 	udm.type = fldType;
-	ts.add_udm(udm, ETF_MAY_DESTROY);
+	tinfo_code_t c = ts.add_udm(udm, ETF_MAY_DESTROY);
+	if(c != TERR_OK)
+		msg("[hrt] convert_gap %s err %d\n", udm.name.c_str(), c);
 #endif //IDA_SDK_VERSION < 900
 	vu->refresh_view(false);
 	return 0;
@@ -4090,8 +4157,11 @@ bool idaapi countStrucMembersCB(tinfo_t t, qstring& fullname, size_t index, void
 
 bool idaapi renameStrucMembersCB(tinfo_t t, qstring& fullname, size_t index, void* new_name)
 {
-	if (t.rename_udm(index, (const char*)new_name) == TERR_OK)
-		msg("[hrt] struc member '%s' renamed to '%s'\n", fullname.c_str(), new_name);
+	qstring nn = good_udm_name(t, (const char*)new_name);
+	if (t.rename_udm(index, nn.c_str()) == TERR_OK)
+		msg("[hrt] struc member '%s' renamed to '%s'\n", fullname.c_str(), nn.c_str());
+	else
+		warning("[hrt] fail rename struc member '%s' to '%s'\nit seems bad name, press 'Ctrl-Z' and try again", fullname.c_str(), nn.c_str());
 	return false;
 }
 
@@ -4221,9 +4291,9 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 		if (!t.empty()) {
 			int index = struc.find_udm(udm->offset);
 			if (index  != -1) {
-				tinfo_code_t code = struc.set_udm_type(index, t, ETF_COMPATIBLE | ETF_BYTIL);
+				tinfo_code_t code = struc.set_udm_type(index, t);
 				if (code != TERR_OK && ASKBTN_YES == ask_yn(ASKBTN_NO, "[hrt] Set member type of '%s.%s' may destroy other members,\nConfirm?", udtname, newname))
-					code = struc.set_udm_type(index, t, ETF_MAY_DESTROY | ETF_BYTIL);
+					code = struc.set_udm_type(index, t, ETF_MAY_DESTROY);
 				if (code == TERR_OK)
 					msg("[hrt] type of '%s.%s' refreshed\n", udtname, newname);
 			}
@@ -4424,7 +4494,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "1.1.15";
+	addon.version = "1.1.16";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;

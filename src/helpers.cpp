@@ -206,6 +206,27 @@ int namecmp(const char* name, const char* cmpWith)
 	return strncmp(name, cmpWith, len);
 }
 
+qstring good_udm_name(tinfo_t struc, const char *format, ...)
+{
+	qstring name;
+	va_list va;
+	va_start(va, format);
+	name.vsprnt(format, va);
+	va_end(va);
+
+	if (name.size() > inf_get_max_autoname_len() - 3)
+		name.resize(inf_get_max_autoname_len() - 3);
+	validate_name(&name, VNT_UDTMEM);
+
+	udm_t m;
+	m.name = name;
+	int i = 1;
+	while(struc.find_udm(&m, STRMEM_NAME) >= 0 && i < 100) {
+		m.name.sprnt("%s_%d", name.c_str(), i++);
+	}
+	return m.name;
+}
+
 void patch_str(ea_t ea, const char *str, sval_t len, bool bZeroTerm)
 {
 	if (!len)
