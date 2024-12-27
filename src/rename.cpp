@@ -559,6 +559,10 @@ bool getExpName(cfunc_t *func, cexpr_t* exp, qstring* name, bool derefPtr /* =fa
 	return res;
 }
 
+bool isRenameble(ctype_t ct)
+{
+	return (ct == cot_var || ct == cot_obj || ct == cot_memptr || ct == cot_memref);
+}
 
 bool renameExp(ea_t refea, const char* funcname, cfunc_t *func, cexpr_t* exp, qstring* name, vdui_t *vdui, bool derefPtr /*= false*/)
 {
@@ -566,8 +570,7 @@ bool renameExp(ea_t refea, const char* funcname, cfunc_t *func, cexpr_t* exp, qs
 	if(exp->op == cot_cast)
 		exp = exp->x;
 
-	if(derefPtr && exp->op == cot_ref &&
-			(exp->x->op == cot_var || exp->x->op == cot_obj || exp->x->op == cot_memptr || exp->x->op == cot_memref)) {
+	if(derefPtr && exp->op == cot_ref && isRenameble(exp->x->op)) {
 		if (name->length() > 2 && name->at(0) == 'p' && name->at(1) == '_') {
 			name->remove(0, 2);
 		} else {

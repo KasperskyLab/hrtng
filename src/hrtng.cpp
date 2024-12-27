@@ -1085,8 +1085,7 @@ static bool is_cast_assign(vdui_t *vu, tinfo_t * ts)
 		return false;
 
 	cexpr_t * var = vu->item.e;
-	if (var->op != cot_var && var->op != cot_obj &&
-		var->op != cot_memptr && var->op != cot_memref)
+	if (!isRenameble(var->op))
 		return false;
 		
 	citem_t * asg_ci = vu->cfunc->body.find_parent_of(var);
@@ -1135,8 +1134,7 @@ static bool is_cast_var(vdui_t *vu, tinfo_t * ts)
 		return false;
 
 	cexpr_t * var = vu->item.e;
-	if (var->op != cot_var && var->op != cot_obj &&
-		var->op != cot_memptr && var->op != cot_memref)
+	if(!isRenameble(var->op))
 		return false;
 
 	citem_t * cast_ci = vu->cfunc->body.find_parent_of(var);
@@ -2122,15 +2120,22 @@ ACT_DEF(create_dummy_struct)
 	msg("[hrt] struct '%s' was created\n", name.c_str());
 
 	if(vu) {
-		qstring callname;
 		cexpr_t *call;
-		if(is_call(vu, &call) && getExpName(vu->cfunc, call->x, &callname)) {
-			cexpr_t* asgn = get_assign_or_helper(vu, call, false);
-			if(asgn && (stristr(callname.c_str(), "alloc") || callname == "??2@YAPAXI@Z")) {
-				if(renameExp(asgn->ea, "", vu->cfunc, asgn->x, &name, vu)) {
-					return 1;//vu->refresh_view(true);
-				}
+		if(is_call(vu, &call)) {
+			qstring callname;
+			if(getExpName(vu->cfunc, call->x, &callname)) {
+				cexpr_t* asgn = get_assign_or_helper(vu, call, false);
+				if(asgn && (stristr(callname.c_str(), "alloc") || callname == "??2@YAPAXI@Z"))
+					if(renameExp(asgn->ea, "", vu->cfunc, asgn->x, &name, vu))
+						return 1;//vu->refresh_view(true);
 			}
+		} else {
+			qstring n;
+			if(vu->item.is_citem() &&
+				 isRenameble(vu->item.e->op) &&
+				 !getExpName(vu->cfunc, vu->item.e, &n) &&
+				 renameExp(vu->item.e->ea, "", vu->cfunc, vu->item.e, &name, vu))
+				 return 1;//vu->refresh_view(true);
 		}
 	}
 	return 0;
