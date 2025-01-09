@@ -31,7 +31,7 @@ Notes:
 - Block ciphers `Key` and `IV` may be specified as:
   + address or a name in the database (ex: `0x4013E6`, `my_key`)
   + 'string' surrounded by single quote (') symbols (ex: `'my secret key'`)
-  + unspaced hex-string without prefix (ex: `6D7920736563726574206B6579`)
+  + hex-string without prefix (ex: `6D7920736563726574206B6579`, `55 AA BB CC`)
 - Look in the "Output Window" if something went wrong.
 
 ### Decrypt string
