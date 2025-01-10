@@ -135,7 +135,7 @@ void create_type_from_size(tinfo_t* t, asize_t size);
 void stripName(qstring* name);
 void stripNum(qstring* name);
 int namecmp(const char* name, const char* cmpWith);
-qstring good_udm_name(tinfo_t struc, const char *format, ...);
+qstring good_udm_name(const tinfo_t &struc, const char *format, ...);
 
 void patch_str(ea_t ea, const char *str, sval_t len, bool forceZeroTerm = false);
 void patch_wstr(ea_t ea, const char *str, sval_t len);

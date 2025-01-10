@@ -59,8 +59,8 @@
 hexdsp_t *hexdsp = NULL;
 #endif //IDA_SDK_VERSION < 760
 
-bool is_call(vdui_t *vu, cexpr_t **call);
-bool is_recastable(vdui_t *vu, tinfo_t * ts);
+bool is_call(vdui_t *vu, cexpr_t **call = nullptr, bool argsDeep = false);
+bool is_recastable(vdui_t *vu);
 bool is_stack_var_assign(vdui_t *vu, int* varIdx, ea_t *ea, sval_t* size);
 bool is_array_char_assign(vdui_t *vu, int* varIdx, ea_t *ea);
 bool is_decryptable_obj(vdui_t *vu, ea_t *ea);
@@ -95,14 +95,14 @@ ACT_DECL(jmp2xref, return ((ctx->widget_type == BWN_DISASM || ctx->widget_type =
 
 //dynamically attached actions
 #if IDA_SDK_VERSION < 900
-ACT_DECL(convert_to_golang_call , AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
+ACT_DECL(convert_to_golang_call, AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
 #endif // IDA_SDK_VERSION < 900
 ACT_DECL(convert_to_usercall , AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
-ACT_DECL(jump_to_indirect_call  , AST_ENABLE_FOR(is_call(vu, NULL)))
-ACT_DECL(zeal_doc_help       , AST_ENABLE_FOR(is_call(vu, NULL)))
+ACT_DECL(jump_to_indirect_call  , AST_ENABLE_FOR(is_call(vu)))
+ACT_DECL(zeal_doc_help       , AST_ENABLE_FOR(is_call(vu)))
 ACT_DECL(add_VT              , AST_ENABLE_FOR(is_VT_assign(vu, NULL, NULL)));
 ACT_DECL(add_VT_struct       , return ((ctx->widget_type != BWN_DISASM) ? AST_DISABLE_FOR_WIDGET : (((is_data(get_flags(ctx->cur_ea)) && is_func(get_flags(get_ea(ctx->cur_ea))))) ? AST_ENABLE : AST_DISABLE)))
-ACT_DECL(recast_item             ,  AST_ENABLE_FOR(is_recastable(vu, NULL)))
+ACT_DECL(recast_item             ,  AST_ENABLE_FOR(is_recastable(vu)))
 ACT_DECL(scan_stack_string       , AST_ENABLE_FOR(is_stack_var_assign(vu, NULL, NULL, NULL)))
 ACT_DECL(scan_stack_string_n_decr, AST_ENABLE_FOR(is_stack_var_assign(vu, NULL, NULL, NULL)))
 ACT_DECL(scan_array_string       , AST_ENABLE_FOR(is_array_char_assign(vu, NULL, NULL)))
@@ -177,8 +177,10 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 		attach_action_to_popup(view, p, ACT_NAME(convert_to_golang_call));
 #endif //IDA_SDK_VERSION < 900
 	}
-	if(is_call(vu, NULL))
+	if(is_call(vu)) {
 		attach_action_to_popup(view, p, ACT_NAME(zeal_doc_help));
+		attach_action_to_popup(view, p, ACT_NAME(jump_to_indirect_call));
+	}
 	if(is_VT_assign(vu, NULL, NULL))
 		attach_action_to_popup(view, p, ACT_NAME(add_VT));
 
@@ -187,7 +189,7 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 	else if (is_reincast(vu))
 		attach_action_to_popup(view, p, ACT_NAME(delete_reinterpret_cast));
 
-	if (is_recastable(vu, NULL))
+	if (is_recastable(vu))
 		attach_action_to_popup(view, p, ACT_NAME(recast_item));
 	
 	if (is_stack_var_assign(vu, NULL, NULL, NULL)) {
@@ -206,7 +208,6 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 	}
 	else if (is_gap_field(vu, NULL, NULL))
 		attach_action_to_popup(view, p, ACT_NAME(convert_gap));
-	attach_action_to_popup(view, p, ACT_NAME(jump_to_indirect_call));
 	bool bEnabled;
 	if (hasInlines(vu, &bEnabled)) {
 		if (bEnabled) {
@@ -297,14 +298,8 @@ void hrt_unreg_act()
 
 static int idaapi jump_to_call_dst(vdui_t *vu)
 {
-	if(!vu->item.is_citem())
-		return 0;
-
-	// call => cast => memptr/obj/var
-	const citem_t *call = vu->cfunc->body.find_parent_of(vu->item.e);
-	if(call && call->op == cot_cast)
-		call = vu->cfunc->body.find_parent_of(call);
-	if(!call || call->op != cot_call)
+	cexpr_t *call;
+	if(!is_call(vu, &call))
 		return 0;
 
 	// jump to VT address in struct comment
@@ -359,7 +354,7 @@ static int idaapi jump_to_call_dst(vdui_t *vu)
 		}
 	}
 
-	cexpr_t *callee = ((cexpr_t*)call)->x;
+	cexpr_t *callee = call->x;
 	if(callee->op == cot_cast)
 		callee = callee->x;
 	if(dst_ea == BADADDR && vu->item.e == callee) { //callee is clicked
@@ -537,20 +532,28 @@ void unregister_idc_functions()
 }
 
 //-------------------------------------------------------------------------
-//be aware, is_call returns true if the cursor is inside call's arguments zone too, as well as in callee expression
-bool is_call(vdui_t *vu, cexpr_t **call)
+
+bool is_call(vdui_t *vu, cexpr_t **call /*= nullptr*/, bool argsDeep /*= false*/)
 {
 	if (!vu->item.is_citem())
 		return false;
 
 	citem_t *it = vu->item.it;
-	while (it && it->op <= cot_last) {
-		if(it->op == cot_call) {
-			if(call)
-				*call = (cexpr_t *)it;
-			return true;
-		}
+	if(argsDeep) {
+		//in this mode is_call returns true if the cursor is inside call's arguments zone too, as well as in callee expression
+		while (it && it->op <= cot_last && it->op != cot_call)
+			it = vu->cfunc->body.find_parent_of(it);
+	} else {
+		// if cursor stay on callee expression
+		// call => cast => memptr/obj/var
 		it = vu->cfunc->body.find_parent_of(it);
+		if(it && it->op == cot_cast)
+			it = vu->cfunc->body.find_parent_of(it);
+	}
+	if(it && it->op == cot_call) {
+		if(call)
+			*call = (cexpr_t *)it;
+		return true;
 	}
 	return false;
 }
@@ -1416,7 +1419,7 @@ static int idaapi cast_var2(vdui_t *vu, tinfo_t *ts)
 	return 0;
 }
 
-bool is_recastable(vdui_t *vu, tinfo_t * ts)
+bool is_recastable(vdui_t *vu)
 {
 	return is_cast_var(vu, NULL) || is_cast_assign(vu, NULL);
 }
@@ -2121,7 +2124,7 @@ ACT_DEF(create_dummy_struct)
 
 	if(vu) {
 		cexpr_t *call;
-		if(is_call(vu, &call)) {
+		if(is_call(vu, &call, true)) {
 			qstring callname;
 			if(getExpName(vu->cfunc, call->x, &callname)) {
 				cexpr_t* asgn = get_assign_or_helper(vu, call, false);
@@ -3880,7 +3883,7 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 				break;
 			tinfo_t t = *tinfo;
 			bool isPtr = false;
-			if (t.is_ptr_or_array()) {//do not recurse pounters, else lxe_lvar_name_changed callback change type back to tname*
+			if (t.is_ptr_or_array()) {//do not recurse pointers, else lxe_lvar_name_changed callback change type back to tname*
 				t.remove_ptr_or_array();
 				isPtr = true;
 			}
@@ -4062,6 +4065,7 @@ static ssize_t idaapi idp_callback(void *user_data, int ncode, va_list va)
 			//int flags = va_arg(va, int);
 			if(is_func(get_flags(ea))) {
 				get_ea_name(&funcRename, ea);
+				//stripName(&funcRename);
 				if(!funcRename.empty())
 					funcRenameEa = ea;
 			}
@@ -4087,7 +4091,12 @@ void enumStrucMembers(const char* memberName, enumStrucMembersCB_t cb,  void *us
 				break;
 			qstring membName;
 			get_member_name(&membName, member->id);
-			if(membName == memberName || (membName[0] == 'p' && 0 == qstrcmp(membName.c_str()+1, memberName))) {
+			const char* mn = membName.c_str();
+			if(*mn == 'p')
+				++mn;
+			if(*mn == 0)
+				continue; // skip members w/o name
+			if(!namecmp(mn, memberName)) {
 				if(!cb(struc, member, user_data))
 					break;
 			}
@@ -4127,7 +4136,7 @@ bool idaapi recastStrucMembersCB(struc_t * struc, member_t *member, void *user_d
 }
 #else //IDA_SDK_VERSION >= 900
 //return true to continue struc search for duplicates
-typedef bool idaapi enumStrucMembersCB_t(tinfo_t t, qstring& fullname, size_t index, void* user_data);
+typedef bool idaapi enumStrucMembersCB_t(tinfo_t& t, qstring& fullname, size_t index, void* user_data);
 void enumStrucMembers(const char* memberName, enumStrucMembersCB_t cb, void* user_data)
 {
 	uint32 limit = get_ordinal_limit();
@@ -4135,12 +4144,39 @@ void enumStrucMembers(const char* memberName, enumStrucMembersCB_t cb, void* use
 		return;
 	for (uint32 ord = 1; ord < limit; ++ord) {
 		tinfo_t t;
-		if (t.get_numbered_type(ord, BTF_STRUCT, false) && t.is_decl_struct()) {
+		if (t.get_numbered_type(ord, BTF_STRUCT, true) && t.is_struct()) {
+			//msg(" --- %s ---\n", t.dstr());
+			//It seems there is a bug somewhere. All three ways below may skip members on some structures those IDA perfectly displays
+#if 1
 			udt_type_data_t udt;
 			if (t.get_udt_details(&udt)) {
 				for (size_t i = 0; i < udt.size(); ++i) {
 					udm_t& member = udt.at(i);
-					if (member.name == memberName || (member.name[0] == 'p' && 0 == qstrcmp(member.name.c_str() + 1, memberName))) {
+#elif 0
+			int nmembers = t.get_udt_nmembers();
+			if(nmembers > 0) {
+				for(int i = 0; i < nmembers; ++i) {
+					udm_t member;
+					member.offset = i;
+					msg("  %d", i);
+					if(t.find_udm(&member, STRMEM_INDEX) < 0)
+						break;
+#else
+			{
+				udm_t member;
+				member.size = 1;
+				for(member.offset = 0; member.size != 0; member.offset += member.size) {
+					int i = t.find_udm(&member, STRMEM_LOWBND);
+					if(i < 0)
+						break;
+#endif
+					//msg("  %d %s\n", i, member.name.c_str());
+					const char* mn = member.name.c_str();
+					if(*mn == 'p')
+						++mn;
+					if(*mn == 0)
+						continue; // skip members w/o name
+					if(!namecmp(mn, memberName)) {
 						qstring fullname;
 						t.get_type_name(&fullname); // get_numbered_type_name
 						fullname.append('.');
@@ -4154,13 +4190,13 @@ void enumStrucMembers(const char* memberName, enumStrucMembersCB_t cb, void* use
 	}
 }
 
-bool idaapi countStrucMembersCB(tinfo_t t, qstring& fullname, size_t index, void* cnt)
+bool idaapi countStrucMembersCB(tinfo_t& t, qstring& fullname, size_t index, void* cnt)
 {
 	(*(int*)cnt)++;
 	return false;
 }
 
-bool idaapi renameStrucMembersCB(tinfo_t t, qstring& fullname, size_t index, void* new_name)
+bool idaapi renameStrucMembersCB(tinfo_t& t, qstring& fullname, size_t index, void* new_name)
 {
 	qstring nn = good_udm_name(t, (const char*)new_name);
 	if (t.rename_udm(index, nn.c_str()) == TERR_OK)
@@ -4170,7 +4206,7 @@ bool idaapi renameStrucMembersCB(tinfo_t t, qstring& fullname, size_t index, voi
 	return false;
 }
 
-bool idaapi recastStrucMembersCB(tinfo_t t, qstring& fullname, size_t index, void* user_data)
+bool idaapi recastStrucMembersCB(tinfo_t& t, qstring& fullname, size_t index, void* user_data)
 {
 	tinfo_t* tif = (tinfo_t*)user_data;
 	if (t.set_udm_type(index, *tif) == TERR_OK) {
@@ -4218,9 +4254,8 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 				if (at_atoea(struCmt.c_str(), &vt_ea)) {
 					ea_t subEA = get_ea(vt_ea + mptr->get_soff());
 					if (is_func(get_flags(subEA))) {
-						if(subEA == funcRenameEa) {
-							funcRenameEa = 0; //avoid ping-pong renaming
-						} else if(set_name(subEA, newname, SN_FORCE)) {
+						//avoid recursive renaming
+						if(subEA != funcRenameEa && set_name(subEA, newname, SN_FORCE)) {
 							qstring newGblName = get_name(subEA);
 							//set_member_cmt(mptr, newGblName.c_str(), true);
 							msg("[hrt] %a renamed to %s\n", subEA, newGblName.c_str());
@@ -4281,9 +4316,8 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 			if (at_atoea(struCmt.c_str(), &vt_ea)) {
 				ea_t subEA = get_ea(vt_ea + udm->offset / 8);
 				if (is_func(get_flags(subEA))) {
-					if (subEA == funcRenameEa) {
-						funcRenameEa = 0; //avoid ping-pong renaming
-					}	else if (set_name(subEA, newname, SN_FORCE)) {
+					//avoid recursive renaming
+					if (subEA != funcRenameEa && set_name(subEA, newname, SN_FORCE)) {
 						qstring newGblName = get_name(subEA);
 						msg("[hrt] %a renamed to %s\n", subEA, newGblName.c_str());
 					}
@@ -4376,14 +4410,15 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 					}
 				}
 				if(funcRenameEa == ea && !funcRename.empty()) {
-					//rename VT members too
+					//rename VT members and callbacks too
 					int cnt = 0;
 					enumStrucMembers(funcRename.c_str(), countStrucMembersCB, &cnt);
-					if(!cnt)
-						break;
-					if(cnt > 1 && ASKBTN_YES != ask_yn(ASKBTN_NO, "[hrt] Rename %d struc members?\n%s\nto\n%s", cnt, funcRename.c_str(), new_name))
-						break;
-					enumStrucMembers(funcRename.c_str(), renameStrucMembersCB, (void*)new_name);
+					if(cnt > 0) {
+						if(cnt == 1 || ASKBTN_YES == ask_yn(ASKBTN_NO, "[hrt] Rename %d struc members?\n%s\nto\n%s", cnt, funcRename.c_str(), new_name))
+							enumStrucMembers(funcRename.c_str(), renameStrucMembersCB, (void*)new_name);
+					}
+					//msg("[hrt] %a %s renaming %d members\n", funcRenameEa, funcRename.c_str(), cnt);
+					funcRenameEa = 0; //avoid recursive renaming
 				}
 			}
 			break;
@@ -4397,6 +4432,7 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 			flags64_t ea_fl = get_flags(ea);
 			if(type && is_func(ea_fl) && is_type_func(*type) && tif.deserialize(NULL, &type, &fnames) && tif.is_func()) {
 				qstring funcName = get_name(ea);
+				stripName(&funcName);
 				//set type for VT members too
 				int cnt = 0;
 				enumStrucMembers(funcName.c_str(), countStrucMembersCB, &cnt);
@@ -4499,7 +4535,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "1.1.16";
+	addon.version = "1.1.17";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;

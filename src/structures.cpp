@@ -136,7 +136,7 @@ void add_vt_member(struc_t* sptr, ea_t offset, const char* name, const tinfo_t& 
 
 #else //IDA_SDK_VERSION >= 900
 
-void add_vt_member(tinfo_t struc, ea_t offset, const char* name, const tinfo_t &type, const char* comment)
+void add_vt_member(tinfo_t &struc, ea_t offset, const char* name, const tinfo_t &type, const char* comment)
 {
 	udm_t udm;
 	udm.offset = offset * 8;
@@ -258,7 +258,7 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 			t = make_pointer(t);
 		} else {
 			t = dummy_ptrtype(0, false); //make_pointer & (get_int_type_by_width_and_sign | create_simple_type)
-			msg("[hrt] %a: no type for VTBL member \"%s\"\n", fncea, funcname.c_str());
+			msg("[hrt] %a: set dummy ptr type for VTBL member \"%s\"\n", fncea, funcname.c_str());
 		}
 
 		qstring cmt;

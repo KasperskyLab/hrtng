@@ -382,19 +382,12 @@ bool renameVar(ea_t refea, const char* funcname, cfunc_t *func, ssize_t varIdx, 
 	return res;
 }
 
-static bool getUdtMembName(tinfo_t type, uint32 offset, qstring* name)
+static bool getUdtMembName(tinfo_t udt, uint32 offset, qstring* name)
 {
-//	qstring typeStr;
-//	type.print(&typeStr);
-//	msg("[hrt] getUdtMembName %x of \"%s\"\n", offset, typeStr.c_str());
-
-	type.remove_ptr_or_array();
-	if(!type.is_struct() && !type.is_union()) //t->is_decl_struct()
-		return false;
-
+	udt.remove_ptr_or_array();
 	udm_t memb;
 	memb.offset = offset;
-	if(-1 == type.find_udm(&memb, STRMEM_AUTO))
+	if(-1 == udt.find_udm(&memb, STRMEM_AUTO))
 		return false;
 
 	if(memb.name[0] == 'f') {
@@ -414,17 +407,14 @@ static bool getUdtMembName(tinfo_t type, uint32 offset, qstring* name)
 	return true;
 }
 
-static bool renameUdtMemb(ea_t refea, const char* funcname, tinfo_t type, uint32 offset, qstring* name)
+static bool renameUdtMemb(ea_t refea, const char* funcname, tinfo_t udt, uint32 offset, qstring* name)
 {
-	type.remove_ptr_or_array();
-
+	udt.remove_ptr_or_array();
 	udm_t memb;
 	memb.offset = offset;
-	int midx = type.find_udm(&memb, STRMEM_AUTO);
+	int midx = udt.find_udm(&memb, STRMEM_AUTO);
 	if(-1 == midx) {
-		qstring typeStr;
-		type.get_type_name(&typeStr);
-		msg("[hrt] renameUdtMemb no %x offset inside \"%s\"\n", offset, typeStr.c_str());
+		msg("[hrt] renameUdtMemb no %x offset inside \"%s\"\n", offset, udt.dstr());
 		return false;
 	}
 
@@ -439,13 +429,13 @@ static bool renameUdtMemb(ea_t refea, const char* funcname, tinfo_t type, uint32
 	}
 #endif
 
-	qstring newName = good_udm_name(type, name->c_str());
+	qstring newName = good_udm_name(udt, name->c_str());
 	qstring oldName;
-	type.get_type_name(&oldName);
+	udt.get_type_name(&oldName);
 	oldName.append('.');
 	oldName.append(memb.name);
 #if IDA_SDK_VERSION >= 900
-	if(TERR_OK == type.rename_udm(midx, newName.c_str())) {
+	if(TERR_OK == udt.rename_udm(midx, newName.c_str())) {
 #else //IDA_SDK_VERSION < 900
 	struc_t* st = get_member_struc(oldName.c_str());
 	if(st && set_member_name(st, offset, newName.c_str())) {

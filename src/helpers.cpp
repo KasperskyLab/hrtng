@@ -195,18 +195,24 @@ void stripNum(qstring* name)
 	}
 }
 
-//consider usage stripName + qstrcmp instead of namecmp
 int namecmp(const char* name, const char* cmpWith)
 {
 	size_t len = qstrlen(name);
-	if (len > 2 && name[len - 1] >= '0' && name[len - 1] <= '9' && name[len - 2] == '_')
-		len -= 2;
-	if (len > 1 && (name[len - 1] == 'A' || name[len - 1] == 'W'))
-		--len;
+	if (len > 2) {
+		char last = name[len - 1];
+		if(last >= '0' && last <= '9') {
+			last = name[len - 2];
+			if(last == '_') {
+				len -= 2;
+			} else if (len > 3 && last >= '0' && last <= '9' && name[len - 3] == '_') {
+				len -= 3;
+			}
+		}
+	}
 	return strncmp(name, cmpWith, len);
 }
 
-qstring good_udm_name(tinfo_t struc, const char *format, ...)
+qstring good_udm_name(const tinfo_t &struc, const char *format, ...)
 {
 	qstring name;
 	va_list va;
