@@ -550,7 +550,9 @@ bool is_call(vdui_t *vu, cexpr_t **call /*= nullptr*/, bool argsDeep /*= false*/
 		if(it && it->op == cot_cast)
 			it = vu->cfunc->body.find_parent_of(it);
 	}
-	if(it && it->op == cot_call) {
+	if(it && it->op == cot_call &&
+		 (argsDeep || ((cexpr_t *)it)->x == vu->item.e)) // cursor stay on callee expression
+	{
 		if(call)
 			*call = (cexpr_t *)it;
 		return true;
@@ -2132,14 +2134,13 @@ ACT_DEF(create_dummy_struct)
 					if(renameExp(asgn->ea, "", vu->cfunc, asgn->x, &name, vu))
 						return 1;//vu->refresh_view(true);
 			}
-		} else {
-			qstring n;
-			if(vu->item.is_citem() &&
-				 isRenameble(vu->item.e->op) &&
-				 !getExpName(vu->cfunc, vu->item.e, &n) &&
-				 renameExp(vu->item.e->ea, "", vu->cfunc, vu->item.e, &name, vu))
-				 return 1;//vu->refresh_view(true);
 		}
+		qstring n;
+		if(vu->item.is_citem() &&
+			 isRenameble(vu->item.e->op) &&
+			 !getExpName(vu->cfunc, vu->item.e, &n) &&
+			 renameExp(vu->item.e->ea, "", vu->cfunc, vu->item.e, &name, vu))
+			return 1;//vu->refresh_view(true);
 	}
 	return 0;
 }
@@ -4075,8 +4076,7 @@ static ssize_t idaapi idp_callback(void *user_data, int ncode, va_list va)
 }
 
 #if IDA_SDK_VERSION < 900
-//return true to continue struc search for duplicates
-typedef bool idaapi enumStrucMembersCB_t(struc_t * struc, member_t *member, void *user_data);
+typedef void idaapi enumStrucMembersCB_t(struc_t * struc, member_t *member, void *user_data);
 void enumStrucMembers(const char* memberName, enumStrucMembersCB_t cb,  void *user_data)
 {
 	for(uval_t idx = get_first_struc_idx(); idx != BADNODE; idx = get_next_struc_idx(idx)) {
@@ -4092,35 +4092,29 @@ void enumStrucMembers(const char* memberName, enumStrucMembersCB_t cb,  void *us
 			qstring membName;
 			get_member_name(&membName, member->id);
 			const char* mn = membName.c_str();
-			if(*mn == 'p')
-				++mn;
 			if(*mn == 0)
 				continue; // skip members w/o name
-			if(!namecmp(mn, memberName)) {
-				if(!cb(struc, member, user_data))
-					break;
-			}
+			if(!namecmp(mn, memberName))
+				cb(struc, member, user_data);
 			off = get_struc_next_offset(struc, off);
 		}
 	}
 }
 
-bool idaapi countStrucMembersCB(struc_t * struc, member_t *member, void *cnt)
+void idaapi countStrucMembersCB(struc_t * struc, member_t *member, void *cnt)
 {
 	(*(int*)cnt)++;
-	return false;
 }
 
-bool idaapi renameStrucMembersCB(struc_t * struc, member_t *member, void *new_name)
+void idaapi renameStrucMembersCB(struc_t * struc, member_t *member, void *new_name)
 {
 	qstring oldname;
 	get_member_fullname(&oldname, member->id);
 	if (set_member_name(struc, member->soff, (const char*)new_name))
 		msg("[hrt] struc member '%s' renamed to '%s'\n", oldname.c_str(), new_name);
-	return false;
 }
 
-bool idaapi recastStrucMembersCB(struc_t * struc, member_t *member, void *user_data)
+void idaapi recastStrucMembersCB(struc_t * struc, member_t *member, void *user_data)
 {
 	if(member->eoff - member->soff == ea_size) {
 		tinfo_t *tif = (tinfo_t *)user_data;
@@ -4132,11 +4126,9 @@ bool idaapi recastStrucMembersCB(struc_t * struc, member_t *member, void *user_d
 				msg("[hrt] struc member '%s' recasted to '%s'\n", oldname.c_str(), newType.c_str());
 		  }
 	}
-	return false;
 }
 #else //IDA_SDK_VERSION >= 900
-//return true to continue struc search for duplicates
-typedef bool idaapi enumStrucMembersCB_t(tinfo_t& t, qstring& fullname, size_t index, void* user_data);
+typedef void idaapi enumStrucMembersCB_t(tinfo_t& t, qstring& fullname, size_t index, void* user_data);
 void enumStrucMembers(const char* memberName, enumStrucMembersCB_t cb, void* user_data)
 {
 	uint32 limit = get_ordinal_limit();
@@ -4145,35 +4137,11 @@ void enumStrucMembers(const char* memberName, enumStrucMembersCB_t cb, void* use
 	for (uint32 ord = 1; ord < limit; ++ord) {
 		tinfo_t t;
 		if (t.get_numbered_type(ord, BTF_STRUCT, true) && t.is_struct()) {
-			//msg(" --- %s ---\n", t.dstr());
-			//It seems there is a bug somewhere. All three ways below may skip members on some structures those IDA perfectly displays
-#if 1
 			udt_type_data_t udt;
 			if (t.get_udt_details(&udt)) {
 				for (size_t i = 0; i < udt.size(); ++i) {
 					udm_t& member = udt.at(i);
-#elif 0
-			int nmembers = t.get_udt_nmembers();
-			if(nmembers > 0) {
-				for(int i = 0; i < nmembers; ++i) {
-					udm_t member;
-					member.offset = i;
-					msg("  %d", i);
-					if(t.find_udm(&member, STRMEM_INDEX) < 0)
-						break;
-#else
-			{
-				udm_t member;
-				member.size = 1;
-				for(member.offset = 0; member.size != 0; member.offset += member.size) {
-					int i = t.find_udm(&member, STRMEM_LOWBND);
-					if(i < 0)
-						break;
-#endif
-					//msg("  %d %s\n", i, member.name.c_str());
 					const char* mn = member.name.c_str();
-					if(*mn == 'p')
-						++mn;
 					if(*mn == 0)
 						continue; // skip members w/o name
 					if(!namecmp(mn, memberName)) {
@@ -4181,8 +4149,7 @@ void enumStrucMembers(const char* memberName, enumStrucMembersCB_t cb, void* use
 						t.get_type_name(&fullname); // get_numbered_type_name
 						fullname.append('.');
 						fullname.append(member.name);
-						if (!cb(t, fullname, i, user_data))
-							break;
+						cb(t, fullname, i, user_data);
 					}
 				}
 			}
@@ -4190,23 +4157,21 @@ void enumStrucMembers(const char* memberName, enumStrucMembersCB_t cb, void* use
 	}
 }
 
-bool idaapi countStrucMembersCB(tinfo_t& t, qstring& fullname, size_t index, void* cnt)
+void idaapi countStrucMembersCB(tinfo_t& t, qstring& fullname, size_t index, void* cnt)
 {
 	(*(int*)cnt)++;
-	return false;
 }
 
-bool idaapi renameStrucMembersCB(tinfo_t& t, qstring& fullname, size_t index, void* new_name)
+void idaapi renameStrucMembersCB(tinfo_t& t, qstring& fullname, size_t index, void* new_name)
 {
 	qstring nn = good_udm_name(t, (const char*)new_name);
 	if (t.rename_udm(index, nn.c_str()) == TERR_OK)
 		msg("[hrt] struc member '%s' renamed to '%s'\n", fullname.c_str(), nn.c_str());
 	else
 		warning("[hrt] fail rename struc member '%s' to '%s'\nit seems bad name, press 'Ctrl-Z' and try again", fullname.c_str(), nn.c_str());
-	return false;
 }
 
-bool idaapi recastStrucMembersCB(tinfo_t& t, qstring& fullname, size_t index, void* user_data)
+void idaapi recastStrucMembersCB(tinfo_t& t, qstring& fullname, size_t index, void* user_data)
 {
 	tinfo_t* tif = (tinfo_t*)user_data;
 	if (t.set_udm_type(index, *tif) == TERR_OK) {
@@ -4214,7 +4179,6 @@ bool idaapi recastStrucMembersCB(tinfo_t& t, qstring& fullname, size_t index, vo
 		tif->print(&newType);
 		msg("[hrt] struc member '%s' recasted to '%s'\n", fullname.c_str(), newType.c_str());
 	}
-	return false;
 }
 #endif //IDA_SDK_VERSION < 900
 
@@ -4432,7 +4396,7 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 			flags64_t ea_fl = get_flags(ea);
 			if(type && is_func(ea_fl) && is_type_func(*type) && tif.deserialize(NULL, &type, &fnames) && tif.is_func()) {
 				qstring funcName = get_name(ea);
-				stripName(&funcName);
+				//stripName(&funcName);
 				//set type for VT members too
 				int cnt = 0;
 				enumStrucMembers(funcName.c_str(), countStrucMembersCB, &cnt);
@@ -4535,7 +4499,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "1.1.17";
+	addon.version = "1.1.18";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;

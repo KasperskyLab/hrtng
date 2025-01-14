@@ -241,7 +241,6 @@ static bool getEaName(ea_t ea, qstring* name)
 		qstring n = get_name(ea);
 		if(!strncmp(n.c_str(), "sub_", 4)) {
 			if(name) {
-				//n.insert('p');
 				*name = n;
 			}
 			return true;
@@ -1061,7 +1060,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			
 			//rename func itself if it has dummy name and only one statement inside
 			if (stmtCnt <= 1 && callCnt == 1 && has_dummy_name(get_flags(func->entry_ea))) {
-				if (!callProcName.empty() && strncmp(callProcName.c_str(), "psub_", 5)) {
+				if (!callProcName.empty() && strncmp(callProcName.c_str(), "sub_", 4)) {
 					qstring newName = callProcName;
 					if (newName.size() > MAX_NAME_LEN - 4)
 						newName.resize(MAX_NAME_LEN - 4);
