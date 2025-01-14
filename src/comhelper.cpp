@@ -285,9 +285,7 @@ bool chkCall(cexpr_t *call, qstring &comment)
 		has_func_type_data = true;
 
 
-	cexpr_t *argRiid = &args[iRiid];
-	if (argRiid->op == cot_cast) //ignore typecast
-		argRiid = argRiid->x;
+	cexpr_t *argRiid = skipCast(&args[iRiid]);
 	if (argRiid->op == cot_ref) // skip ref
 		argRiid = argRiid->x;
 	//try getExpType(func, arg);
@@ -303,9 +301,7 @@ bool chkCall(cexpr_t *call, qstring &comment)
 			if (isGUIDtype(oeaType)) {
 				qstring tname;
 				if (com_find_guid_type(argRiid_oea, flg, &tname)) {
-					cexpr_t *argObj = &args[ipObj];
-					if (argObj->op == cot_cast) //ignore typecast
-						argObj = argObj->x;
+					cexpr_t *argObj = skipCast(&args[ipObj]);
 					if (argObj->op == cot_ref)
 						argObj = argObj->x;
 					if (argObj->op == cot_var) {

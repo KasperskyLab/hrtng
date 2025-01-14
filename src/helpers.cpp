@@ -209,6 +209,8 @@ int namecmp(const char* name, const char* cmpWith)
 			}
 		}
 	}
+	if(qstrlen(cmpWith) != len)
+		return -1;
 	return strncmp(name, cmpWith, len);
 }
 

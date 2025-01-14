@@ -307,9 +307,7 @@ bool Appcaller::getArgv(cexpr_t *call, qvector<idc_value_t> &argv, ea_t* patchea
 	argv.resize(argnum);
 	for(size_t i = 0; i < argnum; i++) {
 		bool bufArg = false;
-		cexpr_t *arg = &args[i];
-		if(arg->op == cot_cast) //ignore typecast
-			arg = arg->x;
+		cexpr_t *arg = skipCast(&args[i]); //ignore typecast
 		switch (arg->op)
 		{
 		case cot_num:

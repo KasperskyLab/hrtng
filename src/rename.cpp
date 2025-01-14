@@ -449,8 +449,7 @@ static bool renameUdtMemb(ea_t refea, const char* funcname, tinfo_t udt, uint32 
 //must return stripped name
 bool getExpName(cfunc_t *func, cexpr_t* exp, qstring* name, bool derefPtr /* =false */)
 {
-	if(exp->op == cot_cast) //ignore typecast
-		exp = exp->x;
+	exp = skipCast(exp);//ignore typecast
 	bool res = false;
 	switch (exp->op)
 	{
@@ -555,10 +554,7 @@ bool isRenameble(ctype_t ct)
 
 bool renameExp(ea_t refea, const char* funcname, cfunc_t *func, cexpr_t* exp, qstring* name, vdui_t *vdui, bool derefPtr /*= false*/)
 {
-
-	if(exp->op == cot_cast)
-		exp = exp->x;
-
+	exp = skipCast(exp);
 	if(derefPtr && exp->op == cot_ref && isRenameble(exp->x->op)) {
 		if (name->length() > 2 && name->at(0) == 'p' && name->at(1) == '_') {
 			name->remove(0, 2);
@@ -863,9 +859,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 
 			if(!getExpName(func, call->x, &callProcName)) {
 				//fix call to "off_xxx" (exports in debugger memory)
-				cexpr_t *callDst = call->x;
-				if(callDst->op == cot_cast)
-					callDst = callDst->x;
+				cexpr_t *callDst = skipCast(call->x);
 				if(callDst->op == cot_obj) {
 					flags64_t flg = get_flags(callDst->obj_ea);
 					if(has_dummy_name(flg)) {
@@ -921,8 +915,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 								fi[i].name = argVarName;
 								fiChanged = true;
 								if(!remove_pointer(fi[i].type).is_struct()) { //retrieve, compare and set type
-									if(arg->op == cot_cast)
-										arg = arg->x; //remove typecast
+									arg = skipCast(arg); //remove typecast
 									tinfo_t argType = getExpType(func, arg);
 									if(remove_pointer(argType).is_struct()) {
 #if 0

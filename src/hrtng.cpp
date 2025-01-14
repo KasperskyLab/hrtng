@@ -354,9 +354,7 @@ static int idaapi jump_to_call_dst(vdui_t *vu)
 		}
 	}
 
-	cexpr_t *callee = call->x;
-	if(callee->op == cot_cast)
-		callee = callee->x;
+	cexpr_t *callee = skipCast(call->x);
 	if(dst_ea == BADADDR && vu->item.e == callee) { //callee is clicked
 		if(callee->op == cot_obj) {
 			flags64_t flg = get_flags(callee->obj_ea);
@@ -551,7 +549,7 @@ bool is_call(vdui_t *vu, cexpr_t **call /*= nullptr*/, bool argsDeep /*= false*/
 			it = vu->cfunc->body.find_parent_of(it);
 	}
 	if(it && it->op == cot_call &&
-		 (argsDeep || ((cexpr_t *)it)->x == vu->item.e)) // cursor stay on callee expression
+		 (argsDeep || skipCast(((cexpr_t *)it)->x) == vu->item.e)) // cursor stay on callee expression
 	{
 		if(call)
 			*call = (cexpr_t *)it;
@@ -613,9 +611,7 @@ bool is_VT_assign(vdui_t *vu, tid_t *struc_id, ea_t *vt_ea)
 		return false;
 
 	cexpr_t *asg = (cexpr_t *)parent;
-	cexpr_t *vt = asg->y;
-	if(vt->op == cot_cast)
-		vt = vt->x;
+	cexpr_t *vt = skipCast(asg->y);
 	if(vt->op == cot_ref)
 		vt = vt->x;
 	if (vt->op != cot_obj)

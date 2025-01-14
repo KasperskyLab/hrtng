@@ -75,8 +75,7 @@ static void del_cached_reincast(ea_t ea)
 
 static bool is_reincast(cexpr_t *e)
 {
-	if (e->op == cot_cast)
-		e = e->x;
+	e = skipCast(e);
 	if (e->op == cot_ref) {
 		cexpr_t *x = e->x;
 		while(x->op == cot_memref)
@@ -102,8 +101,7 @@ static bool is_reincastable(cexpr_t *e)
 {
 	if (e->ea == BADADDR)
 		return false;
-	if (e->op == cot_cast)
-		e = e->x;
+	e = skipCast(e);
 	switch (e->op) {
 	case cot_ptr:
 		break;

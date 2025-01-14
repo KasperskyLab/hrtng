@@ -437,9 +437,7 @@ bool lit_visitor_t::chkCallArg(cexpr_t *expr, qstring &comment)
 
 	bool res = false;
 	for(size_t i = 0; i < args.size(); i++) {
-		cexpr_t *arg = &args[i];
-		if(arg->op == cot_cast) //ignore typecast
-			arg = arg->x;
+		cexpr_t *arg = skipCast(&args[i]);//ignore typecast
 		if(arg->op == cot_num && !arg->n->nf.is_enum() && !(arg->n->nf.flags & NF_FIXED)) {
 			const lit_arg_t* larg = lit->find_arg(lfunc, (uint32)i + 1);
 			if (larg) {
