@@ -1981,13 +1981,19 @@ qstring dummy_struct_name(size_t size, const char* sprefix)
 		name.sprnt("%s%X", dummy_struct_prefix.c_str(), size);
 	else
 		name = dummy_struct_prefix;
-	qstring basename = name;
-	for (char i = 'z'; i > 'f'; i--) {
-		if (get_named_type_tid(name.c_str()) == BADADDR)
-			break;
-		name = basename;
-		name.cat_sprnt("%c", i);
+	qstring bn = name;
+	for (char j = 'z'; j > 'f'; j--) {
+		qstring basename = name;
+		for (char i = 'z'; i > 'f'; i--) {
+			if (get_named_type_tid(name.c_str()) == BADADDR)
+				return name;
+			name = basename;
+			name.cat_sprnt("%c", i);
+		}
+		name = bn;
+		name.cat_sprnt("%c", j);
 	}
+	QASSERT(100110, !"oops");
 	return name;
 }
 
@@ -4495,7 +4501,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "1.1.18";
+	addon.version = "1.1.19";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;
