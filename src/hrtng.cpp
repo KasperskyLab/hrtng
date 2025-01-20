@@ -25,6 +25,7 @@
 #include <prodir.h>
 #include <hexrays.hpp>
 #include <kernwin.hpp>
+#include <auto.hpp>
 #include <frame.hpp>
 #include <dbg.hpp>
 #include <diskio.hpp>
@@ -4077,6 +4078,29 @@ static ssize_t idaapi idp_callback(void *user_data, int ncode, va_list va)
 	return 0;
 }
 
+static void progress()
+{
+	size_t funcqty = get_func_qty();
+	if(!funcqty)
+		return;
+
+	uint32 total = 0;
+	uint32 done = 0;
+	for (size_t i = 0; i < funcqty; i++) {
+		func_t* func = getn_func(i);
+		if(!func || (func->flags & FUNC_LIB))
+			continue;
+		total++;
+		if(has_user_name(get_flags(func->start_ea)))
+			done++;
+	}
+	if(!total)
+		return;
+	msg("[hrt] --------------- progress: %.2f%% (done %d of %d, left %d) ---------------\n", done * 100.0 / total, done, total, total - done);
+
+	//if(done == total) TODO congratulation firework
+}
+
 #if IDA_SDK_VERSION < 900
 typedef void idaapi enumStrucMembersCB_t(struc_t * struc, member_t *member, void *user_data);
 void enumStrucMembers(const char* memberName, enumStrucMembersCB_t cb,  void *user_data)
@@ -4355,6 +4379,8 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 					}
 				}
 			} else if(is_func(ea_fl)) {
+				if(auto_is_ok())
+					progress();
 				const char* ctor = qstrstr(new_name, "::ctor");
 				if(ctor) {
 					tinfo_t tif;
@@ -4501,7 +4527,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "1.1.19";
+	addon.version = "1.1.20";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;
