@@ -95,6 +95,7 @@ ACT_DECL(jmp2xref, return ((ctx->widget_type == BWN_DISASM || ctx->widget_type =
 //ACT_DECL(kill_toolbars, AST_ENABLE_ALW)
 
 //dynamically attached actions
+ACT_DECL(stack_var_reuse     , AST_ENABLE_FOR(vu->item.get_lvar()))
 #if IDA_SDK_VERSION < 900
 ACT_DECL(convert_to_golang_call, AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
 #endif // IDA_SDK_VERSION < 900
@@ -135,9 +136,7 @@ ACT_DECL(clear_if42blocks         , AST_ENABLE_FOR(has_if42blocks(vu->cfunc->ent
 // action_desc_t descriptions
 static const action_desc_t actions[] =
 {
-#if IDA_SDK_VERSION < 900
-	ACT_DESC("[hrt] Convert to __usercall golang",   "Shift-G", convert_to_golang_call),
-#endif //IDA_SDK_VERSION < 900
+	ACT_DESC("[hrt] Unite stack var reuse",          NULL, stack_var_reuse),
 	ACT_DESC("[hrt] Convert to __usercall",          "U", convert_to_usercall),
 	ACT_DESC("[hrt] Jump to indirect call",          "J", jump_to_indirect_call),
 	ACT_DESC("[hrt] Zeal offline API help (zealdocs.org)",  "Ctrl-F1", zeal_doc_help),
@@ -166,12 +165,19 @@ static const action_desc_t actions[] =
 	ACT_DESC("[hrt] Create MSIG for the function",    NULL, msigAdd),
 	ACT_DESC("[hrt] ~C~ollapse selection",              NULL, selection2block),
 	ACT_DESC("[hrt] Remove collapsible 'if(42) ...' blocks",  NULL, clear_if42blocks),
+#if IDA_SDK_VERSION < 900
+	ACT_DESC("[hrt] Convert to __usercall golang",   "Shift-G", convert_to_golang_call),
+#endif //IDA_SDK_VERSION < 900
 };
 
 //-------------------------------------------------------------------------
 
 void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 {
+	bool isVar = vu->item.get_lvar() != NULL;
+	if (isVar) {
+		attach_action_to_popup(view, p, ACT_NAME(stack_var_reuse));
+	}
 	if (vu->item.citype == VDI_FUNC) {
 		attach_action_to_popup(view, p, ACT_NAME(convert_to_usercall));
 #if IDA_SDK_VERSION < 900
@@ -675,6 +681,99 @@ static bool convert_cc_to_special(func_type_data_t & fti)
 	return true;
 }
 
+//-------------------------------------------------------------------------------------------------------------------------
+struct ida_local types_locator_t : public ctree_parentee_t
+{
+	lvars_t*   lvars;
+	intvec_t   vidxs;
+	tinfovec_t types;
+
+	types_locator_t(lvars_t * lvars_, int varIdx) : lvars(lvars_)
+	{
+		vidxs.add_unique(varIdx);
+		types.add_unique(lvars->at(varIdx).type());
+	}
+
+	int idaapi visit_expr(cexpr_t * e)
+	{
+		if(e->op == cot_asg && skipCast(e->x)->op == cot_var && skipCast(e->y)->op == cot_var) {
+			vidxs.add_unique(skipCast(e->x)->v.idx);
+			vidxs.add_unique(skipCast(e->y)->v.idx);
+			return 0;
+		}
+
+		if(e->op == cot_var && vidxs.has(e->v.idx)) {
+			int i = (int)parents.size() - 1;
+			if(i >= 0 && parents[i]->is_expr()) {
+				cexpr_t* parent = (cexpr_t*)parents[i];
+				switch(parent->op) {
+				case cot_cast:
+					//msg( "[hrt] var cast: %s [%s]\n", parent->dstr(), parent->type.dstr());
+					types.add_unique(parent->type);
+					break;
+				case cot_ref:
+					if(i > 1 && parents[i - 1]->op == cot_cast) {
+						parent = (cexpr_t*)parents[i - 1];
+						//msg( "[hrt] var ref cast: %s [%s]\n", parent->dstr(), parent->type.dstr());
+						types.add_unique(remove_pointer(parent->type));
+					}
+					break;
+				}
+			}
+		}
+		return 0;
+	}
+};
+
+ACT_DEF(stack_var_reuse)
+{
+	vdui_t* vu = get_widget_vdui(ctx->widget);
+	lvar_t* var = vu->item.get_lvar();
+	if(!var)
+		return 0;
+	lvars_t* lvars = vu->cfunc->get_lvars();
+	ssize_t vi = lvars->index(*var);
+	if(vi == -1)
+		return 0;
+
+	types_locator_t tl(lvars, vi);
+	tl.apply_to(&vu->cfunc->body, NULL);
+	if(tl.types.size() < 2) {
+		msg("[hrt] There is no stack var reusing found (%s)\n", var->name.c_str());
+		return 0;
+	}
+
+	udt_type_data_t utd;
+	utd.is_union = true;
+	utd.taudt_bits |= TAUDT_UNALIGNED;
+	utd.effalign = 1;
+
+	size_t total_size = 0;
+	for(size_t i = 0; i < tl.types.size(); i++) {
+		udm_t &udm = utd.push_back();
+		udm.offset = 0; // i ?
+    udm.type = tl.types[i];
+		udm.name = create_field_name(udm.type, i);
+		size_t tsz = udm.type.get_size();
+    udm.size = tsz * 8;
+		if(total_size < tsz)
+			total_size = tsz;
+	}
+
+
+	utd.unpadded_size = utd.total_size = total_size;
+	tinfo_t restype;
+	restype.create_udt(utd, BTF_UNION);
+	tinfo_t ts;
+	if (!confirm_create_struct(ts, restype, "u"))
+		return 0;
+
+	vu->set_lvar_type(var, ts);
+	vu->refresh_view(false);
+	return 0;
+}
+
+//------------------------------------------------
 struct ida_local undef_var_locator_t : public ctree_visitor_t
 {
 	std::set<int> indices;
@@ -4318,7 +4417,8 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 		// set type for new name if new member name is same as lib function or structure
 		tinfo_t t = getType4Name(newname);
 		if (!t.empty()) {
-			int index = struc.find_udm(udm->offset);
+			//int index = struc.find_udm(udm->offset); //returns wrong index for union
+			int index = struc.find_udm(udm->name.c_str());
 			if (index  != -1) {
 				tinfo_code_t code = struc.set_udm_type(index, t);
 				if (code != TERR_OK && ASKBTN_YES == ask_yn(ASKBTN_NO, "[hrt] Set member type of '%s.%s' may destroy other members,\nConfirm?", udtname, newname))
@@ -4527,7 +4627,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "1.1.20";
+	addon.version = "1.2.21";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;

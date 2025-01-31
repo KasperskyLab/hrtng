@@ -7,3 +7,5 @@ int create_VT(tid_t parent, ea_t VT_ea);
 typedef qvector<tid_t> tidvec_t;
 asize_t struct_get_member(tid_t strId, asize_t offset, tid_t* last_member, tidvec_t* trace = NULL, asize_t adjust = 0);
 
+bool confirm_create_struct(tinfo_t &out_type, tinfo_t &in_type, const char* sprefix);
+

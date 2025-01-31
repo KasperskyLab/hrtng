@@ -47,6 +47,7 @@ Special thanks to following peoples for their great plugins were used as base fo
 ### Structures assistance
   * [Create dummy structs](doc/cr_struc.md)
   * [Assist split gaps in structures](doc/struct-gaps.md)
+  * [Unite stack var reuse](doc/var-reuse.md)
 
 ### Virtual/indirect calls assistance
   * [Virtual calls assistance](doc/virtual-calls.md)
@@ -65,6 +66,8 @@ Special thanks to following peoples for their great plugins were used as base fo
   * [Offsets table creation](doc/offsets-tbl.md)
   * [Convert function to __usercall, detect spoiled registers](doc/usercall.md)
   * [Set calling conventions bit closer to Go-lang](doc/golang.md)
+  * Print reversing progress percent on a proc renaming
+
 
 ### Patching
   * [Patch custom area with NOPs](doc/patch-nops.md)

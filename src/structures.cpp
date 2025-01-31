@@ -36,13 +36,22 @@ asize_t struct_get_member(tid_t strId, asize_t offset, tid_t* last_member, tidve
 		return offset + adjust;
 	*last_member = member->id;
 
+#if 1// dont dive into substruct to check first member, returns struct
+	if (member->get_soff() == offset) {
+		if (trace)
+			trace->push_back(member->id);
+		return adjust;
+	}
+#endif
 	struc_t * membstr = get_sptr(member);
 	if (!membstr) {
+#if 0 // this variant dives into substruct to check first member of substruct
 		if (member->get_soff() == offset) {
 			if (trace)
 				trace->push_back(member->id);
 			return adjust;
 		}
+#endif
 		*last_member = BADNODE; // offset is in the middle of member
 		return offset + adjust;
 	}
@@ -80,6 +89,13 @@ asize_t struct_get_member(tid_t strId, asize_t offset, tid_t* last_member, tidve
 		return offset + adjust;
 	*last_member = str.get_udm_tid(midx);
 
+#if 1// dont dive into substruct to check first member, returns struct
+	if (member.offset == offset * 8) {
+		if (trace)
+			trace->push_back(*last_member);
+		return adjust;
+	}
+#endif
 	tid_t tmsid = BADNODE;
 	if (member.type.is_struct()) {
 		tmsid = member.type.get_tid();
@@ -89,11 +105,13 @@ asize_t struct_get_member(tid_t strId, asize_t offset, tid_t* last_member, tidve
 			tmsid = arrItem.get_tid();
 	}
 	if (tmsid == BADNODE) {
+#if 0 // this variant dives into substruct to check first member of substruct
 		if (member.offset == offset * 8) {
 			if (trace)
 				trace->push_back(*last_member);
 			return adjust;
 		}
+#endif
 		*last_member = BADNODE; // offset is in the middle of member
 		return offset + adjust;
 	}
@@ -168,16 +186,15 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 			}
 			if(!strnicmp(name_vt.c_str(), "vtbl_", 5))
 				name_vt.remove(0, 5);
-			if(name_vt.length() > 5 && !stricmp(&name_vt[name_vt.length() - 5], "_vtbl"))
-				name_vt.remove_last(5);
+			name_vt.remove(name_vt.find(VTBL_SUFFIX "_"), 6);
 			if(name_vt[0] >= '0' && name_vt[0] <= '9')
 				name_vt.insert(0, '_');
 		} else {
 			name_vt.sprnt("_%a", VT_ea);
 		}
 	}
-	qstring name_vtbl = name_vt;
-	name_vtbl += VTBL_SUFFIX "_";
+	qstring name_VT_ea = name_vt;
+	name_VT_ea += VTBL_SUFFIX "_";
 	name_vt += VTBL_SUFFIX;
 
 	{//TODO: do this better
@@ -227,7 +244,7 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 	if(ord)
 		set_vftable_ea(ord, VT_ea);
 #endif //IDA_SDK_VERSION >= 900
-	set_name(VT_ea, name_vtbl.c_str(), SN_FORCE);
+	set_name(VT_ea, name_VT_ea.c_str(), SN_FORCE);
 
 	ea_t ea = VT_ea;
 	ea_t offset = 0;
@@ -277,7 +294,6 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 	return newid;
 }
 
-
 int create_VT(tid_t parent, ea_t VT_ea)
 {
 	qstring name;
@@ -324,5 +340,39 @@ int create_VT(tid_t parent, ea_t VT_ea)
 	type = make_pointer(type);
 	add_vt_member(struc, 0, VTBL_MEMNAME, type, NULL);
 	return 1;
+}
+
+qstring dummy_struct_name(size_t size, const char* sprefix);
+
+bool confirm_create_struct(tinfo_t &out_type, tinfo_t &in_type, const char* sprefix)
+{
+	qstring strucname = dummy_struct_name(in_type.get_size(), sprefix);
+	qstring in_type_decl;
+	if(!in_type.print(&in_type_decl, strucname.c_str(), PRTYPE_MULTI | PRTYPE_TYPE | PRTYPE_PRAGMA | PRTYPE_SEMI, 5, 40, NULL, NULL)
+		 || in_type_decl.empty())
+		return false;
+
+	qstring answer = in_type_decl;
+	while(1)
+	{
+		if(!ask_text(&answer, 0, in_type_decl.c_str(), "[hrt] The following new type %s will be created", strucname.c_str()))
+			return false;
+
+		tinfo_t new_type;
+		if (!parse_decl(&new_type, &strucname, NULL, answer.c_str(), PT_TYP))
+			continue;
+
+		tinfo_code_t err = new_type.set_named_type(NULL, strucname.c_str(), NTF_TYPE);
+		if (TERR_OK != err) {
+			warning("[hrt] Could not create %s, maybe it already exists? (tinfo_code_t = %d)", strucname.c_str(), err);
+			continue;
+		}
+#if IDA_SDK_VERSION < 900
+		import_type(get_idati(), -1, strucname.c_str());
+#endif //IDA_SDK_VERSION < 900
+		break;
+	}
+	out_type = create_typedef(strucname.c_str());
+	return true;
 }
 
