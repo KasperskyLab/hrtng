@@ -23,3 +23,12 @@ bool can_be_reincast(vdui_t *vu);
 bool is_reincast(vdui_t *vu);
 void reincast_reg_act();
 void reincast_unreg_act();
+
+#if IDA_SDK_VERSION <= 730
+extern void convert_negative_offset_casts(cfunc_t *cfunc);
+bool can_be_n_recast(vdui_t *vu);
+bool is_n_recast(vdui_t *vu);
+void ncast_reg_act();
+void ncast_unreg_act();
+#endif // IDA_SDK_VERSION <= 730
+

@@ -25,7 +25,13 @@
 #include <prodir.h>
 #include <hexrays.hpp>
 #include <kernwin.hpp>
+#include <fpro.h>
+#include <nalt.hpp>
+#include <bytes.hpp>
+#include <segregs.hpp>
 #include <auto.hpp>
+#include <funcs.hpp>
+#include <expr.hpp>
 #include <frame.hpp>
 #include <dbg.hpp>
 #include <diskio.hpp>
@@ -51,6 +57,10 @@
 #include "opt.h"
 #include "MicrocodeExplorer.h"
 #include "msig.h"
+#include "new_struct.h"
+#include "new_struc_view.h"
+#include "new_struc_place.h"
+
 
 #if IDA_SDK_VERSION >= 750
 #include "microavx.h"
@@ -60,6 +70,8 @@
 hexdsp_t *hexdsp = NULL;
 #endif //IDA_SDK_VERSION < 760
 
+bool set_var_type(vdui_t *vu, lvar_t *lv, tinfo_t *ts);
+bool is_arg_var(vdui_t *vu);
 bool is_call(vdui_t *vu, cexpr_t **call = nullptr, bool argsDeep = false);
 bool is_recastable(vdui_t *vu);
 bool is_stack_var_assign(vdui_t *vu, int* varIdx, ea_t *ea, sval_t* size);
@@ -95,6 +107,12 @@ ACT_DECL(jmp2xref, return ((ctx->widget_type == BWN_DISASM || ctx->widget_type =
 //ACT_DECL(kill_toolbars, AST_ENABLE_ALW)
 
 //dynamically attached actions
+ACT_DECL(scan_var         , AST_ENABLE_FOR(can_be_converted_to_ptr(*vu, false)))
+ACT_DECL(show_struct_bld     , AST_ENABLE_FOR(fi.size() != 0))
+ACT_DECL(fin_struct          , AST_ENABLE_FOR(fi.size() != 0 && can_be_converted_to_ptr(*vu, false)))
+ACT_DECL(recognize_shape     , AST_ENABLE_FOR(vu->item.get_lvar()))
+ACT_DECL(possible_structs_for_one_offset, AST_ENABLE_FOR(is_number(vu)))
+ACT_DECL(structs_with_this_size, AST_ENABLE_FOR(is_number(vu)))
 ACT_DECL(stack_var_reuse     , AST_ENABLE_FOR(vu->item.get_lvar()))
 #if IDA_SDK_VERSION < 900
 ACT_DECL(convert_to_golang_call, AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
@@ -127,6 +145,11 @@ ACT_DECL(mavx_disable            , AST_ENABLE_FOR(isMicroAvx_avail() &&  isMicro
 ACT_DECL(msigAdd                 , AST_ENABLE_FOR_PC)
 ACT_DECL(selection2block         , return (ctx->widget_type != BWN_PSEUDOCODE ? AST_DISABLE_FOR_WIDGET : (ctx->has_flag(ACF_HAS_SELECTION) ? AST_ENABLE : AST_DISABLE)))
 ACT_DECL(clear_if42blocks         , AST_ENABLE_FOR(has_if42blocks(vu->cfunc->entry_ea)))
+#if IDA_SDK_VERSION < 750
+ACT_DECL(remove_rettype      , AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
+ACT_DECL(remove_argument     , AST_ENABLE_FOR(is_arg_var(vu)))
+#endif //IDA_SDK_VERSION < 750
+
 
 #undef AST_ENABLE_FOR
 #undef AST_ENABLE_FOR_PC
@@ -136,6 +159,12 @@ ACT_DECL(clear_if42blocks         , AST_ENABLE_FOR(has_if42blocks(vu->cfunc->ent
 // action_desc_t descriptions
 static const action_desc_t actions[] =
 {
+	ACT_DESC("[hrt] Scan variable",                  "S", scan_var),
+	ACT_DESC("[hrt] Open structure builder",         NULL, show_struct_bld),
+	ACT_DESC("[hrt] Finalize structure",             NULL, fin_struct),
+	ACT_DESC("[hrt] Recognize var type shape",       "T", recognize_shape),
+	ACT_DESC("[hrt] Which structs have this offset?",NULL, possible_structs_for_one_offset),
+	ACT_DESC("[hrt] Which structs have this size?",  NULL, structs_with_this_size),
 	ACT_DESC("[hrt] Unite stack var reuse",          NULL, stack_var_reuse),
 	ACT_DESC("[hrt] Convert to __usercall",          "U", convert_to_usercall),
 	ACT_DESC("[hrt] Jump to indirect call",          "J", jump_to_indirect_call),
@@ -161,6 +190,9 @@ static const action_desc_t actions[] =
 #if IDA_SDK_VERSION >= 750
   ACT_DESC("[hrt] Enable AVX lifter",              NULL, mavx_enable),
 	ACT_DESC("[hrt] Disable AVX lifter",             NULL, mavx_disable),
+#else // IDA_SDK_VERSION < 750
+	ACT_DESC("[hrt] Remove return type",             NULL, remove_rettype),
+	ACT_DESC("[hrt] Remove this argument",           "A", remove_argument),
 #endif //IDA_SDK_VERSION >= 750
 	ACT_DESC("[hrt] Create MSIG for the function",    NULL, msigAdd),
 	ACT_DESC("[hrt] ~C~ollapse selection",              NULL, selection2block),
@@ -176,6 +208,10 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 {
 	bool isVar = vu->item.get_lvar() != NULL;
 	if (isVar) {
+		attach_action_to_popup(view, p, ACT_NAME(scan_var));
+		attach_action_to_popup(view, p, ACT_NAME(show_struct_bld));
+		attach_action_to_popup(view, p, ACT_NAME(fin_struct));
+		attach_action_to_popup(view, p, ACT_NAME(recognize_shape));
 		attach_action_to_popup(view, p, ACT_NAME(stack_var_reuse));
 	}
 	if (vu->item.citype == VDI_FUNC) {
@@ -183,7 +219,14 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 #if IDA_SDK_VERSION < 900
 		attach_action_to_popup(view, p, ACT_NAME(convert_to_golang_call));
 #endif //IDA_SDK_VERSION < 900
+#if IDA_SDK_VERSION < 750
+		attach_action_to_popup(view, p, ACT_NAME(remove_rettype));
 	}
+	if (is_arg_var(vu))
+		attach_action_to_popup(view, p, ACT_NAME(remove_argument));
+#else // IDA_SDK_VERSION >= 750
+	}
+#endif // IDA_SDK_VERSION < 750
 	if(is_call(vu)) {
 		attach_action_to_popup(view, p, ACT_NAME(zeal_doc_help));
 		attach_action_to_popup(view, p, ACT_NAME(jump_to_indirect_call));
@@ -191,6 +234,13 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 	if(is_VT_assign(vu, NULL, NULL))
 		attach_action_to_popup(view, p, ACT_NAME(add_VT));
 
+#if IDA_SDK_VERSION <= 730
+	bool nrecast = is_n_recast(vu);
+	if (can_be_n_recast(vu) || nrecast)
+		attach_action_to_popup(view, p, ACT_NAME(use_CONTAINER_OF_callback));
+	if (nrecast)
+		attach_action_to_popup(view, p, ACT_NAME(destroy_CONTAINER_OF_callback));
+#endif // IDA_SDK_VERSION <= 730
 	if (can_be_reincast(vu))
 		attach_action_to_popup(view, p, ACT_NAME(insert_reinterpret_cast));
 	else if (is_reincast(vu))
@@ -211,6 +261,8 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 	if (is_appcallable(vu, NULL, NULL))
 		attach_action_to_popup(view, p, ACT_NAME(do_appcall));
 	if (is_number(vu)) {
+		attach_action_to_popup(view, p, ACT_NAME(possible_structs_for_one_offset));
+		attach_action_to_popup(view, p, ACT_NAME(structs_with_this_size));
 		attach_action_to_popup(view, p, ACT_NAME(decrypt_const));
 	}
 	else if (is_gap_field(vu, NULL, NULL))
@@ -680,6 +732,209 @@ static bool convert_cc_to_special(func_type_data_t & fti)
 	}
 	return true;
 }
+
+//-------------------------------------------------------------------------------------------------------------------------
+ACT_DEF(scan_var)
+{
+	vdui_t &vu = *get_widget_vdui(ctx->widget);
+	can_be_converted_to_ptr(vu, true);
+	return 0;
+}
+
+ACT_DEF(show_struct_bld)
+{
+	show_new_struc_view();
+	return 0;
+}
+
+ACT_DEF(fin_struct)
+{
+	vdui_t &vu = *get_widget_vdui(ctx->widget);
+	ea_t ea = BADADDR;
+	lvar_t * lvar = vu.item.get_lvar();
+	if(!lvar) {
+		if(vu.item.is_citem() && vu.item.it->op == cot_obj)
+			ea = vu.item.e->obj_ea;
+		else
+			return 0;
+	}
+
+	tinfo_t fitype;
+	if (!fi.to_type(fitype))
+		return 0;
+	tinfo_t restype = make_pointer(fitype);
+
+	//start from currently visible window
+	if(lvar) {
+		set_var_type(&vu, lvar, &restype);
+	} else {
+		if(is_mapped(ea))
+			apply_tinfo(ea, fitype, TINFO_DEFINITE);
+		for(global_pointers_t::iterator iter = fi.global_pointers.begin(); iter!=fi.global_pointers.end(); iter++) {
+			if(*iter != ea && is_mapped(*iter))
+				apply_tinfo(*iter, fitype, TINFO_DEFINITE);
+		}
+	}
+	
+	//process other funcs
+	ea_t save_ea = vu.cfunc->entry_ea;
+	for(auto it = fi.scanned_variables.begin(); it !=  fi.scanned_variables.end(); it++) {
+		if(it->first == save_ea)
+			continue; //skip currently visible
+
+		msg("[hrt] decompile and set var types for %a\n", it->first);
+#if 0
+		//this works not well, becouse var->set_lvar_type changes is not permanent
+		//TODO: for permanent changes see modify_user_lvars()
+		func_t * func = get_func(p.first);
+		if (!func)
+			return false;
+		hexrays_failure_t failure;
+		cfunc_t* decompilation = decompile_func(func, &failure);
+#else
+		vdui_t * ui = COMPAT_open_pseudocode_REUSE(it->first);
+		if (!ui)
+			break;
+
+		if (1) { //wait for visible and valid ui
+			const int wait = 50;
+			int i = wait;
+			for(; i > 0; i--) {
+				if(ui->visible() && ui->valid())
+					break;
+				qsleep(100);
+			}
+			if(i == 0)
+				break;
+		}
+
+		cfunc_t* decompilation = ui->cfunc;
+#endif
+		if(!decompilation)
+			break;
+		//decompilation->verify(ALLOW_UNUSED_LABELS, true);
+
+		lvars_t * lvars = decompilation->get_lvars();
+		if(!lvars)
+			break;
+
+		for(auto it2 = it->second.begin(); it2 != it->second.end(); it2++) {
+	    scanned_variables_t::mapped_type::value_type x = *it2;
+			lvar_t * var = lvars->find(x.second);
+			if (var) {
+				if (x.first == 0) {
+					if (var->accepts_type(restype))
+						ui->set_lvar_type(var, restype);//var->set_lvar_type(restype);
+				} else {
+					tinfo_t tt;
+					
+					if (fi.types_cache.find(x.first) != fi.types_cache.end()) {
+						tt = fi.types_cache[x.first];
+					} else {
+						udm_t memb;
+						memb.offset = x.first * 8;
+						if(-1 != fitype.find_udm(&memb, STRMEM_AUTO))
+							fi.types_cache[x.first] = tt = memb.type;
+					}
+					if(!tt.empty()) {
+						tt = make_pointer(tt);
+						if (var->accepts_type(tt))
+							ui->set_lvar_type(var, tt);//var->set_lvar_type(restype);
+					}
+				}
+			}
+		}
+	}
+
+	fi.clear();
+	close_new_struc_view();
+
+	//restore old visible func
+	COMPAT_open_pseudocode_REUSE(save_ea);
+	return 1;
+}
+
+#if IDA_SDK_VERSION < 750
+bool is_arg_var(vdui_t *vu)
+{
+	if (vu->item.citype == VDI_LVAR &&
+		vu->item.get_lvar()->is_arg_var())
+		return true;
+	return false;
+}
+
+ACT_DEF(remove_argument)
+{
+	vdui_t &vu = *get_widget_vdui(ctx->widget);
+	if(!is_arg_var(&vu))
+		return 0;
+
+	if(vu.cfunc->entry_ea==BADADDR)
+		return 0;
+
+	tinfo_t type;
+	if(!vu.cfunc->get_func_type(&type))
+		return 0;
+	
+	lvar_t* lvar =  vu.item.get_lvar();
+	int answer = ask_yn(ASKBTN_NO, "[hrt] Delete arg '%s'?",lvar->name.c_str());
+	if(answer == ASKBTN_NO || answer ==ASKBTN_CANCEL)
+		return 0;
+
+	func_type_data_t fti;
+	type.get_func_details(&fti);
+	if (!convert_cc_to_special(fti))
+		return 0;	
+
+	for(func_type_data_t::iterator i =  fti.begin(); i!=fti.end(); i++) {
+		if(i->name.size() && i->name == lvar->name) {
+			fti.erase(i);			
+			break;
+		}	
+	}
+	type.clear();
+	type.create_func(fti);
+
+	if(!apply_tinfo(vu.cfunc->entry_ea, type, TINFO_DEFINITE))
+		return 0;
+	
+	vu.refresh_view(true);
+	return 0;
+}
+
+ACT_DEF(remove_rettype)
+{
+	vdui_t &vu = *get_widget_vdui(ctx->widget);
+	if(vu.item.citype != VDI_FUNC)
+		return 0;
+
+	if(vu.cfunc->entry_ea == BADADDR)
+		return 0;
+
+	tinfo_t type;
+	if(!vu.cfunc->get_func_type(&type))
+		return 0;
+
+	func_type_data_t fti;
+	type.get_func_details(&fti);
+
+	int answer = ask_yn(ASKBTN_NO, "[hrt] Make func return type VOID");
+	if (answer == ASKBTN_NO || answer == ASKBTN_CANCEL)
+		return 0;
+	if (!convert_cc_to_special(fti))
+		return 0;
+
+	fti.rettype.clear();
+	fti.rettype.create_simple_type(BTF_VOID);
+	type.clear();
+	type.create_func(fti);
+	if (!apply_tinfo(vu.cfunc->entry_ea, type, TINFO_DEFINITE))
+		return 0;
+
+	vu.refresh_view(true);
+	return 0;
+}
+#endif //IDA_SDK_VERSION < 750
 
 //-------------------------------------------------------------------------------------------------------------------------
 struct ida_local types_locator_t : public ctree_parentee_t
@@ -1152,6 +1407,414 @@ ACT_DEF(convert_to_golang_call)
 	return 0;
 }
 #endif //IDA_SDK_VERSION < 900
+
+//-------------------------------------------------------------------------------------------------------------------------
+struct ida_local offset_locator_t : public ctree_parentee_t
+{
+	lvars_t * lvars;
+	intvec_t  vidxs;
+	std::map<uint64, tinfo_t> offNtypes;
+
+	offset_locator_t(lvars_t * lvars_, int varIdx) : lvars(lvars_)
+	{
+		vidxs.add_unique(varIdx);
+	}
+
+	int idaapi visit_expr(cexpr_t * e)
+	{
+		if (e->op == cot_asg && e->x->op == cot_var && e->y->op == cot_var) {
+			vidxs.add_unique(e->x->v.idx);
+			vidxs.add_unique(e->y->v.idx);
+			return 0;
+		}
+		if (e->op == cot_memptr && e->x->op == cot_var) {
+			cexpr_t *var = e->x;
+			if (vidxs.has(var->v.idx)) {
+				//msg( "[hrt] var ref1: %s.%x [%s]\n", lvars->at(var->v.idx).name.c_str(), e->m, e->type.dstr());
+				offNtypes[e->m] = e->type;
+			}
+			return 0;
+		}
+
+		if (e->op == cot_var && vidxs.has(e->v.idx)) {
+			// found our var. are we inside a pointer expression?
+			uint64 delta = 0;
+			uint64 delta2 = 0;
+			bool delta_defined = true;
+			bool delta2_defined = false;
+			int i = (int)parents.size() - 1;
+			if (i >= 0 && parents[i]->op == cot_add) {
+				// possible delta
+				cexpr_t *d = ((cexpr_t*)parents[i])->theother(e);
+				delta_defined = d->get_const_value(&delta);
+				i--;
+				if (i >= 0 && parents[i]->op == cot_add) {
+					//possible array indexing
+					cexpr_t *d = ((cexpr_t*)parents[i])->theother((cexpr_t*)parents[i+1]);
+					delta2_defined = d->get_const_value(&delta2);
+					i--;
+				}
+			}
+
+			if (delta2_defined)
+				delta = delta2;
+			if (delta_defined || delta2_defined) {
+				// skip casts
+				tinfo_t t;
+				while (i >= 0 && parents[i]->op == cot_cast) {
+					t = ((cexpr_t*)parents[i])->type;
+					i--;
+				}
+				t = remove_pointer(t);
+				offNtypes[delta] = t;
+				//msg("[hrt] var ref2: %s.%x [%s]\n", lvars->at(e->v.idx).name.c_str(), (uint32)delta, t.dstr());
+			}
+			return 0;
+		}
+#if 0
+		//*(_DWORD *)(var + 16)
+		if (e->op == cot_ptr && e->x->op == cot_cast) {
+			cexpr_t * cast = e->x;
+			if(cast->x->op == cot_add) {
+				cexpr_t * add = cast->x;
+				if (add->x->op == cot_var) {
+					cexpr_t * var = add->x;
+					if (add->y->op == cot_num) {
+						cexpr_t * num = add->y;
+						if(vidxs.has(var->v.idx)) {
+							tinfo_t t = remove_pointer(cast->type);
+							//msg("[hrt] var ref3: %s.%x [%s]\n", lvars->at(var->v.idx).name.c_str(), (uint32)num->numval(), t.dstr());
+							offNtypes[num->numval()] = t;
+						}
+					}
+				}
+			} else if(cast->x->op == cot_var) { //*(_DWORD *)(var)
+				cexpr_t * var = cast->x;
+				if(vidxs.has(var->v.idx)) {
+					tinfo_t t = remove_pointer(cast->type);
+					//msg("[hrt] var ref4: %s [%s]\n", lvars->at(var->v.idx).name.c_str(), t.dstr());
+					offNtypes[0] = t;
+				}
+			}
+		}
+#endif
+		return 0;
+	}
+};
+
+static bool struct_matches(offset_locator_t &ifi, tid_t strucId)
+{
+	for(auto it = ifi.offNtypes.begin(); it != ifi.offNtypes.end(); ++it) {
+		auto offset = it->first;
+#if 0 // too many false positives
+		if(!struct_has_member(strucId, offset))
+			return false;
+#else //compare type size too
+		tid_t membId = BADNODE;
+		if(struct_get_member(strucId, offset, &membId) != 0 || membId == BADNODE)
+			return false;
+#if IDA_SDK_VERSION < 900
+		member_t* member = get_member_by_id(membId);
+		tinfo_t membtype;
+		if(member && get_member_type(member, &membtype)) {
+#else
+		udm_t udm;
+		tinfo_t membStrucType;
+		ssize_t membIdx = membStrucType.get_udm_by_tid(&udm, membId);
+		if(membIdx >= 0) {
+			tinfo_t &membtype = udm.type;
+#endif //IDA_SDK_VERSION < 900
+			//try tinfo_t::compare_with
+			if(it->second.present() && membtype.present() &&
+				 it->second.get_size() != membtype.get_size()) {
+				//msg("[hrt] !struct_matches %s at %x: %s <-sz-> %s\n", membStrucType.dstr(), (uint32)offset, it->second.dstr(), membtype.dstr());
+				return false;
+			}
+		}
+#endif
+	}
+	return true;
+}
+
+//-----------------------------------------------------
+struct ida_local structs_shape_t : public chooser_t
+{
+	asize_t offset;
+	tidvec_t list;
+	static const int widths[];
+	static const char* const header[];
+
+	structs_shape_t(asize_t off) : chooser_t(CH_KEEP | CH_MODAL, 3, widths, header, "[hrt] Matched structs"), offset(off) {}
+	virtual size_t idaapi get_count() const { return list.size() + 1; }
+	virtual void idaapi get_row(qstrvec_t* cols, int* icon_, chooser_item_attrs_t* attrs, size_t n) const;
+};
+
+const int structs_shape_t::widths[] = {40, 32, CHCOL_HEX | 8};
+const char* const structs_shape_t::header[] = {"struct.member", "member type", "struct size"};
+
+void idaapi structs_shape_t::get_row(qstrvec_t* cols_, int* , chooser_item_attrs_t* , size_t n) const
+{
+	qstrvec_t& cols = *cols_;
+	if (n == 0) {
+		cols[0] = "<create new>";
+		return;
+	}
+	tid_t id = list[n - 1];
+	uint32 col = 0;
+	if (offset) {
+		print_struct_member_name(id, offset, &cols[col++]);
+
+		tid_t membId = BADNODE;
+		if (0 == struct_get_member(id, offset, &membId) && membId != BADNODE)
+			print_struct_member_type(membId, &cols[col]);
+	} else {
+		get_tid_name(&cols[col++], id);
+	}
+	++col;
+#if IDA_SDK_VERSION >= 900
+	tinfo_t struc;
+	struc.get_type_by_tid(id);
+	size_t size = struc.get_size();
+#else
+	asize_t size = get_struc_size(id);
+#endif //IDA_SDK_VERSION >= 900
+	cols[col].sprnt("0x%x", size);
+}
+
+ACT_DEF(recognize_shape)
+{
+	vdui_t &vu = *get_widget_vdui(ctx->widget);
+	lvar_t* var = vu.item.get_lvar();
+	if(!var)
+		return 0;
+	lvars_t* lvars = vu.cfunc->get_lvars();
+	ssize_t vi = lvars->index(*var);
+	if(vi == -1)
+		return 0;
+
+	//to additionally display details of the field the cursor is staying at
+	uint64 offset = 0;
+	if(vu.item.is_citem()) {
+		citem_t * ci = vu.cfunc->body.find_parent_of(vu.item.it);
+		if(ci->is_expr()) {
+			cexpr_t *exp = (cexpr_t *)ci;
+			if(exp->op == cot_add && exp->y->op == cot_num)
+				offset = exp->y->numval();
+		}
+	}
+		
+	offset_locator_t ifi(lvars, vi);
+	ifi.apply_to(&vu.cfunc->body, NULL);
+
+	structs_shape_t rs(offset);
+	if(!ifi.offNtypes.empty()) {
+#if IDA_SDK_VERSION < 900
+		for(uval_t idx = get_first_struc_idx(); idx != BADNODE; idx = get_next_struc_idx(idx)) {
+			tid_t id = get_struc_by_idx(idx);
+			if (is_union(id))
+				continue;
+#else
+		uint32 limit = get_ordinal_limit();
+		if (limit == uint32(-1))
+			return 0;
+		for (uint32 ord = 1; ord < limit; ++ord) {
+			tinfo_t t;
+			if (!t.get_numbered_type(ord, BTF_STRUCT, true) || !t.is_struct())
+					continue;
+			tid_t id = t.get_tid();
+#endif //IDA_SDK_VERSION < 900
+			if(id != BADADDR && struct_matches(ifi, id))
+				rs.list.push_back(id);
+		}
+	}
+
+	ssize_t choosed = rs.choose();
+	if (choosed > 0) {
+		qstring name;
+		get_tid_name(&name, rs.list[choosed-1]);
+
+		tinfo_t ts = create_typedef(name.c_str());
+		vu.set_lvar_type(var, make_pointer(ts));
+		vu.refresh_view(false);
+		return 0;
+	}
+	if (choosed == 0) {
+		//create new
+		udt_type_data_t utd;
+		vu.cfunc->gather_derefs(vu.item, &utd);
+		if(utd.is_union)
+			return 0;
+
+		//gather_derefs + create_udt does not respect gaps, so manually add gaps before create_udt
+		//probably need to sort members by offset before the loop
+		uint64 off = 0;
+#if 0
+		// not compatible with older SDK
+		for(;;) {
+			udm_t memb;
+			memb.offset = off;
+			ssize_t i = utd.find_member(&memb, STRMEM_LOWBND);
+			if(i < 0)
+				break;
+#else
+		std::sort(utd.begin(), utd.end());
+		for(size_t i = 0; i < utd.size(); i++) {
+#endif
+			//make field auto-renameble
+			utd[i].name.sprnt("field_%X", utd[i].offset / 8);
+
+			if(off < utd[i].offset) {
+				udm_t udm;
+				udm.name.sprnt("gap%X", off / 8);
+				udm.offset = off;
+				udm.size = utd[i].offset - off;
+				create_type_from_size(&udm.type, udm.size / 8);
+				off = utd[i].offset + utd[i].size;
+				utd.insert(utd.begin() + i, udm);
+			} else {
+				off += utd[i].size;
+			}
+		}
+		utd.unpadded_size = utd.total_size = (size_t)(off / 8);
+		utd.effalign = 1;
+		utd.taudt_bits = TAUDT_UNALIGNED;
+		tinfo_t restype;
+		restype.create_udt(utd, BTF_STRUCT);
+		tinfo_t ts;
+		if (!confirm_create_struct(ts, restype, "s"))
+			return 0;
+
+		vu.set_lvar_type(var, make_pointer(ts));
+		vu.refresh_view(false);
+	}
+	return 0;
+}
+
+//--------------------------------------------------
+struct ida_local matched_structs_with_offsets_t : public chooser_t
+{
+	asize_t offset;
+	tidvec_t list;
+	static const int widths[];
+	static const char* const header[];
+
+	matched_structs_with_offsets_t(asize_t off) : chooser_t(CH_KEEP | CH_MODAL, 3, widths, header, "[hrt] Structs with offset"), offset(off) {}
+	virtual size_t idaapi get_count() const { return list.size(); }
+	virtual void idaapi get_row(qstrvec_t* cols, int* icon_, chooser_item_attrs_t* attrs, size_t n) const;
+};
+
+const int matched_structs_with_offsets_t::widths[] = {40, 32, CHCOL_HEX | 8};
+const char* const matched_structs_with_offsets_t::header[] = {"struct.member", "member type", "struct size"};
+
+void idaapi matched_structs_with_offsets_t::get_row(qstrvec_t* cols, int* icon_, chooser_item_attrs_t* attrs, size_t n) const
+{
+	qstrvec_t& cols_ = *cols;
+	qstring name;
+	qstring type_str;
+	tid_t id = list[n];
+	print_struct_member_name(id, offset, &cols_[0]);
+	tid_t membId = BADNODE;
+	if (0 == struct_get_member(id, offset, &membId) && membId != BADNODE)
+		print_struct_member_type(membId, &cols_[1]);
+#if IDA_SDK_VERSION >= 900
+	tinfo_t struc;
+	struc.get_type_by_tid(id);
+	size_t size = struc.get_size();
+#else
+	asize_t size = get_struc_size(id);
+#endif //IDA_SDK_VERSION >= 900
+	cols_[2].sprnt("0x%x", size);
+}
+
+ACT_DEF(possible_structs_for_one_offset)
+{
+	vdui_t &vu = *get_widget_vdui(ctx->widget);
+	if (!vu.item.is_citem())
+		return 0;
+
+	cexpr_t *e = vu.item.e;
+	if (e->op != cot_num)
+		return 0;
+
+	asize_t offset = (asize_t)e->numval();
+	matched_structs_with_offsets_t m(offset);
+#if IDA_SDK_VERSION < 900
+	for(uval_t idx = get_first_struc_idx(); idx!=BADNODE; idx=get_next_struc_idx(idx)) {
+		tid_t id = get_struc_by_idx(idx);
+		if (is_union(id))
+			continue;
+		if(struct_has_member(id, offset))
+			m.list.push_back(id);
+	}
+	ssize_t choosed = m.choose();
+	if (choosed >= 0)
+		open_structs_window(m.list[choosed], offset);
+#else
+		uint32 limit = get_ordinal_limit();
+		if (limit == uint32(-1))
+			return 0;
+		for (uint32 ord = 1; ord < limit; ++ord) {
+			tinfo_t t;
+			if (!t.get_numbered_type(ord, BTF_STRUCT, true) || !t.is_struct())
+					continue;
+			tid_t id = t.get_tid();
+			if(id != BADADDR && struct_has_member(id, offset))
+				m.list.push_back(id);
+		}
+
+		ssize_t choosed = m.choose();
+		if (choosed >= 0)
+			open_loctypes_window(get_tid_ordinal(m.list[choosed]));
+#endif //IDA_SDK_VERSION < 900
+	return 0;
+}
+
+//-----------------------------------------------------
+ACT_DEF(structs_with_this_size)
+{
+	vdui_t &vu = *get_widget_vdui(ctx->widget);
+	if (!vu.item.is_citem())
+		return 0;
+	cexpr_t *e = vu.item.e;
+	if (e->op != cot_num)
+		return 0;
+	asize_t size = (asize_t)e->numval();
+	matched_structs_t m;
+
+#if IDA_SDK_VERSION < 900
+	for (uval_t idx = get_first_struc_idx(); idx != BADNODE; idx = get_next_struc_idx(idx)) {
+		tid_t id = get_struc_by_idx(idx);
+		struc_t * struc = get_struc(id);
+		if (!struc)
+			continue;
+		if (is_union(id))
+			continue;
+		if (get_struc_size(struc) == size)
+			m.list.push_back(id);
+	}
+
+	ssize_t choosed = m.choose();
+	if (choosed >= 0)
+		open_structs_window(m.list[choosed], 0);
+#else //IDA_SDK_VERSION >= 900
+	uint32 limit = get_ordinal_limit();
+	if (limit == uint32(-1))
+		return 0;
+	for (uint32 ord = 1; ord < limit; ++ord) {
+		tinfo_t t;
+		if (t.get_numbered_type(ord, BTF_STRUCT, true) && t.is_struct() && t.get_size() == size) {
+			tid_t tid = t.get_tid();
+			if (tid != BADADDR)
+				m.list.push_back(tid);
+		}
+	}
+
+	ssize_t choosed = m.choose();
+	if (choosed >= 0)
+		open_loctypes_window(get_tid_ordinal(m.list[choosed]));
+#endif //IDA_SDK_VERSION < 900
+	return 0;
+}
 
 //-----------------------------------------------------
 bool is_number(vdui_t *vu)
@@ -3938,8 +4601,12 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 				dump_ctree(cfunc, fname);
 			}
 #endif
-			if(new_maturity == CMAT_BUILT) {
-			} else if(new_maturity == CMAT_CPA) {
+#if IDA_SDK_VERSION <= 730
+			if ( new_maturity == CMAT_BUILT ) { // ctree is ready
+				convert_negative_offset_casts(cfunc);
+			} else 
+#endif //IDA_SDK_VERSION <= 730
+			if (new_maturity == CMAT_CPA) {
 				convert_offsetof_n_reincasts(cfunc);
 			} else if(new_maturity == CMAT_TRANS3) {
 				com_scan(cfunc);
@@ -4122,7 +4789,13 @@ static ssize_t idaapi ui_callback(void *user_data, int ncode, va_list va)
 		TWidget * widget = va_arg(va, TWidget *);
 		TPopupMenu *p = va_arg(va, TPopupMenu *);
 		const action_activation_ctx_t* ctx = va_arg(va, const action_activation_ctx_t*);
-		if(get_widget_type(widget) == BWN_DISASM) {
+		switch (get_widget_type(widget)) {
+#if IDA_SDK_VERSION < 900
+		case BWN_STRUCTS:
+			add_structures_popup_items(widget, p);
+			break;
+#endif //IDA_SDK_VERSION < 900
+		case BWN_DISASM:
 			attach_action_to_popup(widget, p, ACT_NAME(decrypt_data));
 			attach_action_to_popup(widget, p, ACT_NAME(add_VT_struct));
 			if (get_view_renderer_type(widget) == TCCRT_GRAPH) {
@@ -4617,6 +5290,15 @@ plugmod_t*
 	registerMicrocodeExplorer();
 	hrt_reg_act();
 	register_idc_functions();
+
+#if IDA_SDK_VERSION <= 730
+	ncast_reg_act();
+#endif //IDA_SDK_VERSION <= 730
+#if IDA_SDK_VERSION < 900
+	structs_reg_act();
+#endif //IDA_SDK_VERSION < 900
+	register_new_struc_place();
+	new_struct_view_reg_act();
 	lit_init();
 	deinline_init();
 	opt_init();
@@ -4627,7 +5309,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "1.2.21";
+	addon.version = "2.2.21";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;
@@ -4638,6 +5320,14 @@ void idaapi term(void)
 {
 	if ( inited )
 	{
+#if IDA_SDK_VERSION < 900
+		structs_unreg_act();
+#endif //IDA_SDK_VERSION < 900
+#if IDA_SDK_VERSION <= 730
+		ncast_unreg_act();
+#endif //IDA_SDK_VERSION <= 730
+		new_struct_view_unreg_act();
+
 		appcall_view_unreg_act();
 		reincast_unreg_act();
 		unregisterMicrocodeExplorer();

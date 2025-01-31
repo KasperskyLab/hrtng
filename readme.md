@@ -48,6 +48,10 @@ Special thanks to following peoples for their great plugins were used as base fo
   * [Create dummy structs](doc/cr_struc.md)
   * [Assist split gaps in structures](doc/struct-gaps.md)
   * [Unite stack var reuse](doc/var-reuse.md)
+  * [List of structures with given size, with given offset](doc/struct-sz-off.md)
+  * [Assist in creation of new structure definitions](doc/struct-bld.md)
+  * [Finds structures with same "shape" as is used](doc/struct-shape.md)
+  * [~~New functionality in Structures view~~](doc/ex-unp-struc.md)
 
 ### Virtual/indirect calls assistance
   * [Virtual calls assistance](doc/virtual-calls.md)
@@ -67,7 +71,9 @@ Special thanks to following peoples for their great plugins were used as base fo
   * [Convert function to __usercall, detect spoiled registers](doc/usercall.md)
   * [Set calling conventions bit closer to Go-lang](doc/golang.md)
   * Print reversing progress percent on a proc renaming
-
+  * [~~Remove function's return type converting it to void func(...)~~](doc/remove-ret-type.md)
+  * [~~Remove function's argument~~](doc/remove-arg.md)
+  * [~~Deal with structures with negative offsets or access based on offsets in a middle of structure~~](doc/neg-offs.md)
 
 ### Patching
   * [Patch custom area with NOPs](doc/patch-nops.md)

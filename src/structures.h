@@ -9,3 +9,23 @@ asize_t struct_get_member(tid_t strId, asize_t offset, tid_t* last_member, tidve
 
 bool confirm_create_struct(tinfo_t &out_type, tinfo_t &in_type, const char* sprefix);
 
+bool struct_has_member(tid_t strId, asize_t offset);
+bool print_struct_member_name(tid_t strcId, asize_t offset, qstring* name, bool InRecur = false);
+bool print_struct_member_type(tid_t membId, qstring *tname);
+
+struct ida_local matched_structs_t : public chooser_t
+{
+	static const int widths[];
+	static const char* const header[];
+	tidvec_t list;
+
+	matched_structs_t() : chooser_t(CH_KEEP | CH_MODAL, 1, widths, header, "[hrt] Matched structs") {}
+	virtual size_t idaapi get_count() const { return list.size(); }
+	virtual void idaapi get_row(qstrvec_t* cols, int* icon_, chooser_item_attrs_t* attrs, size_t n) const;
+};
+
+#if IDA_SDK_VERSION < 900
+void structs_reg_act();
+void structs_unreg_act();
+void add_structures_popup_items(TWidget *view, TPopupMenu *p);
+#endif // IDA_SDK_VERSION < 900

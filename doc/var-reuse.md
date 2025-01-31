@@ -1,4 +1,4 @@
-## Finds structures with same "shape" as is used 
+## Union creation for stack var is reused with different types
 Context menu *"Unite stack var reuse"*
 
 Right click on variable and choose *"Unite stack var reuse"*.

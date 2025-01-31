@@ -38,6 +38,9 @@ ADD_IDA_PLUGIN(hrtng
   microavx.cpp
   msig.cpp
   opt.cpp
+  new_struc_place.cpp
+  new_struc_view.cpp
+  new_struct.cpp
   structures.cpp
   rename.cpp
   unflat.cpp

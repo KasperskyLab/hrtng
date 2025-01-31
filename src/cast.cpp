@@ -17,6 +17,9 @@
     Author: Sergey.Belov at kaspersky.com
 */
 
+// Evolution of negative_cast.cpp from https://github.com/nihilus/hexrays_tools
+// there is almost nothing left from the original code
+
 #include "warn_off.h"
 #include <hexrays.hpp>
 #include "warn_on.h"
@@ -408,4 +411,504 @@ ACT_DEF(delete_reinterpret_cast)
 	vu.refresh_view(false);
 	return 0;
 }
+
+//----------------------- CONTAINER_OF --------------------------------------------------------------------------------------------------
+#if IDA_SDK_VERSION <= 730 //IDA 7.4 has a better feature ("Pointer shift value" in a "Convert to struct*" dialog)
+													 //https://www.hex-rays.com/products/ida/support/idadoc/1695.shtml
+
+#define DEBUG_NEG_CAST 0
+
+bool can_be_n_recast(vdui_t *vu);
+bool is_n_recast(vdui_t *vu);
+
+#define AST_ENABLE_FOR(check) vdui_t *vu = get_widget_vdui(ctx->widget); return ((vu == NULL) ? AST_DISABLE_FOR_WIDGET : ((check) ? AST_ENABLE : AST_DISABLE))
+ACT_DECL(use_CONTAINER_OF_callback, AST_ENABLE_FOR(can_be_n_recast(vu)))
+ACT_DECL(destroy_CONTAINER_OF_callback, AST_ENABLE_FOR(is_n_recast(vu)))
+#undef AST_ENABLE_FOR
+#undef AST_ENABLE_FOR_ME
+
+static const action_desc_t actions_nc[] =
+{
+	ACT_DESC("[hrt] Use CONTAINER_OF here", NULL, use_CONTAINER_OF_callback),
+	ACT_DESC("[hrt] Destroy CONTAINER_OF", NULL, destroy_CONTAINER_OF_callback),
+};
+
+void ncast_reg_act()
+{
+	for (size_t i = 0, n = qnumber(actions_nc); i < n; ++i)
+		register_action(actions_nc[i]);
+}
+
+void ncast_unreg_act()
+{
+	for (size_t i = 0, n = qnumber(actions_nc); i < n; ++i)
+		unregister_action(actions_nc[i].name);
+}
+//-------------------------------------------------------------------------
+
+static const char HELPERNAME[] = "CONTAINER_OF";
+
+class ida_local negative_cast_t
+{
+public:
+	tid_t cast_to;
+	uint32 from;
+	int32 diff;
+	bool disabled;
+
+	negative_cast_t(void)
+	{		
+		cast_to = BADNODE;
+		from = 0;
+		diff = 0;
+		disabled = false;
+	}
+
+	negative_cast_t(tid_t to, uint32 from_, int32 off)
+	{
+		from = from_;
+		cast_to = to;
+		diff = off;
+		disabled = false;
+	}
+
+};
+
+static const char NC_NETNODE_HASH_IDX[] = "hrt_contof";
+void add_cached_cast(ea_t ea, tid_t cast_to, uint32 from, int32 diff)
+{
+	negative_cast_t cast(cast_to, from, diff);
+	netnode node(ea);
+	node.hashdel(NC_NETNODE_HASH_IDX);
+	node.hashset(NC_NETNODE_HASH_IDX, &cast, sizeof(negative_cast_t));
+}
+
+bool find_cached_cast(ea_t ea, negative_cast_t * cast)
+{
+	netnode node(ea);
+	return sizeof(negative_cast_t) == node.hashval(NC_NETNODE_HASH_IDX, cast, sizeof(negative_cast_t));
+}
+
+void del_cached_cast(ea_t ea)
+{
+	negative_cast_t cast;
+	netnode node(ea);
+	size_t bufSz = sizeof(negative_cast_t);
+	if(sizeof(negative_cast_t) == node.hashval(NC_NETNODE_HASH_IDX, &cast, sizeof(negative_cast_t))) {
+		cast.disabled = true;
+		node.hashdel(NC_NETNODE_HASH_IDX);
+		node.hashset(NC_NETNODE_HASH_IDX, &cast, sizeof(negative_cast_t));
+	}
+}
+
+bool can_be_n_recast(vdui_t *vu)
+{
+	if ( !vu->item.is_citem() )
+		return false;
+	cexpr_t *e = vu->item.e;
+
+	if(e->op == cot_var || e->op == cot_num) {
+		citem_t * prnt = vu->cfunc->body.find_parent_of(e);
+		if(!prnt->is_expr())
+			return false;
+		if ((prnt->op == cot_cast && e->op == cot_var) ||
+			(prnt->op == cot_neg && e->op == cot_num)) {
+			prnt = vu->cfunc->body.find_parent_of(prnt);
+			if(!prnt->is_expr())
+				return false;
+		}
+		e = (cexpr_t*)prnt;
+	}
+
+	if (e->op != cot_sub && e->op != cot_add && e->op != cot_idx)
+		return false;
+
+	cexpr_t *var = skipCast(e->x);
+	cexpr_t * num = e->y;
+	if(num->op == cot_neg)
+		num = num->x;
+
+	if(var->op != cot_var || num->op != cot_num)
+		return false;
+	
+	if(e->op == cot_idx) {
+		tinfo_t vartype = var->type;
+		if (!vartype.is_ptr())
+			return false;
+	}
+	return true;	
+}
+
+struct ida_local nc_memb_t {
+	tid_t strucId;
+	uint32 memb_off;
+	nc_memb_t(): memb_off(0){}
+	nc_memb_t(tid_t t, uint32 off): strucId(t), memb_off(off) {}
+};
+
+typedef std::map<int, nc_memb_t> var_asgn_memb_t;
+
+void convert_negative_offset_casts(cfunc_t *cfunc)
+{
+	struct ida_local nc_converter_t : public ctree_parentee_t
+	{
+		var_asgn_memb_t var_asgn_memb;
+		bool bDoRestart;
+		cfunc_t *func;
+		ea_t insideHelper;
+		
+		nc_converter_t(cfunc_t *cfunc) : ctree_parentee_t(true), func(cfunc) { bDoRestart = false; insideHelper = BADADDR; }
+
+		void cache_var_asgn_memb(cexpr_t * asg)
+		{
+			if(asg->op != cot_asg || asg->x->op != cot_var)
+				return;
+			//Is it need to check cot_cast and cot_ref on CMAT_BUILT?
+
+			// for CMAT_BUILT maturity (preferred for auto-replacing "container_of() + num" to "container_of()->memptr")
+			// check: "var = smth + num" where smth type is pointer to struct
+			if(asg->y->op == cot_add && asg->y->y->op == cot_num) {
+				tinfo_t t = asg->y->x->type;
+				if(t.is_ptr()) {
+					t = t.get_ptrarr_object();
+					qstring sname;
+					if(t.is_struct() && t.get_type_name(&sname)) {
+						tid_t struct_id = get_struc_id(sname.c_str());
+						if(struct_id != BADNODE) {
+							uint32 membOff = (uint32)asg->y->y->numval();
+//							if (struct_has_member(struct_id, membOff)) {
+								var_asgn_memb[asg->x->v.idx] = nc_memb_t(struct_id, membOff);
+#if DEBUG_NEG_CAST
+								qstring expStr;
+								asg->print1(&expStr, func); tag_remove(&expStr);
+								msg("[hrt] %a: cache assign %s (type '%s', off %x)\n", asg->ea, expStr.c_str(), sname.c_str(), (uint32)membOff);
+#endif
+//							}
+						}
+					}
+				}
+			}
+		}
+
+		bool convert_test(cexpr_t *e)
+		{
+			if (e->op != cot_sub && e->op != cot_add /*&& e->op != cot_idx*/)
+				return false;
+			
+			cexpr_t *var = skipCast(e->x);
+			cexpr_t * num = e->y;
+			if(var->op != cot_var || num->op != cot_num)
+				return false;
+
+			//avoid recursion
+			if (num->ea == insideHelper) {
+#if DEBUG_NEG_CAST
+				qstring expStr;
+				e->print1(&expStr, func); tag_remove(&expStr);
+				msg("[hrt] insideHelper (%a '%s')\n", insideHelper, expStr.c_str());
+#endif
+				return false;
+			}
+
+			int32 diff = (int32)num->numval();
+			if(e->op == cot_sub)
+				diff = -diff;
+			uint32 from_off;
+			tid_t cast_to;
+
+			negative_cast_t cache; 
+			if (find_cached_cast(num->ea, &cache)) {
+				if (cache.disabled) {
+#if DEBUG_NEG_CAST
+					qstring expStr;
+					e->print1(&expStr, func); tag_remove(&expStr);
+					msg("[hrt] disabled (%a '%s')\n", num->ea, expStr.c_str());
+#endif
+					return false;
+				}
+				cast_to = cache.cast_to;
+				diff = cache.diff;
+				from_off = cache.from;
+			} else {
+				var_asgn_memb_t::iterator it = var_asgn_memb.find(var->v.idx);
+				if(it == var_asgn_memb.end())
+					return false;
+				from_off = it->second.memb_off;
+				if(diff < 0 && (int32)from_off < -diff) {
+					msg("[hrt] CONTAINER_OF casts substruct, pls select right type\n");
+					return false;
+				}
+				cast_to = it->second.strucId;
+				add_cached_cast(num->ea, cast_to, from_off, diff);
+			}			
+
+			qstring struc_name = get_struc_name(cast_to);
+			tinfo_t ti_cast_to = make_pointer(create_typedef(struc_name.c_str()));
+#if DEBUG_NEG_CAST
+			if (!ti_cast_to.is_correct()) {
+				qstring tstr;
+				ti_cast_to.print(&tstr);
+				msg("[hrt] incorrect type for CONTAINER_OF (%s)\n", tstr.c_str());
+				return false;
+			}
+#endif
+			//make  helper call arguments
+			carglist_t * arglist = new carglist_t();
+#if 0 //crashes on memory corruption
+			carg_t * arg0 = new carg_t();
+			//e->type = make_pointer(create_typedef("converted_expression"));
+			arg0->consume_cexpr(new cexpr_t(*e));
+			arglist->push_back(*arg0);
+#endif
+			qstring member_text;
+			carg_t * arg2 = new carg_t();
+			print_struct_member_name(cast_to, from_off, &member_text);
+			tinfo_t t2 = make_pointer(create_typedef("base_struct_member"));
+			arg2->consume_cexpr( create_helper(true, t2, member_text.c_str()));
+			arglist->push_back(*arg2);
+
+			cexpr_t * call = call_helper(ti_cast_to, arglist, "%s", HELPERNAME);
+			call->ea = num->ea;
+			call->x->ea = e->ea;
+			call->type = ti_cast_to;
+			if (from_off == -diff) {
+				replaceExp(func, e, call);// , false);
+			} else {
+				cexpr_t * mptr = new cexpr_t(cot_add, call, make_num(from_off + diff));
+				replaceExp(func, e, mptr);// , false);
+			}
+			return true;
+		}
+
+		int idaapi visit_expr(cexpr_t *e)
+		{
+			if (e->op == cot_asg)
+				cache_var_asgn_memb(e);
+			else if (e->op == cot_call && e->x->op == cot_helper)
+				insideHelper = e->ea;
+			return 0; // continue walking the tree
+		}
+
+		//modify expression on leave to avoid recursion
+		int idaapi leave_expr(cexpr_t *e) 
+		{
+			if (e->op == cot_call && e->x->op == cot_helper && insideHelper == e->ea)
+				insideHelper = BADADDR;
+			else if (e->op == cot_sub || e->op == cot_add /*|| e->op == cot_idx*/) {
+				if (convert_test(e) && recalc_parent_types()) {
+#if DEBUG_NEG_CAST
+					msg("[hrt] restart nc_converter\n");
+#endif
+					bDoRestart = true;
+					return 1;
+				}
+			}
+			return 0; // continue walking the tree
+		}
+	};
+
+	for(uint32 i = 0; i < 10; i++) {
+		nc_converter_t nc(cfunc);
+		nc.apply_to(&cfunc->body, NULL);
+		if(!nc.bDoRestart)
+			break;
+	}
+}
+
+//--------------------------------------------------------------------------
+bool get_member_offset_by_fullname_r(struc_t** struc, asize_t* offset, const char* fullname)
+{
+	struc_t* ss;
+	member_t* memb = get_member_by_fullname(&ss, fullname);
+	if (memb) {
+		if (!*struc)
+			*struc = ss;
+		*offset += memb->soff;
+		return true;
+	}
+	const char* first = qstrchr(fullname, '.');
+	if (!first)
+		return false;
+	const char* second = qstrchr(first + 1, '.');
+	if (!second)
+		return false;
+	qstring name(fullname, second - fullname);
+	memb = get_member_by_fullname(&ss, name.c_str());
+	if (!memb)
+		return false;
+
+	struc_t* membstr = get_sptr(memb);
+	if (!membstr)
+		return false;
+
+	if (!*struc)
+		*struc = ss;
+	*offset += memb->soff;
+
+
+	get_struc_name(&name, membstr->id);
+	name.append(second);
+
+	return get_member_offset_by_fullname_r(struc, offset, name.c_str());
+}
+
+bool get_member_offset_by_fullname(struc_t** struc, asize_t* offset, const char* fullname)
+{
+	*struc = NULL;
+	*offset = 0;
+	return get_member_offset_by_fullname_r(struc, offset, fullname);
+}
+
+//--------------------------------------------------------------------------
+ACT_DEF(use_CONTAINER_OF_callback)
+{
+	vdui_t &vu = *get_widget_vdui(ctx->widget);
+	if (!vu.item.is_citem())
+		return false;
+
+	cexpr_t *e = vu.item.e;
+
+	//go level up to add, sub or idx
+	if (e->op == cot_var || e->op == cot_num) {
+		citem_t * prnt = vu.cfunc->body.find_parent_of(e);
+		if (!prnt->is_expr())
+			return 0;
+		e = (cexpr_t*)prnt;
+		if (e->op == cot_cast) {
+			citem_t * prnt = vu.cfunc->body.find_parent_of(e);
+			if (!prnt || !prnt->is_expr())
+				return 0;
+			e = (cexpr_t*)prnt;
+		}
+	}
+
+		if (e->op != cot_sub && e->op != cot_add && e->op != cot_idx)
+			return 0;
+	
+		cexpr_t * cast = 0;
+		cexpr_t *var = e->x;
+		if (var->op == cot_cast) {
+			cast = var;
+			var = var->x;
+		}
+
+		cexpr_t * num = e->y;
+		if(var->op != cot_var || num->op != cot_num)
+			return 0;
+		
+		int32 offset = (int32)num->numval();
+		if (e->op == cot_sub)
+			offset = -offset;
+		ea_t ea = num->ea; //because cot_idx have not valid ea
+
+		if(e->op == cot_idx) {
+			if(!var->type.is_ptr())
+				return 0;
+			tinfo_t t = var->type;
+			t.remove_ptr_or_array();
+			offset *= (int32)t.get_size();
+			citem_t * prnt = vu.cfunc->body.find_parent_of(e);
+			if (prnt->op == cot_memref) {
+				e = (cexpr_t*)prnt;
+				offset += e->m;
+			}
+		}
+		else // Is it possible cot_cast and cot_idx together?
+		if (cast) {
+			tinfo_t t = cast->type;
+			t.remove_ptr_or_array();
+			offset *= (int32)t.get_size();
+		} 
+
+
+	qstring definition;
+	negative_cast_t cache;
+	if (find_cached_cast(ea, &cache) && cache.cast_to != BADNODE)
+		print_struct_member_name(cache.cast_to, cache.from, &definition);
+
+	struc_t *struc;
+	asize_t memboff;
+	do {
+		if(!ask_str(&definition, HIST_SEG, "[hrt] Enter base struct member (%d):\n'struc.member'\n or \n'struc + offset'", offset))
+			return 0;
+
+		size_t plus = definition.find('+');
+		if (plus != qstring::npos && plus != 0) {
+
+			qstring strname = definition.substr(0, plus).trim2();
+			tid_t tid = get_struc_id(strname.c_str());
+			if (tid == BADNODE) {
+				msg("[hrt] no such struct: '%s'\n", strname.c_str());
+				continue;
+			}
+			qstring stroff = definition.substr(plus + 1);
+			ea_t convea;
+			if (!atoea(&convea, stroff.c_str())) {
+				msg("[hrt] bad offset: '%s'\n", stroff.c_str());
+				continue;
+			}
+			memboff = (asize_t)convea;
+			struc = get_struc(tid);
+
+		} else if(!get_member_offset_by_fullname(&struc, &memboff, definition.c_str())) {
+			msg("[hrt] no such struct member: '%s'\n", definition.c_str());
+			continue;
+		} 
+
+		if (offset > 0 || -offset <= (int32)memboff)
+			break;
+
+		msg("[hrt] struct member's '%s' offset 0x%x is less then subtract 0x%x", definition.c_str(), (uint32)memboff, -offset);
+		if(e->op == cot_idx)
+			msg(", try to 'reset pointer type' for base variable\n");
+		else 
+			msg("\n");
+	} while(1);
+
+	add_cached_cast(ea, struc->id, (uint32)memboff, offset);
+
+	vu.refresh_view(false);
+	return 0;
+}
+
+bool is_n_recast(vdui_t *vu)
+{
+	if ( !vu->item.is_citem() )
+		return false;
+	cexpr_t *e = vu->item.e;
+	if (e->op == cot_helper)
+		return qstrcmp(HELPERNAME, e->helper) == 0;
+	return false;
+}
+
+ACT_DEF(destroy_CONTAINER_OF_callback)
+{
+	vdui_t &vu = *get_widget_vdui(ctx->widget);
+	if (!vu.item.is_citem())
+		return 0;
+	cexpr_t *e = vu.item.e;
+	if (e->op != cot_helper)
+		return 0;
+	if (qstrcmp(HELPERNAME, e->helper) != 0)
+		return 0;
+	const citem_t *p = vu.cfunc->body.find_parent_of(e);
+	if (p->op != cot_call)
+		return 0;
+	cexpr_t * call = (cexpr_t *)p;
+
+	//this really not need, just del_cached_cast and refres view is enought
+#if 0
+	carglist_t & arglist = *call->a;
+	if (arglist.size() < 2)
+		return 0;
+	//take both arguments as is, num representation may be modified by user
+	cexpr_t * subexp = new cexpr_t(cot_add, new cexpr_t(arglist[0]), new cexpr_t(arglist[1]));
+	subexp->calc_type(false);
+	replaceExp(vu.cfunc, call, subexp);
+#endif
+	del_cached_cast(call->ea);
+	vu.refresh_view(true);
+	return 0;
+}
+#endif //IDA_SDK_VERSION <= 730
 
