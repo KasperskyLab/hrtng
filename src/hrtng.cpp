@@ -1659,6 +1659,7 @@ ACT_DEF(recognize_shape)
 #else
 		std::sort(utd.begin(), utd.end());
 		for(size_t i = 0; i < utd.size(); i++) {
+			//msg("[hrt] %d: off %x-%x, name %s, type %s (%x)\n", i, int(off/8), int(utd[i].offset/8), utd[i].name.c_str(), utd[i].type.dstr(), utd[i].size / 8);
 #endif
 			//make field auto-renameble
 			utd[i].name.sprnt("field_%X", utd[i].offset / 8);
@@ -1671,6 +1672,7 @@ ACT_DEF(recognize_shape)
 				create_type_from_size(&udm.type, udm.size / 8);
 				off = utd[i].offset + utd[i].size;
 				utd.insert(utd.begin() + i, udm);
+				i++;
 			} else {
 				off += utd[i].size;
 			}
