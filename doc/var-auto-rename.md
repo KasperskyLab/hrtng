@@ -9,7 +9,7 @@ The first thing I've seen very annoying when begins reverse a lot - I spend too 
 	- number in `enum` form
 	- call to procedure with following name (`A`/`W` letters and additions like `_2` in the end of proc name are ignored):
 		+ `GetLastError` produce name `err`
-		+ function with name contains `__get` or `::get` substring. Example: `SomeClass::getSomeMemb()` produce name: `SomeMemb`
+		+ function with name contains `get` substring. Example: `SomeClass::getSomething()` or `SomeClass::get_Something()` produce name: `Something`
 		+ function with name contains `::ctor` substring. Example: `SomeClass::ctor_copy()` produce name: `SomeClass`
 		+ `LoadLibrary(LibName)` and `GetModuleHandle(LibName)` produce name: `hLibName`
 		+ `GetProcAddress(hMod, ProcName)` produce name: `ProcName`

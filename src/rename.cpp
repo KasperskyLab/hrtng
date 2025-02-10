@@ -148,9 +148,11 @@ static bool getCallName(cfunc_t *func, cexpr_t* call, qstring* name)
 
 	stripName(&funcname);
 
-	size_t get = funcname.find("__get");
-	if(get != qstring::npos && funcname.length() > get + 7 ) { //  strlen("::get") + 2
-		size_t cnt = 5;
+	size_t get = funcname.find("get");
+	if(get != qstring::npos
+		 //&& get != 0 // ignore "get" in the beginning
+		 && funcname.length() > get + 5 ) { //  strlen("get") + 2
+		size_t cnt = 3;
 		if(funcname[get + cnt] == '_') // strip '_' after "get" too
 			++cnt;
 		*name = funcname.substr(get + cnt);
