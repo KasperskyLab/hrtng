@@ -887,13 +887,10 @@ bool SplitMblocksByJccEnding(mblock_t *pred1, mblock_t *pred2, mblock_t *&endsWi
 void AppendGoto(mblock_t *blk, int iBlockDest)
 {
 	minsn_t* newGoto;
-	if (blk->tail) {
-		newGoto = new minsn_t(*blk->tail);
-		newGoto->r.erase();
-		newGoto->d.erase();
-	} else {
+	if (blk->tail)
+		newGoto = new minsn_t(blk->tail->ea);
+	else
 		newGoto = new minsn_t(blk->start);
-	}
 	newGoto->opcode = m_goto;
 	newGoto->l.make_blkref(iBlockDest);
 	blk->insert_into_block(newGoto, blk->tail);
