@@ -73,7 +73,7 @@ hexdsp_t *hexdsp = NULL;
 bool set_var_type(vdui_t *vu, lvar_t *lv, tinfo_t *ts);
 bool is_arg_var(vdui_t *vu);
 bool is_call(vdui_t *vu, cexpr_t **call = nullptr, bool argsDeep = false);
-bool is_recastable(vdui_t *vu);
+bool is_recastable(vdui_t *vu, tinfo_t *ts);
 bool is_stack_var_assign(vdui_t *vu, int* varIdx, ea_t *ea, sval_t* size);
 bool is_array_char_assign(vdui_t *vu, int* varIdx, ea_t *ea);
 bool is_decryptable_obj(vdui_t *vu, ea_t *ea);
@@ -113,7 +113,7 @@ ACT_DECL(fin_struct          , AST_ENABLE_FOR(fi.size() != 0 && can_be_converted
 ACT_DECL(recognize_shape     , AST_ENABLE_FOR(vu->item.get_lvar()))
 ACT_DECL(possible_structs_for_one_offset, AST_ENABLE_FOR(is_number(vu)))
 ACT_DECL(structs_with_this_size, AST_ENABLE_FOR(is_number(vu)))
-ACT_DECL(stack_var_reuse     , AST_ENABLE_FOR(vu->item.get_lvar()))
+ACT_DECL(var_reuse             , AST_ENABLE_FOR(vu->item.get_lvar()))
 #if IDA_SDK_VERSION < 900
 ACT_DECL(convert_to_golang_call, AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
 #endif // IDA_SDK_VERSION < 900
@@ -122,7 +122,7 @@ ACT_DECL(jump_to_indirect_call  , AST_ENABLE_FOR(is_call(vu)))
 ACT_DECL(zeal_doc_help       , AST_ENABLE_FOR(is_call(vu)))
 ACT_DECL(add_VT              , AST_ENABLE_FOR(is_VT_assign(vu, NULL, NULL)));
 ACT_DECL(add_VT_struct       , return ((ctx->widget_type != BWN_DISASM) ? AST_DISABLE_FOR_WIDGET : (((is_data(get_flags(ctx->cur_ea)) && is_func(get_flags(get_ea(ctx->cur_ea))))) ? AST_ENABLE : AST_DISABLE)))
-ACT_DECL(recast_item             ,  AST_ENABLE_FOR(is_recastable(vu)))
+ACT_DECL(recast_item             ,  AST_ENABLE_FOR(is_recastable(vu, NULL)))
 ACT_DECL(scan_stack_string       , AST_ENABLE_FOR(is_stack_var_assign(vu, NULL, NULL, NULL)))
 ACT_DECL(scan_stack_string_n_decr, AST_ENABLE_FOR(is_stack_var_assign(vu, NULL, NULL, NULL)))
 ACT_DECL(scan_array_string       , AST_ENABLE_FOR(is_array_char_assign(vu, NULL, NULL)))
@@ -165,7 +165,7 @@ static const action_desc_t actions[] =
 	ACT_DESC("[hrt] Recognize var type shape",       "T", recognize_shape),
 	ACT_DESC("[hrt] Which structs have this offset?",NULL, possible_structs_for_one_offset),
 	ACT_DESC("[hrt] Which structs have this size?",  NULL, structs_with_this_size),
-	ACT_DESC("[hrt] Unite stack var reuse",          NULL, stack_var_reuse),
+	ACT_DESC("[hrt] Unite var reuse",                NULL, var_reuse),
 	ACT_DESC("[hrt] Convert to __usercall",          "U", convert_to_usercall),
 	ACT_DESC("[hrt] Jump to indirect call",          "J", jump_to_indirect_call),
 	ACT_DESC("[hrt] Zeal offline API help (zealdocs.org)",  "Ctrl-F1", zeal_doc_help),
@@ -212,7 +212,7 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 		attach_action_to_popup(view, p, ACT_NAME(show_struct_bld));
 		attach_action_to_popup(view, p, ACT_NAME(fin_struct));
 		attach_action_to_popup(view, p, ACT_NAME(recognize_shape));
-		attach_action_to_popup(view, p, ACT_NAME(stack_var_reuse));
+		attach_action_to_popup(view, p, ACT_NAME(var_reuse));
 	}
 	if (vu->item.citype == VDI_FUNC) {
 		attach_action_to_popup(view, p, ACT_NAME(convert_to_usercall));
@@ -246,7 +246,7 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 	else if (is_reincast(vu))
 		attach_action_to_popup(view, p, ACT_NAME(delete_reinterpret_cast));
 
-	if (is_recastable(vu))
+	if (is_recastable(vu, NULL))
 		attach_action_to_popup(view, p, ACT_NAME(recast_item));
 	
 	if (is_stack_var_assign(vu, NULL, NULL, NULL)) {
@@ -374,7 +374,7 @@ static int idaapi jump_to_call_dst(vdui_t *vu)
 			t.remove_ptr_or_array();
 		if (t.is_struct()) {
 #if IDA_SDK_VERSION >= 900
-			// actually get_vftable_ea is appeared in ida 7.6 but here will be used from ida9 becouse it probably depends on TAUDT_VFTABLE flag has been set in create_VT_struc
+			// actually get_vftable_ea is appeared in ida 7.6 but here will be used from ida9 because it probably depends on TAUDT_VFTABLE flag has been set in create_VT_struc
 			// get destination from vftable_ea
 			auto tid = t.get_tid();
 			if(tid != BADADDR) {
@@ -956,31 +956,47 @@ struct ida_local types_locator_t : public ctree_parentee_t
 			vidxs.add_unique(skipCast(e->y)->v.idx);
 			return 0;
 		}
+		if(e->op != cot_var || !vidxs.has(e->v.idx))
+			return 0;
 
-		if(e->op == cot_var && vidxs.has(e->v.idx)) {
-			int i = (int)parents.size() - 1;
-			if(i >= 0 && parents[i]->is_expr()) {
-				cexpr_t* parent = (cexpr_t*)parents[i];
-				switch(parent->op) {
-				case cot_cast:
-					//msg( "[hrt] var cast: %s [%s]\n", parent->dstr(), parent->type.dstr());
-					types.add_unique(parent->type);
-					break;
-				case cot_ref:
-					if(i > 1 && parents[i - 1]->op == cot_cast) {
-						parent = (cexpr_t*)parents[i - 1];
-						//msg( "[hrt] var ref cast: %s [%s]\n", parent->dstr(), parent->type.dstr());
-						types.add_unique(remove_pointer(parent->type));
-					}
-					break;
-				}
+		int i = (int)parents.size() - 1;
+		if(i < 0 || !parents[i]->is_expr())
+			return 0;
+
+		bool bDerefPtr = false;
+		cexpr_t* parent = (cexpr_t*)parents[i];
+		switch(parent->op) {
+		case cot_cast:
+			//msg( "[hrt] var cast: %s [%s]\n", parent->dstr(), parent->type.dstr());
+			types.add_unique(parent->type);
+			break;
+		case cot_ref:
+			if(i > 1 && parents[i - 1]->op == cot_cast) {
+				parent = (cexpr_t*)parents[i - 1];
+				//msg( "[hrt] var ref cast: %s [%s]\n", parent->dstr(), parent->type.dstr());
+				types.add_unique(remove_pointer(parent->type));
 			}
+			break;
+		case cot_ptr:
+			if(i <= 1 || parents[i - 1]->op != cot_asg)
+				return 0;
+			bDerefPtr = true;
+			parent = (cexpr_t*)parents[i - 1];
+			//fall down to cot_asg handler
+		case cot_asg:
+			cexpr_t *y = skipCast(parent->y);
+			tinfo_t yType = y->type; //??? getExpType
+			if(bDerefPtr)
+				yType = make_pointer(yType);
+			//msg( "[hrt] var assign cast: %s [%s]\n", parent->dstr(), yType.dstr());
+			types.add_unique(yType);
+			break;
 		}
 		return 0;
 	}
 };
 
-ACT_DEF(stack_var_reuse)
+ACT_DEF(var_reuse)
 {
 	vdui_t* vu = get_widget_vdui(ctx->widget);
 	lvar_t* var = vu->item.get_lvar();
@@ -1008,7 +1024,7 @@ ACT_DEF(stack_var_reuse)
 		udm_t &udm = utd.push_back();
 		udm.offset = 0; // i ?
     udm.type = tl.types[i];
-		udm.name = create_field_name(udm.type, i);
+		udm.name = create_field_name(udm.type);
 		size_t tsz = udm.type.get_size();
     udm.size = tsz * 8;
 		if(total_size < tsz)
@@ -1019,11 +1035,20 @@ ACT_DEF(stack_var_reuse)
 	utd.unpadded_size = utd.total_size = total_size;
 	tinfo_t restype;
 	restype.create_udt(utd, BTF_UNION);
+
+	//TODO: sort tl.types vector just after filling,
+	//TODO: and then enum all existing unions to check if the same type was already created
+
 	tinfo_t ts;
 	if (!confirm_create_struct(ts, restype, "u"))
 		return 0;
 
 	vu->set_lvar_type(var, ts);
+
+	//force to rename var, it usually has a wrong name at this time
+	qstring tname;
+	if(ts.get_type_name(&tname))
+		renameVar(vu->cfunc->entry_ea, vu->cfunc, vi, &tname, vu);
 	vu->refresh_view(false);
 	return 0;
 }
@@ -1821,17 +1846,13 @@ ACT_DEF(structs_with_this_size)
 //-----------------------------------------------------
 bool is_number(vdui_t *vu)
 {
-	if (!vu->item.is_citem())
-		return false;
-	cexpr_t *e = vu->item.e;
-	if (e->op != cot_num)
-		return false;
-	return true;
+	if (vu->item.is_citem() && vu->item.it->op == cot_num)
+		return true;
+	return false;
 }
 
-bool is_like_assign(cexpr_t *asg)
+static inline THREAD_SAFE bool is_like_assign(ctype_t op)
 {
-  ctype_t op = asg->op;
   return op == cot_asg || op == cot_eq || op == cot_ne;
 }
 /*
@@ -1845,42 +1866,31 @@ bool is_like_assign(cexpr_t *asg)
      -> y -> something with type B
 
 */
-static bool is_cast_assign(vdui_t *vu, tinfo_t * ts)
+static bool is_cast_assign(cfuncptr_t cfunc, cexpr_t * var, tinfo_t * ts)
 {
-	if (!vu->item.is_citem())
-		return false;
-
-	cexpr_t * var = vu->item.e;
 	if (!isRenameble(var->op))
 		return false;
 		
-	citem_t * asg_ci = vu->cfunc->body.find_parent_of(var);
+	citem_t * asg_ci = cfunc->body.find_parent_of(var);
 	if(!asg_ci->is_expr())
 		return false;
 
 	bool bDerefPtr = false;
 	cexpr_t * asg = (cexpr_t *)asg_ci;
-	if(!is_like_assign(asg)) {
+	if(!is_like_assign(asg->op)) {
 		if(asg->op != cot_ptr || asg->x != var)
 			return false;
 		bDerefPtr = true;
-		asg_ci = vu->cfunc->body.find_parent_of(asg);
-		if(!asg_ci->is_expr() || !is_like_assign((cexpr_t *)asg_ci))
+		asg_ci = cfunc->body.find_parent_of(asg);
+		if(!asg_ci->is_expr() || !is_like_assign(asg_ci->op))
 			return false;
 		asg = (cexpr_t *)asg_ci;
 	} else if(asg->x != var)
 		return false;
 
-	tinfo_t yType;
-	cexpr_t * y = asg->y;
-	if(y->op == cot_cast)
-		yType = y->x->type;
-	else if(y->op == cot_var) //TODO: global, struc member
-		yType = y->type; //??? use getExpType(cfunc_t *func, cexpr_t* exp)
-	else
-		return false;
-
 	if(ts) {
+		cexpr_t* y = skipCast(asg->y);
+		tinfo_t yType = y->type; //??? use getExpType(cfunc_t *func, cexpr_t* exp)
 		if(bDerefPtr)
 			yType = make_pointer(yType);
 		*ts = yType;
@@ -1894,16 +1904,12 @@ static bool is_cast_assign(vdui_t *vu, tinfo_t * ts)
  LOBYTE(var)
  //cursor is on var
 */
-static bool is_cast_var(vdui_t *vu, tinfo_t * ts)
+static bool is_cast_var(cfuncptr_t cfunc, cexpr_t * var, tinfo_t * ts)
 {
-	if (!vu->item.is_citem())
-		return false;
-
-	cexpr_t * var = vu->item.e;
 	if(!isRenameble(var->op))
 		return false;
 
-	citem_t * cast_ci = vu->cfunc->body.find_parent_of(var);
+	citem_t * cast_ci = cfunc->body.find_parent_of(var);
 	if(!cast_ci->is_expr())
 		return false;
 
@@ -1931,7 +1937,7 @@ static bool is_cast_var(vdui_t *vu, tinfo_t * ts)
 	bool ref = false;
 	if(exp->op == cot_ref) {
 		ref = true;
-		cast_ci = vu->cfunc->body.find_parent_of(exp);
+		cast_ci = cfunc->body.find_parent_of(exp);
 		if(cast_ci->is_expr())
 			exp = (cexpr_t *)cast_ci;
 	} 
@@ -1940,7 +1946,7 @@ static bool is_cast_var(vdui_t *vu, tinfo_t * ts)
 		return false;
 
 	//check for ptr deref, ex: *(_OWORD *)var
-	citem_t *pitm = vu->cfunc->body.find_parent_of(exp);
+	citem_t *pitm = cfunc->body.find_parent_of(exp);
 	if(pitm->op == cot_ptr)
 		ref = true;
 
@@ -2182,16 +2188,18 @@ static int idaapi cast_var2(vdui_t *vu, tinfo_t *ts)
 	return 0;
 }
 
-bool is_recastable(vdui_t *vu)
+bool is_recastable(vdui_t *vu, tinfo_t *ts)
 {
-	return is_cast_var(vu, NULL) || is_cast_assign(vu, NULL);
+	if (!vu->item.is_citem())
+		return false;
+	return is_cast_var(vu->cfunc, vu->item.e, ts) || is_cast_assign(vu->cfunc, vu->item.e, ts);
 }
 
 ACT_DEF(recast_item)
 {
 	vdui_t *vu = get_widget_vdui(ctx->widget);
 	tinfo_t ts;
-	if (is_cast_var(vu, &ts) || is_cast_assign(vu, &ts))
+	if (is_recastable(vu, &ts))
 		return cast_var2(vu, &ts);
 	return 0;
 }
@@ -2898,7 +2906,7 @@ ACT_DEF(create_dummy_struct)
 			if(getExpName(vu->cfunc, call->x, &callname)) {
 				cexpr_t* asgn = get_assign_or_helper(vu, call, false);
 				if(asgn && (stristr(callname.c_str(), "alloc") || callname == "??2@YAPAXI@Z"))
-					if(renameExp(asgn->ea, "", vu->cfunc, asgn->x, &name, vu))
+					if(renameExp(asgn->ea, vu->cfunc, asgn->x, &name, vu))
 						return 1;//vu->refresh_view(true);
 			}
 		}
@@ -2906,7 +2914,7 @@ ACT_DEF(create_dummy_struct)
 		if(vu->item.is_citem() &&
 			 isRenameble(vu->item.e->op) &&
 			 !getExpName(vu->cfunc, vu->item.e, &n) &&
-			 renameExp(vu->item.e->ea, "", vu->cfunc, vu->item.e, &name, vu))
+			 renameExp(vu->item.e->ea, vu->cfunc, vu->item.e, &name, vu))
 			return 1;//vu->refresh_view(true);
 	}
 	return 0;
@@ -3779,11 +3787,9 @@ static int scan_stack_string2(action_activation_ctx_t *ctx, bool bDecrypt)
 			set_var_type(vu, var, &arrType);
 		}
 
-#if 0 // var will be renamed by comment
-		qstring funcname;
-		get_short_name(&funcname, vu->cfunc->entry_ea);
-		renameVar(asgn_ea, funcname.c_str(), vu->cfunc, varIdx, &str, vu);
-#endif
+		// var will be renamed by comment
+		//renameVar(asgn_ea, vu->cfunc, varIdx, &str, vu);
+
 		//msg("[hrt] %a: build stack string for var '%s' - '%s'\n", vu.cfunc->entry_ea, var->name.c_str(), str.c_str());
 		REFRESH_FUNC_CTEXT(vu);
 	}
@@ -3931,10 +3937,7 @@ ACT_DEF(scan_array_string)
 	if (!decrypt_string(vu, BADADDR, inBuf, len, &hint_itSz, &result)) //do not decrypt last zero
 		return 0;
 
-	qstring funcname;
-	get_short_name(&funcname, vu->cfunc->entry_ea);
-	renameVar(ea, funcname.c_str(), vu->cfunc, varIdx, &result, vu);
-
+	renameVar(ea, vu->cfunc, varIdx, &result, vu);
 	vu->refresh_view(true);
 	//not return true because refresh it here
 	return 0;
@@ -4666,9 +4669,7 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 				if(varIdx != -1) {
 					if(!isPtr)
 						tname.append('_');
-					qstring funcname;
-					get_short_name(&funcname, func->entry_ea);
-					if(renameVar(func->entry_ea, funcname.c_str(), func, varIdx, &tname, vu))
+					if(renameVar(func->entry_ea, func, varIdx, &tname, vu))
 						REFRESH_FUNC_CTEXT(vu);
 				}
 			}
@@ -5311,7 +5312,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.2.22";
+	addon.version = "2.2.23";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;

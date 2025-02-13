@@ -47,7 +47,7 @@ Special thanks to following peoples for their great plugins were used as base fo
 ### Structures assistance
   * [Create dummy structs](doc/cr_struc.md)
   * [Assist split gaps in structures](doc/struct-gaps.md)
-  * [Unite stack var reuse](doc/var-reuse.md)
+  * [Union creation for a variable is reused with different types](doc/var-reuse.md)
   * [List of structures with given size, with given offset](doc/struct-sz-off.md)
   * [Assist in creation of new structure definitions](doc/struct-bld.md)
   * [Finds structures with same "shape" as is used](doc/struct-shape.md)

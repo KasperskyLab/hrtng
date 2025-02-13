@@ -251,7 +251,7 @@ static bool getEaName(ea_t ea, qstring* name)
 	return false;
 }
 
-static bool renameEa(ea_t refea, const char* funcname, ea_t ea, const qstring* name)
+static bool renameEa(ea_t refea, ea_t ea, const qstring* name)
 {
   if (!is_mapped(ea))
 		return false;
@@ -269,11 +269,11 @@ static bool renameEa(ea_t refea, const char* funcname, ea_t ea, const qstring* n
 			newName.insert('p');
 
 	if (!set_name(ea, newName.c_str(), SN_NOCHECK | SN_AUTO | SN_NOWARN | SN_FORCE)) {
-		msg("[hrt] %a %s: fail to rename %a to \"%s\"\n", refea, funcname, ea, newName.c_str());
+		msg("[hrt] %a: fail to rename %a to \"%s\"\n", refea, ea, newName.c_str());
 		return false;
 	}
 	make_name_auto(ea);
-	msg("[hrt] %a %s: Global at %a was renamed to \"%s\"\n", refea, funcname, ea, newName.c_str());
+	msg("[hrt] %a: Global at %a was renamed to \"%s\"\n", refea, ea, newName.c_str());
 	return true;
 }
 
@@ -290,7 +290,7 @@ bool getVarName(lvar_t * var, qstring* name)
 	return true;
 }
 
-bool renameVar(ea_t refea, const char* funcname, cfunc_t *func, ssize_t varIdx, const qstring* name, vdui_t *vdui)
+bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, vdui_t *vdui)
 {
 	lvars_t *vars = func->get_lvars();
 	lvar_t * var= &vars->at(varIdx);
@@ -341,7 +341,7 @@ bool renameVar(ea_t refea, const char* funcname, cfunc_t *func, ssize_t varIdx, 
 			if(func->get_func_type(&funcType)) {
 				func_type_data_t fi;
 				if(funcType.get_func_details(&fi) && fi.size() > (size_t)argIdx) {
-					//msg("[hrt] %a %s: Rename arg%d \"%s\" to \"%s\"\n", refea, funcname, argIdx + 1, fi[argIdx].name.c_str(), newName.c_str());
+					//msg("[hrt] %a: Rename arg%d \"%s\" to \"%s\"\n", refea, argIdx + 1, fi[argIdx].name.c_str(), newName.c_str());
 					fi[argIdx].name = newName;
 					stripName(&fi[argIdx].name);
 					tinfo_t newFType;
@@ -349,7 +349,7 @@ bool renameVar(ea_t refea, const char* funcname, cfunc_t *func, ssize_t varIdx, 
 					if(newFType.is_correct() && apply_tinfo(func->entry_ea, newFType, TINFO_DEFINITE)) {
 						qstring typeStr;
 						newFType.print(&typeStr);
-						msg("[hrt] %a %s: Function prototype was recasted for change arg-name into \"%s\"\n", refea, funcname, typeStr.c_str());
+						msg("[hrt] %a: Function prototype was recasted for change arg-name into \"%s\"\n", refea, typeStr.c_str());
 					}
 				}
 			}
@@ -361,7 +361,7 @@ bool renameVar(ea_t refea, const char* funcname, cfunc_t *func, ssize_t varIdx, 
 	if (vdui) {
 		res = vdui->rename_lvar(var, newName.c_str(), true); // vdui->rename_lvar can rebuild all internal structures/ call later!!!
 	} else {
-		//this way of renaming/retyping is not stored in databese, use:
+		//this way of renaming/retyping is not stored in database, use:
 		//restore_user_lvar_settings save_user_lvar_settings modify_user_lvars
 		///< use mbl_array_t::set_nice_lvar_name() and
 		///< mbl_array_t::set_user_lvar_name() to modify it
@@ -374,12 +374,12 @@ bool renameVar(ea_t refea, const char* funcname, cfunc_t *func, ssize_t varIdx, 
 			tinfo_t t = getType4Name(newName.c_str());
 			if(!t.empty() && var->accepts_type(t))
 				if(var->set_lvar_type(t, true))
-					msg("[hrt] %a %s: type of var '%s' refreshed\n", refea, funcname, newName.c_str());
+					msg("[hrt] %a: type of var '%s' refreshed\n", refea, newName.c_str());
 		}
 	}
 	if(res)
-		msg("[hrt] %a %s: Var \"%s\" was renamed to \"%s\"\n", refea, funcname, oldname.c_str(), newName.c_str());
-	//else msg("[hrt] %a %s: Var \"%s\" rename to \"%s\" falied\n", refea, funcname, oldname.c_str(), newName.c_str());
+		msg("[hrt] %a: Var \"%s\" was renamed to \"%s\"\n", refea, oldname.c_str(), newName.c_str());
+	//else msg("[hrt] %a: Var \"%s\" rename to \"%s\" failed\n", refea, oldname.c_str(), newName.c_str());
 	return res;
 }
 
@@ -408,7 +408,7 @@ static bool getUdtMembName(tinfo_t udt, uint32 offset, qstring* name)
 	return true;
 }
 
-static bool renameUdtMemb(ea_t refea, const char* funcname, tinfo_t udt, uint32 offset, qstring* name)
+static bool renameUdtMemb(ea_t refea, tinfo_t udt, uint32 offset, qstring* name)
 {
 	udt.remove_ptr_or_array();
 	udm_t memb;
@@ -441,10 +441,10 @@ static bool renameUdtMemb(ea_t refea, const char* funcname, tinfo_t udt, uint32 
 	struc_t* st = get_member_struc(oldName.c_str());
 	if(st && set_member_name(st, offset, newName.c_str())) {
 #endif //IDA_SDK_VERSION >= 900
-		msg("[hrt] %a %s: struct \"%s\" member at 0x%x was renamed to %s\n", refea, funcname, oldName.c_str(), offset, newName.c_str());
+		msg("[hrt] %a: struct \"%s\" member at 0x%x was renamed to %s\n", refea, oldName.c_str(), offset, newName.c_str());
 		return true;
 	}
-	msg("[hrt] %a %s: fail rename struct member \"%s\" at 0x%x to %s\n", refea, funcname, oldName.c_str(), offset, newName.c_str());
+	msg("[hrt] %a: fail rename struct member \"%s\" at 0x%x to %s\n", refea, oldName.c_str(), offset, newName.c_str());
 	return false;
 }
 
@@ -549,12 +549,7 @@ bool getExpName(cfunc_t *func, cexpr_t* exp, qstring* name, bool derefPtr /* =fa
 	return res;
 }
 
-bool isRenameble(ctype_t ct)
-{
-	return (ct == cot_var || ct == cot_obj || ct == cot_memptr || ct == cot_memref);
-}
-
-bool renameExp(ea_t refea, const char* funcname, cfunc_t *func, cexpr_t* exp, qstring* name, vdui_t *vdui, bool derefPtr /*= false*/)
+bool renameExp(ea_t refea, cfunc_t *func, cexpr_t* exp, qstring* name, vdui_t *vdui, bool derefPtr /*= false*/)
 {
 	exp = skipCast(exp);
 	if(derefPtr && exp->op == cot_ref && isRenameble(exp->x->op)) {
@@ -563,7 +558,7 @@ bool renameExp(ea_t refea, const char* funcname, cfunc_t *func, cexpr_t* exp, qs
 		} else {
 			name->append('_');
 		}
-		return renameExp(refea, funcname, func, exp->x, name);
+		return renameExp(refea, func, exp->x, name);
 	}
 
 	//dirty hack for case when structure is placed on stack, and pointer to this struct is passed to func arg
@@ -577,17 +572,17 @@ bool renameExp(ea_t refea, const char* funcname, cfunc_t *func, cexpr_t* exp, qs
 			const type_t *namedType;
 			if(get_named_type(NULL, name->c_str(), NTF_TYPE, &namedType) && is_type_struct(*namedType)) { // for structs NTF_TYPE flag req
 				name->append('_');
-				return renameVar(refea, funcname, func, exp->v.idx, name, vdui);
+				return renameVar(refea, func, exp->v.idx, name, vdui);
 			}
 		}
 	}
 
 	if(exp->op == cot_var)
-		return renameVar(refea, funcname, func, exp->v.idx, name, vdui);
+		return renameVar(refea, func, exp->v.idx, name, vdui);
 	if(exp->op == cot_obj)
-		return renameEa(refea, funcname, exp->obj_ea, name);//, false);
+		return renameEa(refea, exp->obj_ea, name);//, false);
 	if(exp->op == cot_memptr || exp->op == cot_memref)
-		return renameUdtMemb(refea, funcname, exp->x->type, exp->m, name);
+		return renameUdtMemb(refea, exp->x->type, exp->m, name);
 	return false;
 }
 
@@ -824,13 +819,13 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			qstring lname;
 			cexpr_t* left = asgn->x;
 			if(!getExpName(func, left, &lname) && renameLeft)
-				varRenamed |= renameExp(asgn->ea, funcname.c_str(), func, left, &comments);
+				varRenamed |= renameExp(asgn->ea, func, left, &comments);
 
 			//rename right if have good name on left side
 			if(!rname.length() && (lname.length() || renameLeft)) {
 				if(lname.length())//assume lname more important then comments
 					comments = lname;
-				varRenamed |= renameExp(asgn->ea, funcname.c_str(), func, right, &comments);
+				varRenamed |= renameExp(asgn->ea, func, right, &comments);
 			}
 			return 0;
 		}
@@ -869,7 +864,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 						if(!strncmp(n.c_str(), "off_", 4)) {
 							ea_t dest = get_ea(callDst->obj_ea);
 							if(getEaName(dest, &callProcName)) {
-								renameEa(call->ea, funcname.c_str(), callDst->obj_ea, &callProcName);
+								renameEa(call->ea, callDst->obj_ea, &callProcName);
 							}
 						}
 					}
@@ -911,7 +906,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 						}
 
 						if(!argNamed && isNameGood2(name.c_str())) {
-								varRenamed |= renameExp(call->ea, funcname.c_str(), func, arg, &name, nullptr, true);
+								varRenamed |= renameExp(call->ea, func, arg, &name, nullptr, true);
 						} else if(argNamed && bAllowTypeChange && !isNameGood1(name.c_str())) {
 								//msg("[hrt] %a %s: In function %a %s rename arg%d \"%s\" to \"%s\"\n", call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str(), i + 1, fi[i].name.c_str(), argVarName.c_str());
 								fi[i].name = argVarName;
@@ -935,9 +930,9 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 					}
 					if(bCallAssign) {
 						if(!anL.length() && anR.length())
-							varRenamed |= renameExp(call->ea, funcname.c_str(), func, &args[iL], &anR, nullptr, true);
+							varRenamed |= renameExp(call->ea, func, &args[iL], &anR, nullptr, true);
 						else if(anL.length() && !anR.length())
-							varRenamed |= renameExp(call->ea, funcname.c_str(), func, &args[iR], &anL, nullptr, true);
+							varRenamed |= renameExp(call->ea, func, &args[iR], &anL, nullptr, true);
 					}
 					if(fiChanged) {
 						//TODO: some name cleanup, remove duplicates (?)
