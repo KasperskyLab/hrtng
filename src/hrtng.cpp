@@ -39,6 +39,7 @@
 #include <intel.hpp>
 #include <graph.hpp>
 #include <offset.hpp>
+#include <demangle.hpp>
 #include "warn_on.h"
 
 #include "helpers.h"
@@ -622,14 +623,18 @@ ACT_DEF(zeal_doc_help)
 	vdui_t *vu = get_widget_vdui(ctx->widget);
 	cexpr_t *call;
 	qstring name;
-	if(!is_call(vu, &call) || !getExpName(vu->cfunc, call->x, &name) || name.length() < 3)
+	if(!is_call(vu, &call) || !getExpName(vu->cfunc, call->x, &name))
 		return 0;
 
 	stripName(&name);
-	if (name.last() == 'A' || name.last() == 'W')
+	qstring dname;
+	if(demangle_name(&dname, name.c_str(), MNG_NODEFINIT) >= 0)
+		name = dname;
+	if (name.length() > 1 && (name.last() == 'A' || name.last() == 'W'))
 		name.remove_last();
 
-	name.insert(0, "zeal ");
+	name.insert(0, "zeal \"");
+	name.append('"');
 
   launch_process_params_t lpp;
   lpp.flags = LP_USE_SHELL;
@@ -5312,7 +5317,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.2.23";
+	addon.version = "2.2.24";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;
