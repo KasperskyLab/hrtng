@@ -21,7 +21,7 @@ The first thing I've seen very annoying when begins reverse a lot - I spend too 
 * Bad-Name-Sources are:
 	- names like: `var_XX`, `arg_XX`, `aXX`, `vXX, vXa,` where `XX` one or two digits
 	- CPU register names with optional numeric suffix (like `ecx0`)
-	- struct member with name `VT` or name begins from `field_` or `fld_`
+	- struct member with name `VT` / `__vftable` or name begins from `field_`, `fld_`, `gap`
   - case sensitive names optionally prefixed with `lp` : `this`, `inited`, `result`, `Mem`, `Memory`, `Block`, `String`, `ProcName`, `ProcAddress`, `LibFileName`, `ModuleName`, `LibraryA`, `LibraryW`
 	- in addition to above, for variables and call arguments only: `Str`, `Src`, `Dst`, `dwBytes`, `Flink`, `Blink`
 * For the assignment operator like `A = B;` where one of side is a Good-Name-Source and another is unnamed (Bad-Name-Source) variable or struct member, bad-named part is renamed to `NameSource_XX` where `XX` is one or two digits
