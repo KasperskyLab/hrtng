@@ -936,7 +936,7 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 			return 0;
 		}
 		MSG_DO(("[I] call_ARITH_2const: '%s'", call->dstr()));
-		op->make_number(res, fi->return_type.get_size());
+		op->make_number(res, (int)fi->return_type.get_size());
 		return 1;
 	}
 
@@ -986,7 +986,7 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 		if(opcode == m_ret) {
 			if(!op)
 				return 0;
-			op->make_number(n, fi->return_type.get_size());
+			op->make_number(n, (int)fi->return_type.get_size());
 		} else {
 			if(fi->args.size() < 1)
 				return 0;
@@ -1001,7 +1001,7 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 				ins->l.make_reg(reg2mreg(R_ds), 2); //FIXME: x86 specific!
 			} else {
 				ins->l = fi->args.front();
-				ins->r.make_number(n, fi->return_type.get_size());
+				ins->r.make_number(n, (int)fi->return_type.get_size());
 			}
 			ins->opcode = opcode;
 		}

@@ -1012,7 +1012,7 @@ ACT_DEF(var_reuse)
 	if(vi == -1)
 		return 0;
 
-	types_locator_t tl(lvars, vi);
+	types_locator_t tl(lvars, (int)vi);
 	tl.apply_to(&vu->cfunc->body, NULL);
 	if(tl.types.size() < 2) {
 		msg("[hrt] There is no stack var reusing found (%s)\n", var->name.c_str());
@@ -1633,7 +1633,7 @@ ACT_DEF(recognize_shape)
 		}
 	}
 		
-	offset_locator_t ifi(lvars, vi);
+	offset_locator_t ifi(lvars, (int)vi);
 	ifi.apply_to(&vu.cfunc->body, NULL);
 
 	structs_shape_t rs(offset);
@@ -1893,13 +1893,16 @@ static bool is_cast_assign(cfuncptr_t cfunc, cexpr_t * var, tinfo_t * ts)
 	} else if(asg->x != var)
 		return false;
 
-	if(ts) {
-		cexpr_t* y = skipCast(asg->y);
-		tinfo_t yType = y->type; //??? use getExpType(cfunc_t *func, cexpr_t* exp)
-		if(bDerefPtr)
-			yType = make_pointer(yType);
+	cexpr_t* y = skipCast(asg->y);
+	tinfo_t yType = y->type; //??? use getExpType(cfunc_t *func, cexpr_t* exp)
+	if(bDerefPtr)
+		yType = make_pointer(yType);
+
+	if(asg->x->type == yType)
+		return false;
+
+	if(ts)
 		*ts = yType;
-	}
 	return true;
 }
 
@@ -5317,7 +5320,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.3.24";
+	addon.version = "2.3.25";
 	register_addon(&addon);	
 
 	return PLUGIN_KEEP;

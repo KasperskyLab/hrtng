@@ -563,8 +563,9 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 		if(has_user_name(get_flags(VT_ea))) {
 			name_vt = get_name(VT_ea);
 			if(name_vt.length() > 9 && !strncmp(name_vt.c_str(), "??_7", 4)) {
+				//remove everything except main class name
 				name_vt.remove(0, 4);
-				name_vt.remove(name_vt.find("@@6B@"), 5); //"@@6B@" on the end may be followed by "_0" suffix
+				name_vt = name_vt.substr(0, name_vt.find("@@6B"));
 			}
 			if(!strnicmp(name_vt.c_str(), "vtbl_", 5))
 				name_vt.remove(0, 5);
@@ -593,9 +594,11 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 
 #if IDA_SDK_VERSION < 900
 	tid_t newid = get_struc_id(name_vt.c_str());
-	if (newid == BADADDR)
+	if (newid != BADADDR) {
+		warning("[hrt] struct '%s' already exist,\n rename VTBL global name or remove/rename conflicting type and try again\n", name_vt.c_str());
+		return BADNODE;
+	}
 		newid = add_struc(idx, name_vt.c_str());
-
 	if (newid == BADADDR) {
 		msg("[hrt] add_struc(%d, \"%s\") failed\n", idx, name_vt.c_str());
 		return BADNODE;
@@ -607,18 +610,21 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 	set_struc_cmt(newid, struccmt.c_str(), true);
 #else //IDA_SDK_VERSION >= 900
 	tid_t newid = get_named_type_tid(name_vt.c_str());
+	if (newid != BADADDR) {
+		warning("[hrt] type '%s' already exist,\n rename VTBL global name or remove/rename conflicting type and try again\n", name_vt.c_str());
+		return BADNODE;
+	}
+
 	tinfo_t newstruc;
-	if (newid == BADADDR) {
 		udt_type_data_t s;
+	tinfo_code_t err = TERR_BAD_TYPE;
 		s.taudt_bits |= TAUDT_UNALIGNED;
 		s.set_vftable(true);
-		if(!newstruc.create_udt(s) || newstruc.set_named_type(NULL, name_vt.c_str()) != TERR_OK)
-			return BADNODE;
-		newid = newstruc.get_tid();
-	}	else {
-		if(!get_type_by_tid(&newstruc, newid) || !newstruc.is_decl_struct())
+	if (!newstruc.create_udt(s) || (err = newstruc.set_named_type(NULL, name_vt.c_str())) != TERR_OK) {
+		msg("[hrt] error %d (%s) on create vtbl stuct\n", err, tinfo_errstr(err));
 			return BADNODE;
 	}
+	newid = newstruc.get_tid();
 	newstruc.set_type_cmt(struccmt.c_str());
 
 	// actually set_vftable_ea is appeared in ida 7.6 but here will be used from ida9 becouse it probably depends on TAUDT_VFTABLE flag has been set few lines above
