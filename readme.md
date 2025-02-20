@@ -39,6 +39,7 @@ Special thanks to following peoples for their great plugins were used as base fo
   * [Decompile obfuscated code](doc/deob.md)
   * [Scan for API names hashes](doc/api-hashes.md)
   * [Unflattening](doc/unflat.md)
+  * [Microcode optimizers / "Magic" calls](doc/opt.md)
 
 ### Code recognition
   * [Microcode signatures](doc/msig.md)

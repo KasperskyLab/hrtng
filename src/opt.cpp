@@ -3,6 +3,7 @@
 
 #include "warn_off.h"
 #include <hexrays.hpp>
+#include <intel.hpp>
 #include "warn_on.h"
 
 #include "helpers.h"
@@ -366,8 +367,6 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 	return false;
 }
 
-struct ida_local InstOptimizer : public optinsn_t
-{
 	// This function simplifies microinstruction patterns that look like
 	// either: (x & 1) | (y & 1) ==> (x | y) & 1
 	// or:     (x & 1) ^ (y & 1) ==> (x ^ y) & 1
@@ -620,7 +619,7 @@ struct ida_local InstOptimizer : public optinsn_t
 		return 1;
 	}
 
-#if 1
+#if 0
 	// This function replaces read-only initialized global variable patterns with 0 in m_setl/m_jl/m_jge, m_seto (MMAT_CALLS or later only)
 	// either: dword_73FBB588 >= immediate value (e.g., 10, 9)
 	// or:     dword_73FBB588 < immediate value (e.g., 10, 9)
@@ -763,7 +762,8 @@ struct ida_local InstOptimizer : public optinsn_t
 		return 1;
 	}
 
-	// Replace patterns of the form (x&c)|(~x&d) (when c and d are numbers such that c == ~d) with x^d.
+	// Replace patterns of the form
+	// (x & c) | ( ~x & d) (when c and d are numbers such that c == ~d) => x ^ d.
 	int pat_OrAndNot(minsn_t* ins, mblock_t* /*blk*/)
 	{
 		// Looking for OR instructions...
@@ -841,126 +841,8 @@ struct ida_local InstOptimizer : public optinsn_t
 		return 1;
 	}
 
-#if 0
-  // Compare two sets of mop_t * element-by-element. Return true if they match.
-	bool NonConstSetsMatch(std::set<mop_t*>* s1, std::set<mop_t*>* s2)
-	{
-		for (auto eL : *s1) {
-			bool bFound = false;
-			for (auto eR : *s2) {
-				if (eL->equal_mops(*eR, EQ_IGNSIZE)) {
-					bFound = true;
-					break;
-				}
-			}
-			// If we can't find some element from the first set in the other, we're done
-			if (!bFound)
-				return false;
-		}
-		// All elements matched
-		return true;
-	}
-
-	// Compare two sets of mop_t * (number values) element-by-element. There
-	// should be one value in the larger set that's not in the smaller set.
-	// Find and return it if that's the case.
-	mop_t* FindNonCommonConstant(std::set<mop_t*>* smaller, std::set<mop_t*>* bigger)
-	{
-		mop_t* noMatch = NULL;
-		for (auto eL : *bigger) {
-			bool bFound = false;
-			for (auto eR : *smaller) {
-				if (eL->equal_mops(*eR, EQ_IGNSIZE)) {
-					bFound = true;
-					break;
-				}
-			}
-			// We're looking for one constant in the larger set that isn't present in the smaller set.
-			if (!bFound) {
-				// If noMatch was not NULL, then there was more than one
-				// constant in the larger set that wasn't in the smaller one,
-				// so return NULL on failure.
-				if (noMatch != NULL)
-					return 0;
-
-				noMatch = eL;
-			}
-		}
-		// Return the constant from the larger set that wasn't in the smaller
-		return noMatch;
-	}
-
-	// Matches patterns of the form:
-	// (a^b^c^d) & (a^b^c^d^e) => (a^b^c^d) & ~e, where e is numeric
-	// The terms don't necessarily have to be in the same order; we extract the
-	// XOR subterms from both sides and find the missing value from the smaller
-	// XOR chain.
-	int pat_AndXor(minsn_t* ins, mblock_t* /*blk*/)
-	{
-		// Instruction must be AND ...
-		if (ins->opcode != m_and)
-			return 0;
-
-		// ... at least one side must be XOR ...
-		bool bLeftIsNotXor = !ins->l.is_insn(m_xor);
-		bool bRightIsNotXor = ins->r.is_insn(m_xor);
-		if (!bLeftIsNotXor && !bRightIsNotXor)
-			return 0;
-
-		// Collect the constant and non-constant parts of the XOR chains. We
-		// use the XorSimplifier class, but we don't actually simplify the
-		// instruction; we just make use of the existing functionality to
-		// collect the operands that are XORed together.
-		XorSimplifier xsL, xsR;
-		xsL.Insert(&ins->l);
-		xsR.Insert(&ins->r);
-
-		// There must be the same number of non-constant terms on both sides
-		if (xsL.m_NonConst.size() != xsR.m_NonConst.size())
-			return 0;
-
-		bool bLeftIsSmaller;
-		std::set<mop_t*>* smaller, * bigger;
-
-		// Either the left is one bigger than the right...
-		if (xsL.m_Const.size() == xsR.m_Const.size() + 1)
-			smaller = &xsR.m_Const, bigger = &xsL.m_Const, bLeftIsSmaller = false;
-
-		// Or the right is one bigger than the left...
-		else
-			if (xsR.m_Const.size() == xsL.m_Const.size() + 1)
-				smaller = &xsL.m_Const, bigger = &xsR.m_Const, bLeftIsSmaller = true;
-
-		// Or, the pattern doesn't match, so return 0.
-			else
-				return 0;
-
-		// The sets of non-constant operands must match
-		if (!(NonConstSetsMatch(&xsL.m_NonConst, &xsR.m_NonConst)))
-			return 0;
-
-		// Find the one constant value that wasn't common to both sides
-		mop_t* noMatch = FindNonCommonConstant(smaller, bigger);
-
-		// If there wasn't one, the pattern failed, so return 0
-		if (noMatch == NULL)
-			return 0;
-
-		// Invert the non-common number and truncate it down to its proper size
-		noMatch->nnn->update_value(~noMatch->nnn->value & ((1ULL << (noMatch->size * 8)) - 1));
-
-		// Replace the larger XOR construct with the now-inverted value
-		if (bLeftIsSmaller)
-			ins->r.swap(*noMatch);
-		else
-			ins->l.swap(*noMatch);
-
-		// msg("[I] pat_AndXor\n");
-		return 1;
-	}
-#endif
-
-	// Replaces conditionals of the form !(!c1 || !c2) with (c1 && c2).
+	// Replaces conditionals of the form
+	// !(!c1 || !c2) => (c1 && c2).
 	int pat_LnotOrLnotLnot(minsn_t* ins, mblock_t* /*blk*/)
 	{
 		// The whole expression must be logically negated.
@@ -987,7 +869,8 @@ struct ida_local InstOptimizer : public optinsn_t
 		return 1;
 	}
 
-	// Replaces terms of the form ~(~x | n), where n is a number, with x & ~n.
+	// Replaces terms of the form, where n is a number
+	// ~(~x | n) ==> x & ~n.
 	int pat_BnotOrBnotConst(minsn_t* ins, mblock_t* /*blk*/)
 	{
 		// We're looking for BNOT instructions (~y)...
@@ -1019,14 +902,139 @@ struct ida_local InstOptimizer : public optinsn_t
 		return 1;
 	}
 
+	// Replaces 'call ARITH(cons1, const2)' to result of `cons1 [&|^+-] const2`
+	int call_ARITH_2const(mop_t* op, minsn_t* call, mblock_t* /*blk*/)
+	{
+		if(!op || call->opcode != m_call || call->l.t != mop_v)
+			return 0;
+		mcallinfo_t *fi = call->d.f;
+		if (!fi || fi->return_type.is_void() || fi->args.size() != 2)
+			return 0;
+		//FIXME: what about spoiled registers and stack balance in case of __stdcall
+
+		uint64 val1, val2, res;
+		if (!fi->args.front().is_constant(&val1, false) || !fi->args.back().is_constant(&val2, false))
+			return 0;
+
+		qstring funcname = get_name(call->l.g);
+		stripName(&funcname);
+		if(funcname.length() > 3)
+			return 0; //optimize away funcs with longer names
+
+		if(!qstrcmp(funcname.c_str(), "AND"))
+			res = val1 & val2;
+		else if(!qstrcmp(funcname.c_str(), "OR_"))
+			res = val1 | val2;
+		else if(!qstrcmp(funcname.c_str(), "XOR"))
+			res = val1 ^ val2;
+		else if(!qstrcmp(funcname.c_str(), "ADD"))
+			res = val1 + val2;
+		else if(!qstrcmp(funcname.c_str(), "SUB"))
+			res = val1 - val2;
+		else {
+			MSG_DO(("[E] not implemented op"));
+			return 0;
+		}
+		MSG_DO(("[I] call_ARITH_2const: '%s'", call->dstr()));
+		op->make_number(res, fi->return_type.get_size());
+		return 1;
+	}
+
+	// Replaces 'call ARITH_0xNN(x)' ==> `x & NN` or `x ^ NN` or `x + NN` or `x - NN`
+	// Replaces 'call LDX_0xNN(x)'   ==> `[x + NN]` (ldx  ds.2, (arg.8+#0xNN.8), result.4)
+	// Replaces 'call RET_0xNN()'    ==> `NN`
+	int call_ARITH_0xNN(mop_t* op, minsn_t* ins, mblock_t* /*blk*/)
+	{
+		if(ins->opcode != m_call || ins->l.t != mop_v)
+			return 0;
+
+		mcallinfo_t *fi = ins->d.f;
+		if (!fi || fi->return_type.is_void())
+			return 0;
+		//FIXME: what about spoiled registers and stack balance in case of __stdcall
+
+		qstring funcname = get_name(ins->l.g);
+		stripName(&funcname);
+		if(funcname.length() <= 6 || strncmp(funcname.c_str() + 3, "_0x", 3))
+			return 0;
+
+		ea_t n;
+		if(!atoea(&n, funcname.c_str() + 4))
+			return 0;
+
+		mcode_t opcode;
+		if(!strncmp(funcname.c_str(), "AND", 3))
+			opcode = m_and;
+		else if(!strncmp(funcname.c_str(), "OR_", 3))
+			opcode = m_or;
+		else if(!strncmp(funcname.c_str(), "XOR", 3))
+			opcode = m_xor;
+		else if(!strncmp(funcname.c_str(), "ADD", 3))
+			opcode = m_add;
+		else if(!strncmp(funcname.c_str(), "SUB", 3))
+			opcode = m_sub;
+		else if(!strncmp(funcname.c_str(), "LDX", 3))
+			opcode = m_ldx;
+		else if(!strncmp(funcname.c_str(), "RET", 3))
+			opcode = m_ret;
+		else {
+			MSG_DO(("[E] not implemented op"));
+			return 0;
+		}
+
+		MSG_DO(("[I] call_ARITH_0xNN: '%s'", ins->dstr()));
+		if(opcode == m_ret) {
+			if(!op)
+				return 0;
+			op->make_number(n, fi->return_type.get_size());
+		} else {
+			if(fi->args.size() < 1)
+				return 0;
+			if(opcode == m_ldx) {
+				minsn_t* add = new minsn_t(ins->ea);
+				add->opcode = m_add;
+				add->l = fi->args.front();
+				add->r.make_number(n, add->l.size);
+				add->d.size = ea_size;
+				ins->r.make_insn(add);
+				ins->r.size = ea_size;
+				ins->l.make_reg(reg2mreg(R_ds), 2); //FIXME: x86 specific!
+			} else {
+				ins->l = fi->args.front();
+				ins->r.make_number(n, fi->return_type.get_size());
+			}
+			ins->opcode = opcode;
+		}
+		return 1;
+	}
+
+	// replace: x ^ c == d
+	// to:     x == c ^ d
+	int pat_XorCondImm(minsn_t* cjmp, mblock_t* blk)
+	{
+		if(!is_mcode_convertible_to_set(cjmp->opcode))
+			return 0;
+
+		if(!cjmp->l.is_insn(m_xor))
+			return 0;
+
+		uint64 num1, num2;
+		if (!cjmp->l.d->r.is_constant(&num1, false) || !cjmp->r.is_constant(&num2, false))
+			return 0;
+
+		MSG_DO(("[I] pat_XorCondImm: '%s'", cjmp->dstr()));
+		cjmp->l.swap(cjmp->l.d->l);
+		cjmp->r.nnn->update_value(num1 ^ num2);
+		return 1;
+	}
+
 	// This function just inspects the instruction and calls the
 	// pattern-replacement functions above to perform deobfuscation.
-	int Optimize(minsn_t* ins, mblock_t* blk)
+	int OptimizeInsn(mop_t* op, minsn_t* ins, mblock_t* blk)
 	{
 		int iLocalRetVal = 0;
 
-		switch (ins->opcode)
-		{
+		switch (ins->opcode) {
 		case m_bnot:
 			iLocalRetVal = pat_BnotOrBnotConst(ins, blk);
 			break;
@@ -1042,14 +1050,10 @@ struct ida_local InstOptimizer : public optinsn_t
 				iLocalRetVal = pat_MulSub2(ins, blk); // added
 			break;
 		case m_and:
-			//iLocalRetVal = pat_AndXor(ins, blk);
-			//if (!iLocalRetVal)
-				iLocalRetVal = pat_MulSub(ins, blk);
+			iLocalRetVal = pat_MulSub(ins, blk);
 			break;
 		case m_xor:
-			//iLocalRetVal = pat_XorChain(ins, blk);
-			//if (!iLocalRetVal)
-				iLocalRetVal = pat_LnotOrLnotLnot(ins, blk);
+			iLocalRetVal = pat_LnotOrLnotLnot(ins, blk);
 			if (!iLocalRetVal)
 				iLocalRetVal = pat_LogicAnd1(ins, blk);
 			break;
@@ -1060,10 +1064,10 @@ struct ida_local InstOptimizer : public optinsn_t
 		case m_jl:
 		case m_jge:
 		case m_seto: // cause INTERR 50862 -> replace in later maturity level
-			iLocalRetVal = pat_InitedVarCondImm(ins, blk); // added
+			//iLocalRetVal = pat_InitedVarCondImm(ins, blk); // added
 			break;
 		case m_sets:
-			iLocalRetVal = pat_InitedVarSubImmCond0(ins, blk); // added
+			//iLocalRetVal = pat_InitedVarSubImmCond0(ins, blk); // added
 			break;
 		case m_mov:
 			//iLocalRetVal = pat_InitedVarMov(ins);// data-flow tracking required
@@ -1072,85 +1076,56 @@ struct ida_local InstOptimizer : public optinsn_t
 		case m_sub:
 			iLocalRetVal = pat_AddSub(ins, blk);
 			break;
-#if 0
-			///*
-		case m_jnz: // to optimize setl sub-instruction (jnz > xor > setl)
-			struct Blah2 : minsn_visitor_t
-			{
-				int idaapi visit_minsn()
-				{
-					if (curins->opcode == m_setl)
-					{
-						if (curins->l.t != mop_r || curins->r.t != mop_n)
-							return 0;
-						mop_t op_r = curins->l; // curins->d is mop_z(0)
-						int ret = othis->pat_InitedVarCondImm(curins, mb);
-						// IDA automatically optimizes setl (0 < #0xA) => nop
-						// nop is not propagatable because it does not generate any value (INTERR 50800)
-						// replace nop with e.g., mov 1, cl
-						if (ret && curins->opcode == m_nop)
-						{
-							curins->opcode = m_mov;
-							curins->l.make_number(1, 1);
-							curins->d.make_reg(op_r.r, 1);
-						}
-						return ret;
-					}
-					return 0;
-				}
-				InstOptimizer* othis;
-				mblock_t* mb;
-				Blah2(InstOptimizer* o, mblock_t* b) : othis(o), mb(b) { };
-			};
-			Blah2 b2(this, blk);
-			iLocalRetVal += ins->for_all_insns(b2);
-			//*/
-#endif
+		case m_call:
+			iLocalRetVal = call_ARITH_2const(op, ins, blk);
+			if (!iLocalRetVal)
+				iLocalRetVal = call_ARITH_0xNN(op, ins, blk);
+			break;
+		case m_jz:
+		case m_jnz:
+			iLocalRetVal = pat_XorCondImm(ins, blk);
+			break;
 		}
 		return iLocalRetVal;
 	}
 
+struct ida_local InstOptimizer : public optinsn_t
+{
 #if IDA_SDK_VERSION < 750
 	virtual int idaapi func(mblock_t* blk, minsn_t* ins)
 #else
 	virtual int idaapi func(mblock_t* blk, minsn_t* ins, int optflags)
 #endif //IDA_SDK_VERSION < 750
 	{
+		//visits operands first
+		struct ida_local opt_op_visitor_t : mop_visitor_t
+		{
+			int visit_mop(mop_t *op, const tinfo_t *type, bool is_target)
+			{
+				if (op->is_insn())
+					return OptimizeInsn(op, op->d, blk);
+				return 0;
+			}
+		} ov;
+		int res = ins->for_all_ops(ov);
 
-		//This checks only top lelel instructions
-		int retVal = Optimize(ins, blk);
-		int iLocalRetVal = 0;
-
-		// This callback doesn't seem to get called for subinstructions of conditional branches.
-		// So, if we're dealing with a conditional branch, manually optimize the condition expression
-		if ((is_mcode_jcond(ins->opcode) || is_mcode_set(ins->opcode)) && ins->l.t == mop_d) {
-			struct Blah : minsn_visitor_t {
-				int idaapi visit_minsn()
-				{
-					return othis->Optimize(this->curins, blk);
-				}
-				InstOptimizer* othis;
-				Blah(InstOptimizer* o) : othis(o) { };
-			};
-
-			Blah b(this);
-
-			iLocalRetVal += ins->for_all_insns(b);
-		}
-		retVal += iLocalRetVal;
+		//Optimize top level insn
+		if(!res)
+			res += OptimizeInsn(nullptr, ins, blk);
 
 		// If any optimizations were performed...
-		if (retVal) {
-			if (blk)
+		if (res) {
+			MSG_DO((" --> '%s' (%c) ", ins->dstr(), blk != nullptr ? 'b' : 's' ));
+			if (blk) {
 				blk->optimize_insn(ins);
-			else
+				blk->mark_lists_dirty();
+				//blk->mba->verify(true);
+			} else {
 				ins->optimize_solo();
+			}
 			MSG_DO((" --> '%s' at %a\n", ins->dstr(), ins->ea));
-			// I got an INTERR if I optimized jcc conditionals without marking the lists dirty.
-			//blk->mark_lists_dirty();
-			//blk->mba->verify(true);
 		}
-		return retVal;
+		return res;
 	}
 };
 InstOptimizer instOptimizer;
@@ -1158,12 +1133,10 @@ InstOptimizer instOptimizer;
 
 void opt_init()
 {
-//	install_optblock_handler(&goto_optimizer);
 	install_optinsn_handler(&instOptimizer);
 }
 
 void opt_done()
 {
 	remove_optinsn_handler(&instOptimizer);
-//	remove_optblock_handler(&goto_optimizer);
 }
