@@ -20,9 +20,9 @@
 #include "warn_off.h"
 #include <hexrays.hpp>
 #include <diskio.hpp>
-#if IDA_SDK_VERSION < 900
+#if IDA_SDK_VERSION < 850
 #include <enum.hpp>
-#endif // IDA_SDK_VERSION < 900
+#endif // IDA_SDK_VERSION < 850
 #include "warn_on.h"
 
 #include "helpers.h"
@@ -295,11 +295,11 @@ static const char* importEnumFromTil(til_t *til, const char* name, uint64 val)
 						if (val == memb->value && !qstrcmp(name, memb->name.c_str())) {
 							const char* typeName = get_numbered_type_name(til, ordinal);
 							if (typeName) {
-#if IDA_SDK_VERSION < 900
+#if IDA_SDK_VERSION < 850
 								import_type(til, -1, typeName);
-#else //IDA_SDK_VERSION >= 900
+#else //IDA_SDK_VERSION >= 850
 								//is it need??? if(til != get_idati()) copy_named_type
-#endif //IDA_SDK_VERSION < 900
+#endif //IDA_SDK_VERSION < 850
 								msg("[hrt] import enum \"%s\" from til \"%s\"\n", typeName, til->name);
 								return typeName;
 							}
@@ -336,7 +336,7 @@ static const char* importEnumFromTils(const char* name, uint64 val)
 
 cexpr_t* lit_visitor_t::makeEnumExpr(const char* name, uint64 val, cexpr_t *constexp)
 {
-#if IDA_SDK_VERSION < 900
+#if IDA_SDK_VERSION < 850
 	const_t memb = get_enum_member_by_name(name);
 	if(memb == BADNODE) {
 		if(!importEnumFromTils(name, val)) 
@@ -353,14 +353,14 @@ cexpr_t* lit_visitor_t::makeEnumExpr(const char* name, uint64 val, cexpr_t *cons
 	if(enName.empty())
 		return NULL;
 	auto serial = get_enum_member_serial(memb);
-#else //IDA_SDK_VERSION >= 900
+#else //IDA_SDK_VERSION >= 850
 	//FIXME: I've not found fast way to get enum type-name from member-name, maybe need to implement some cashing?
 	const char* typeName = importEnumFromTils(name, val);
 	if(!typeName)
 		return NULL;
 	uchar serial = 0; //FIXME: does it matter???
 	qstring enName = typeName;
-#endif //IDA_SDK_VERSION < 900
+#endif //IDA_SDK_VERSION < 850
 
 	cexpr_t* newexp = new cexpr_t();
 	newexp->ea = constexp->ea;

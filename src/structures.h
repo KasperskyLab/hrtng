@@ -24,8 +24,8 @@ struct ida_local matched_structs_t : public chooser_t
 	virtual void idaapi get_row(qstrvec_t* cols, int* icon_, chooser_item_attrs_t* attrs, size_t n) const;
 };
 
-#if IDA_SDK_VERSION < 900
+#if IDA_SDK_VERSION < 850
 void structs_reg_act();
 void structs_unreg_act();
 void add_structures_popup_items(TWidget *view, TPopupMenu *p);
-#endif // IDA_SDK_VERSION < 900
+#endif // IDA_SDK_VERSION < 850

@@ -207,7 +207,7 @@ void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 				//res->ptrsize = 8; //is it need?
 			} else {
 				for (size_t i = 0; i < trace.size(); i++) {
-#if IDA_SDK_VERSION < 900
+#if IDA_SDK_VERSION < 850
 					member_t * smem = get_member_by_id(trace[i]);
 					res->m = (uint32)smem->soff; // set offset 
 					if (!get_member_type(smem, &res->type)) {
@@ -215,7 +215,7 @@ void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 						delete res;
 						return NULL;
 					}
-#else //IDA_SDK_VERSION < 900
+#else //IDA_SDK_VERSION >= 850
 					udm_t udm;
 					tinfo_t imembStrucType;
 					ssize_t imembIdx = imembStrucType.get_udm_by_tid(&udm, trace[i]);
@@ -226,7 +226,7 @@ void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 					}
 					res->m = (uint32)(udm.offset / 8);
 					res->type = udm.type;
-#endif //IDA_SDK_VERSION < 900
+#endif //IDA_SDK_VERSION < 850
 					if (res->type.is_array()) {
 						tinfo_t elemT = res->type;
 						elemT = elemT.get_array_element();
@@ -377,19 +377,19 @@ ACT_DEF(insert_reinterpret_cast)
 	//choose_local_tinfo
 	qstring title;
 	title.sprnt("[hrt] %s of \"%s\"", reincast_HELPERNAME, printExp(vu.cfunc, e).c_str());
-#if IDA_SDK_VERSION < 900
+#if IDA_SDK_VERSION < 850
 	struc_t * struc = choose_struc(title.c_str());
 	if(!struc)
 		return 0;
 	tid_t tid = struc->id;
-#else //IDA_SDK_VERSION >= 900
+#else //IDA_SDK_VERSION >= 850
 	tinfo_t ti;
 	if (!choose_struct(&ti, title.c_str()))
 		return 0;
 	tid_t tid = ti.force_tid();
 	if (tid == BADADDR)
 		return 0;
-#endif //IDA_SDK_VERSION < 900
+#endif //IDA_SDK_VERSION < 850
 
 	add_cached_reincast(anchor->ea, tid);
 	//msg("[hrt] add_cached_reincast at %a\n", anchor->ea);

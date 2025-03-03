@@ -12,7 +12,7 @@
 #include "structures.h"
 
 //-------------------------------------------------------------------------
-#if IDA_SDK_VERSION < 900
+#if IDA_SDK_VERSION < 850
 #define AST_ENABLE_FOR_ME return ((ctx->widget_type == BWN_STRUCTS) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET)
 ACT_DECL(extract_substruct_callback, AST_ENABLE_FOR_ME)
 ACT_DECL(unpack_this_member_callback, AST_ENABLE_FOR_ME)
@@ -110,10 +110,10 @@ int extract_substruct(uval_t idx, uval_t begin, uval_t end)
 	set_member_tinfo(struc, member, 0, type, SET_MEMTI_MAY_DESTROY);
 	return 1;
 }
-#endif //IDA_SDK_VERSION < 900
+#endif //IDA_SDK_VERSION < 850
 
 //-------------------------------------------------------------------------
-#if IDA_SDK_VERSION < 900
+#if IDA_SDK_VERSION < 850
 asize_t struct_get_member(tid_t strId, asize_t offset, tid_t* last_member, tidvec_t* trace, asize_t adjust)
 {
 	struc_t *str = get_struc(strId);
@@ -161,7 +161,7 @@ asize_t struct_get_member(tid_t strId, asize_t offset, tid_t* last_member, tidve
 		trace->push_back(member->id);
 	return struct_get_member(membstr->id, offset - member->get_soff(), last_member, trace);
 }
-#else //IDA_SDK_VERSION < 900
+#else //IDA_SDK_VERSION < 850
 asize_t struct_get_member(tid_t strId, asize_t offset, tid_t* last_member, tidvec_t* trace, asize_t adjust)
 {
 	tinfo_t str;
@@ -221,7 +221,7 @@ asize_t struct_get_member(tid_t strId, asize_t offset, tid_t* last_member, tidve
 		trace->push_back(*last_member);
 	return struct_get_member(tmsid, offset - member.offset / 8, last_member, trace);
 }
-#endif //IDA_SDK_VERSION < 900
+#endif //IDA_SDK_VERSION < 850
 
 bool struct_has_member(tid_t strId, asize_t offset)
 {	
@@ -229,7 +229,7 @@ bool struct_has_member(tid_t strId, asize_t offset)
 	return struct_get_member(strId, offset, &last_member) == 0 && last_member != BADNODE;
 }
 
-#if IDA_SDK_VERSION < 900
+#if IDA_SDK_VERSION < 850
 bool print_struct_member_name(tid_t strId, asize_t offset, qstring * name, bool InRecur)
 {
 	struc_t *str = get_struc(strId);
@@ -338,7 +338,7 @@ bool print_struct_member_type(tid_t membId, qstring *tname)
 		return udm.type.print(tname);
 	return false;
 }
-#endif //IDA_SDK_VERSION < 900
+#endif //IDA_SDK_VERSION < 850
 
 const int matched_structs_t::widths[] = { 40 };
 const char* const matched_structs_t::header[] = { "Type" };
@@ -349,7 +349,7 @@ void idaapi matched_structs_t::get_row(qstrvec_t* cols_, int* icon_, chooser_ite
 	get_tid_name(&cols[0], list[n]);
 }
 
-#if IDA_SDK_VERSION < 900
+#if IDA_SDK_VERSION < 850
 //----------------------------------------------------
 bool compare_structs(struc_t * str1, asize_t begin, struc_t * str2)
 {
@@ -503,9 +503,9 @@ ACT_DEF(create_VT_callback)
 
 	return create_VT(get_struc_by_idx(place->idx), BADADDR);
 }
-#endif // IDA_SDK_VERSION < 900
+#endif // IDA_SDK_VERSION < 850
 
-#if IDA_SDK_VERSION < 900
+#if IDA_SDK_VERSION < 850
 void add_vt_member(struc_t* sptr, ea_t offset, const char* name, const tinfo_t& type, const char* comment)
 {
 	flags64_t flag;
@@ -534,7 +534,7 @@ void add_vt_member(struc_t* sptr, ea_t offset, const char* name, const tinfo_t& 
 	set_member_cmt(memb, comment, true);
 }
 
-#else //IDA_SDK_VERSION >= 900
+#else //IDA_SDK_VERSION >= 850
 
 void add_vt_member(tinfo_t &struc, ea_t offset, const char* name, const tinfo_t &type, const char* comment)
 {
@@ -554,7 +554,7 @@ void add_vt_member(tinfo_t &struc, ea_t offset, const char* name, const tinfo_t 
 		struc.set_udm_cmt(index, comment);
 	}
 }
-#endif //IDA_SDK_VERSION < 900
+#endif //IDA_SDK_VERSION < 850
 
 tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*/, unsigned int * vt_len /*= NULL*/)
 {
@@ -592,7 +592,7 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 	qstring struccmt;
 	struccmt.sprnt("@0x%a", VT_ea);
 
-#if IDA_SDK_VERSION < 900
+#if IDA_SDK_VERSION < 850
 	tid_t newid = get_struc_id(name_vt.c_str());
 	if (newid != BADADDR) {
 		warning("[hrt] struct '%s' already exist,\n rename VTBL global name or remove/rename conflicting type and try again\n", name_vt.c_str());
@@ -608,7 +608,7 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 	if (!newstruc)
 		return BADNODE;
 	set_struc_cmt(newid, struccmt.c_str(), true);
-#else //IDA_SDK_VERSION >= 900
+#else //IDA_SDK_VERSION >= 850
 	tid_t newid = get_named_type_tid(name_vt.c_str());
 	if (newid != BADADDR) {
 		warning("[hrt] type '%s' already exist,\n rename VTBL global name or remove/rename conflicting type and try again\n", name_vt.c_str());
@@ -631,7 +631,7 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 	uint32 ord = get_tid_ordinal(newid);
 	if(ord)
 		set_vftable_ea(ord, VT_ea);
-#endif //IDA_SDK_VERSION >= 900
+#endif //IDA_SDK_VERSION >= 850
 	set_name(VT_ea, name_VT_ea.c_str(), SN_FORCE);
 
 	ea_t ea = VT_ea;
@@ -686,18 +686,18 @@ int create_VT(tid_t parent, ea_t VT_ea)
 {
 	qstring name;
 	uval_t vtstruc_idx = 0;
-#if IDA_SDK_VERSION < 900
+#if IDA_SDK_VERSION < 850
 	struc_t * struc = get_struc(parent);
 	if (!struc || !get_struc_name(&name, parent))
 		return 0;
 	vtstruc_idx = get_struc_idx(parent) + 1;
-#else //IDA_SDK_VERSION >= 900
+#else //IDA_SDK_VERSION >= 850
 	tinfo_t struc;
 	if (!struc.get_type_by_tid(parent)
 		|| !struc.is_struct()
 		|| !struc.get_type_name(&name))
 		return 0;
-#endif //IDA_SDK_VERSION < 900
+#endif //IDA_SDK_VERSION < 850
 
 	qstring name_VT = name + VTBL_SUFFIX;
 	if(VT_ea == BADADDR)
@@ -718,13 +718,13 @@ int create_VT(tid_t parent, ea_t VT_ea)
 	if ( vt_struc_id == BADNODE)
 		return 0;
 
-#if IDA_SDK_VERSION < 900
+#if IDA_SDK_VERSION < 850
 	qstring name_of_vt_struct = get_struc_name(vt_struc_id);
 	tinfo_t type = create_typedef(name_of_vt_struct.c_str());
-#else //IDA_SDK_VERSION >= 900
+#else //IDA_SDK_VERSION >= 850
 	tinfo_t type;
 	type.get_type_by_tid(vt_struc_id);
-#endif //IDA_SDK_VERSION < 900
+#endif //IDA_SDK_VERSION < 850
 	type = make_pointer(type);
 	add_vt_member(struc, 0, VTBL_MEMNAME, type, NULL);
 	return 1;
@@ -755,9 +755,9 @@ bool confirm_create_struct(tinfo_t &out_type, tinfo_t &in_type, const char* spre
 			warning("[hrt] Could not create %s, maybe it already exists? (tinfo_code_t = %d)", strucname.c_str(), err);
 			continue;
 		}
-#if IDA_SDK_VERSION < 900
+#if IDA_SDK_VERSION < 850
 		import_type(get_idati(), -1, strucname.c_str());
-#endif //IDA_SDK_VERSION < 900
+#endif //IDA_SDK_VERSION < 850
 		break;
 	}
 	out_type = create_typedef(strucname.c_str());

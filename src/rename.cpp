@@ -433,12 +433,12 @@ static bool renameUdtMemb(ea_t refea, tinfo_t udt, uint32 offset, qstring* name)
 	udt.get_type_name(&oldName);
 	oldName.append('.');
 	oldName.append(memb.name);
-#if IDA_SDK_VERSION >= 900
+#if IDA_SDK_VERSION >= 850
 	if(TERR_OK == udt.rename_udm(midx, newName.c_str())) {
-#else //IDA_SDK_VERSION < 900
+#else //IDA_SDK_VERSION < 850
 	struc_t* st = get_member_struc(oldName.c_str());
 	if(st && set_member_name(st, offset, newName.c_str())) {
-#endif //IDA_SDK_VERSION >= 900
+#endif //IDA_SDK_VERSION >= 850
 		msg("[hrt] %a: struct \"%s\" member at 0x%x was renamed to %s\n", refea, oldName.c_str(), offset, newName.c_str());
 		return true;
 	}

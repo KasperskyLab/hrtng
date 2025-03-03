@@ -1,6 +1,6 @@
 ## New functionality in Structures view
 
-> ⚠️ These features are turned off since IDA 9.0 (there is no more "Structures View")
+> ⚠️ These features are turned off since IDA 9.0/8.5 (there is no more "Structures View")
 
 On right click in Structures view.
 - *"Extract substruct"* : Select few lines in a structure and it will create a new structure off selected lines.

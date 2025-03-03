@@ -86,13 +86,13 @@ struct ida_local guid_ex_t {
 
 qvector<guid_ex_t> guids;
 
-#if IDA_SDK_VERSION < 900
+#if IDA_SDK_VERSION < 850
 const char * idaapi read_ioports_cb(const ioports_t &ports, const char *line)
-#else //IDA_SDK_VERSION >= 900
+#else //IDA_SDK_VERSION >= 850
 struct read_ioports_cb_t : public ioports_fallback_t
 {
   virtual bool handle(qstring *errbuf, const ioports_t &ports, const char *line)
-#endif //IDA_SDK_VERSION < 900
+#endif //IDA_SDK_VERSION < 850
 {
 	guid_ex_t guid;
 	uint32 d5[6];
@@ -107,14 +107,14 @@ struct read_ioports_cb_t : public ioports_fallback_t
 	guid.uid.u.m1.d4 = swap16(guid.uid.u.m1.d4);
 	guid.name = name;
 	guids.push_back(guid);
-#if IDA_SDK_VERSION < 900
+#if IDA_SDK_VERSION < 850
 	return NULL;
 }
-#else //IDA_SDK_VERSION >= 900
+#else //IDA_SDK_VERSION >= 850
 	return true;
 }
 };
-#endif //IDA_SDK_VERSION < 900
+#endif //IDA_SDK_VERSION < 850
 
 static bool bImported = false;
 void com_init()
@@ -123,10 +123,10 @@ void com_init()
 		return;
 	ioports_t ioports;
 	qstring device;
-#if IDA_SDK_VERSION >= 900
+#if IDA_SDK_VERSION > 840
 	read_ioports_cb_t riopcb;
 	read_ioports_cb_t *read_ioports_cb = &riopcb;
-#endif //IDA_SDK_VERSION >= 900
+#endif //IDA_SDK_VERSION > 840
 	read_ioports(&ioports, &device, "clsid.cfg", read_ioports_cb);
 
 	if (!bImported) {
@@ -135,9 +135,9 @@ void com_init()
 			add_til("vc10_64", ADDTIL_INCOMP);
 		else
 			add_til("vc6win", ADDTIL_INCOMP);
-#if IDA_SDK_VERSION < 900 // not shure from which version it is not necessary to import_type
+#if IDA_SDK_VERSION < 850 // not shure from which version it is not necessary to import_type
 		import_type(get_idati(), -1, "IDispatchVtbl", 0);
-#endif //IDA_SDK_VERSION < 900
+#endif //IDA_SDK_VERSION < 850
 	}
 }
 
@@ -179,7 +179,7 @@ static bool com_find_guid_type(ea_t ea, flags64_t flags, qstring* tname = NULL)
 				set_cmt(ea, eaname.c_str(), true);
 				msg("[hrt] %a: '%s' was found\n", ea, eaname.c_str());
 			}
-#if IDA_SDK_VERSION < 900
+#if IDA_SDK_VERSION < 850
 			qstring vtname = it->name;
 			vtname += "Vtbl";
 			if (BADADDR == get_struc_id(vtname.c_str())) {
@@ -194,7 +194,7 @@ static bool com_find_guid_type(ea_t ea, flags64_t flags, qstring* tname = NULL)
 				msg("[hrt] %a: type %s was %s\n", ea, it->name.c_str(), verb);
 
 			}
-#endif // IDA_SDK_VERSION < 900
+#endif // IDA_SDK_VERSION < 850
 			return true;
 		}
 	}
