@@ -94,6 +94,8 @@
 #define REFRESH_FUNC_CTEXT(pvu)    pvu->cfunc->refresh_func_ctext()
 #endif //IDA_SDK_VERSION < 730
 
+#define MAX_NAME_LEN 63 //inf.max_autoname_len (inf_get_max_autoname_len)
+
 bool at_atoea(const char * str, ea_t * pea );
 bool strtobx(const char *str, uint8 *b);
 

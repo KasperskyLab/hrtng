@@ -1054,8 +1054,15 @@ ACT_DEF(var_reuse)
 	qstring tname;
 	if(ts.get_type_name(&tname))
 		renameVar(vu->cfunc->entry_ea, vu->cfunc, vi, &tname, vu);
+
+#if 0
+	// (???) it may be probably better for older IDA versions
+	//with IDA 9.0 may cause second (wrong) rename by autorenamer
 	vu->refresh_view(false);
 	return 0;
+#else
+	return 1;
+#endif
 }
 
 //------------------------------------------------
@@ -2252,14 +2259,16 @@ ACT_DEF(convert_gap)
 	cexpr_t * exp = vu->item.e;
 	ea_t fldOff = exp->m;
 	ea_t gapOff = exp->m;
-	tinfo_t fldType;
+	tinfo_t fldType = memb.type;
 
 	citem_t * ci = vu->cfunc->body.find_parent_of(exp);
 	if(ci->op == cot_idx) {
 		cexpr_t * idx = ((cexpr_t *)ci)->y;
 		if(idx->op != cot_num)
 			return 0;
-		fldOff += (ea_t)idx->numval();
+		if(fldType.is_array())
+			fldType.remove_ptr_or_array();
+		fldOff += (ea_t)(idx->numval() * fldType.get_size());
 		ci = vu->cfunc->body.find_parent_of(ci);
 	}
 	if(ci->op == cot_ref)
@@ -5287,8 +5296,6 @@ plugmod_t*
 		return PLUGIN_SKIP; // no decompiler
 
 	install_hexrays_callback(callback, NULL);
-	//const char *hxver = get_hexrays_version();
-	msg("%s ready to use\n", PLUGIN.wanted_name);
 	hook_to_notification_point(HT_UI, ui_callback, NULL);	
 	hook_to_notification_point(HT_IDB, idb_callback, NULL);
 	hook_to_notification_point(HT_DBG, dbg_callback, NULL);
@@ -5320,9 +5327,10 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.3.25";
+	addon.version = "2.3.26";
 	register_addon(&addon);	
 
+	msg("[hrt] %s (%s) v.%s for IDA%d is ready to use\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 	return PLUGIN_KEEP;
 }
 

@@ -654,7 +654,7 @@ bool lit_overrideTypes()
 void lit_init()
 {
 	char litfname[QMAXPATH];
-	if(getsysfile(litfname, 4096, "literal.txt", PLG_SUBDIR)) {
+	if(getsysfile(litfname, QMAXPATH, "literal.txt", PLG_SUBDIR)) {
 		linput_t *litfile = open_linput(litfname, false);
 		if (litfile) {
 			lit = new literal_db();

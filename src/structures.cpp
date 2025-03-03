@@ -616,10 +616,10 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 	}
 
 	tinfo_t newstruc;
-		udt_type_data_t s;
+	udt_type_data_t s;
 	tinfo_code_t err = TERR_BAD_TYPE;
-		s.taudt_bits |= TAUDT_UNALIGNED;
-		s.set_vftable(true);
+	s.taudt_bits |= TAUDT_UNALIGNED;
+	s.set_vftable(true);
 	if (!newstruc.create_udt(s) || (err = newstruc.set_named_type(NULL, name_vt.c_str())) != TERR_OK) {
 		msg("[hrt] error %d (%s) on create vtbl stuct\n", err, tinfo_errstr(err));
 			return BADNODE;

@@ -222,8 +222,8 @@ qstring good_udm_name(const tinfo_t &struc, const char *format, ...)
 	name.vsprnt(format, va);
 	va_end(va);
 
-	if (name.size() > inf_get_max_autoname_len() - 3)
-		name.resize(inf_get_max_autoname_len() - 3);
+	if (name.size() > MAX_NAME_LEN - 3)
+		name.resize(MAX_NAME_LEN - 3);
 	validate_name(&name, VNT_UDTMEM);
 
 	udm_t m;

@@ -24,8 +24,6 @@
 #include "helpers.h"
 #include "rename.h"
 
-#define MAX_NAME_LEN 63 //(inf.max_autoname_len)
-
 static bool isIdaInternalComment(const char* comment)
 {
 	if (!strncmp(comment, "jumptable", 9)) //jumptable 0040D4DD case 1
