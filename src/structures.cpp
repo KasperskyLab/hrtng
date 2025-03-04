@@ -540,7 +540,7 @@ void add_vt_member(tinfo_t &struc, ea_t offset, const char* name, const tinfo_t 
 {
 	udm_t udm;
 	udm.offset = offset * 8;
-	udm.size = is64bit() ? 8 * 8 : 4 * 8;
+	udm.size = (is64bit() && !isIlp32()) ? 8 * 8 : 4 * 8;
 	udm.type = type;
 	udm.name = good_udm_name(struc, name);
 	udm.cmt = comment;

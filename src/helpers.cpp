@@ -104,14 +104,14 @@ tinfo_t  getType4Name(const char *name)
 
 bool is_ea(flags64_t flg)
 {
-	if(is64bit())
+	if(is64bit() && !isIlp32())
 		return is_qword(flg);
 	return is_dword(flg);
 }
 
 ea_t get_ea(ea_t ea)
 {
-	if(is64bit())
+	if(is64bit() && !isIlp32())
 		ea = (ea_t)get_qword(ea);
 	else
 		ea = (ea_t)get_dword(ea);

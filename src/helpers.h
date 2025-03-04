@@ -42,6 +42,12 @@
 	};\
 	static name ## _t name;
 
+#if IDA_SDK_VERSION < 910
+#define isIlp32() false
+#else
+#define isIlp32() inf_is_ilp32()
+#endif
+
 #if IDA_SDK_VERSION < 850
 #define interactive_graph_t mutable_graph_t
 #define get_named_type_tid(x) get_struc_id(x)
@@ -127,7 +133,7 @@ size_t get_idx_of_lvar(vdui_t &vu, lvar_t *lvar);
 tinfo_t getType4Name(const char *name);
 
 #define is64bit()  inf_is_64bit()
-#define ea_size  (is64bit() ? 8 : 4)
+#define ea_size  ((is64bit() && !isIlp32()) ? 8 : 4)
 #define isX86() (PH.id == PLFM_386)
 #define isARM() (PH.id == PLFM_ARM)
 

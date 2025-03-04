@@ -4827,7 +4827,7 @@ static ssize_t idaapi ui_callback(void *user_data, int ncode, va_list va)
 	} else if( notification_code == ui_ready_to_run) {
 		//msg("[hrt] ui_ready_to_run\n");
 		StartWdg = get_current_widget();
-#if IDA_SDK_VERSION < 900 //FIXME: find exact IDA version number where switch to timer
+#if IDA_SDK_VERSION < 850 //FIXME: find exact IDA version number where switch to timer
 		execute_ui_requests(new FuncSwitchSync_t(), NULL);
 #else
 		register_timer(1000, cbRunFuncSwitchSync, NULL);
