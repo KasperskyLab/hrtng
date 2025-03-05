@@ -33,20 +33,22 @@
 #endif
 
 #define MSIGHASHLEN 16
-#define MIN_FUNC_LENGTH 10
+
+static uval_t minMsigLen = 15;
+static ushort skipCallArgs = 0;
 
 void SerializeInsn(const minsn_t* insn, bytevec_t& buf);
-void SerializeOp(const mop_t& op, bytevec_t& buf)
+void SerializeOp(const mop_t& op, bytevec_t& buf, bool indirectCall = false)
 {
-	//consider all types of variables (register, global, stack) as local var
+	//consider any kind of variable (register, global, stack) as a local var
 #if IDA_SDK_VERSION < 730
 	if (op.t == mop_r || op.t == mop_v || op.t == mop_S)
-		append_db(buf, mop_S);
+		append_db(buf, mop_l);
 	else
 		append_db(buf, op.t);
 #else //IDA_SDK_VERSION < 730
 	if (op.t == mop_r || op.t == mop_v || op.t == mop_S)
-		buf.pack_db(mop_S);
+		buf.pack_db(mop_l);
 	else
 		buf.pack_db(op.t);
 #endif //IDA_SDK_VERSION < 730
@@ -64,12 +66,12 @@ void SerializeOp(const mop_t& op, bytevec_t& buf)
 		buf.append(&op.b, sizeof(op.b));
 		break;
 	case mop_f:
-#if 0
+		if(indirectCall && skipCallArgs)
+			break;
 		if (op.f->solid_args) {
-			for (int i = 0; i < op.f->solid_args; i++)
+			for (size_t i = 0; i < op.f->args.size(); i++)
 				SerializeOp(op.f->args[i], buf);
 		}
-#endif
 		break;
 	case mop_a:
 		SerializeOp(*op.a, buf);
@@ -81,7 +83,7 @@ void SerializeOp(const mop_t& op, bytevec_t& buf)
 		buf.append(op.cstr, qstrlen(op.cstr));
 		break;
 	case mop_c:
-		for(int i = 0; i < op.c->targets.size(); i++)
+		for(size_t i = 0; i < op.c->targets.size(); i++)
 			buf.append(&op.c->targets[i], sizeof(int));
 		break;
 	case mop_fn:
@@ -108,7 +110,7 @@ void SerializeInsn(const minsn_t* insn, bytevec_t& buf)
 #endif //IDA_SDK_VERSION < 730
 	SerializeOp(insn->l, buf);
 	SerializeOp(insn->r, buf);
-	SerializeOp(insn->d, buf);
+	SerializeOp(insn->d, buf, insn->opcode == m_call && insn->l.t != mop_v);
 }
 
 void SerializeMba(mbl_array_t* mba, bytevec_t& buf)
@@ -128,11 +130,11 @@ struct ida_local msig_t {
 
 	msig_t(mbl_array_t* mba) 
 	{
-		name = get_visible_name(mba->entry_ea);
+		name = get_name(mba->entry_ea); //get_visible_name(mba->entry_ea);
 
 		bytevec_t buf;
 		SerializeMba(mba, buf);
-		tooShort = buf.size() < MIN_FUNC_LENGTH;
+		tooShort = buf.size() < minMsigLen;
 
 		MD5Context ctx;
 		MD5Init(&ctx);
@@ -166,7 +168,8 @@ struct ida_local msig_t {
 		if (name.empty())
 			return false;
 		if(tooShort) {
-			msg("[hrt] too short msig: %s!\n", name.c_str());
+			//msg("[hrt] too short msig: %s!\n", name.c_str());
+			return false;
 		}
 		for (uint32 i = 0; i < MSIGHASHLEN; i++)
 			if (hash[i])
@@ -192,15 +195,18 @@ public:
 		for (auto i : *this)
 			delete i;
 	}
-	void add(mbl_array_t* mba)
+	bool add(mbl_array_t* mba)
 	{
+		if (!mba)
+			return false;
 		msig_t* s = new msig_t(mba);
 		if (!s->chk() || !insert(s).second) {
-			msg("[hrt] Bad msig: %s!\n", s->print().c_str());
+			msg("[hrt] %a: Bad, too short or duplicate msig: %s\n", mba->entry_ea, s->name.c_str());
 			delete s;
-		} else {
-			msg("[hrt] %a: msig '%s' has been added!\n", mba->entry_ea, s->name.c_str());
+			return false;
 		}
+		//msg("[hrt] %a: msig '%s' has been added!\n", mba->entry_ea, s->name.c_str());
+		return true;
 	}
 	const char* match(mbl_array_t* mba)
 	{
@@ -239,7 +245,7 @@ public:
 		while (qfgets(buf, 4096, f)) {
 			msig_t* s = new msig_t(buf);
 			if (!s->chk() || !insert(s).second) {
-				msg("[hrt] Bad msig: %s!\n", s->print().c_str());
+				msg("[hrt] skip bad or duplicate msig: %s\n", s->print().c_str());
 				delete s;
 			} else {
 				cnt++;
@@ -251,11 +257,9 @@ public:
 };
 msigs_t msigs;
 
-void msig_add(mbl_array_t* mba)
+bool msig_add(mbl_array_t* mba)
 {
-	if (!mba)
-		return;
-	msigs.add(mba);
+	return msigs.add(mba);
 }
 
 const char* msig_match(mbl_array_t* mba)
@@ -263,9 +267,8 @@ const char* msig_match(mbl_array_t* mba)
 	if (!mba || !msigs.size())
 		return NULL;
 	const char* name = msigs.match(mba);
-	if (name) {
+	if (name)
 		msg("[hrt] %a: msig '%s' found\n", mba->entry_ea, name);
-	}
 	return name;
 }
 
@@ -274,7 +277,6 @@ void msig_save()
 	qstring filename;
 	filename += get_path(PATH_TYPE_IDB);
 	filename += ".msig";
-	//filename += "\n*.msig|MSIG files";
 
 	ushort rbtn = 0;
 	char buf[QMAXPATH * 2];
@@ -284,11 +286,14 @@ void msig_save()
 		"[hrt] Create MSIG file\n\n"
 		"<All User Named Functions:R>\n"
 		"<Manually Selected Functions:R>>\n"
+		"<Minimal signature length:u:4:::>\n"
+		"<###Turn it on to get more matches if the sample has a lot of indirect calls (but it will be more false positives too)#Skip indirect call arguments:c>>\n"
 		"<File name:f:1:64::>\n\n";
-	if (1 != ask_form(format, &rbtn, buf))
+	if (1 != ask_form(format, &rbtn, &minMsigLen, &skipCallArgs, buf))
 		return;
 	filename = buf;
 
+	size_t skipCnt = 0;
 	if (rbtn == 0) {
 		size_t funcqty = get_func_qty();
 		show_wait_box("Decompiling...");
@@ -301,36 +306,45 @@ void msig_save()
 
 			func_t* funcstru = getn_func(i);
 			if ((funcstru->flags & (FUNC_LIB | FUNC_THUNK)) ||
-				(!funcstru->tailqty && funcstru->end_ea - funcstru->start_ea < MIN_FUNC_LENGTH))
+				(!funcstru->tailqty && funcstru->end_ea - funcstru->start_ea < minMsigLen)) {
+				++skipCnt;
 				continue;
+			}
 
 			qstring funcName = get_name(funcstru->start_ea);
-			if (!is_uname(funcName.c_str()))
+			if (!is_uname(funcName.c_str())) {
+				++skipCnt;
 				continue;
+			}
 
-			replace_wait_box("[hrt] Decompiling %a: %s", funcstru->start_ea, funcName.c_str());
+			replace_wait_box("[hrt] Decompiling %d/%d", i, funcqty);
 			hexrays_failure_t hf;
 #if 1
 			mark_cfunc_dirty(funcstru->start_ea);
 			cfunc_t* cf = decompile_func(funcstru, &hf, DECOMP_NO_WAIT);
-			if (cf && hf.code == MERR_OK ) {
-				msig_add(cf->mba);
+			if (cf && hf.code == MERR_OK) {
+				if(!msig_add(cf->mba))
+					++skipCnt;
 			}
 #else
 			mba_t* mba = gen_microcode(funcstru, &hf, NULL, DECOMP_NO_WAIT | DECOMP_NO_CACHE, MMAT_LVARS);
 			if (mba /*&& hf.code == MERR_OK*/) {
-				msig_add(mba);
-			} 
+				if(!msig_add(mba))
+					++skipCnt;
+			}
 #endif
 			else {
-				msg("[hrt] %a: decompile func '%s' failed with '%s'\n", funcstru->start_ea, funcName.c_str(), hf.desc().c_str());
+				msg("[hrt] %a: decompile_func(\"%s\") failed with '%s'\n", funcstru->start_ea, funcName.c_str(), hf.desc().c_str());
 			}
 		}
 		hide_wait_box();
 	}
 
+	if(skipCnt)
+		msg("[hrt] %d lib func, bad or duplicate msigs skipped\n", skipCnt);
+
 	if (!msigs.size()) {
-		msg("[hrt] No msigs are defined\n");
+		msg("[hrt] No any msigs are defined\n");
 		return;
 	}
 	msigs.save(filename.c_str());
@@ -338,12 +352,14 @@ void msig_save()
 
 void msig_load()
 {
-	qstring filename = get_path(PATH_TYPE_IDB);
-	char buf[QMAXPATH];
-	qdirname(buf, QMAXPATH, filename.c_str());
-	filename = ask_file(0, buf, "FILTER MSIG files|*.msig\nEnter the name of the file:");
-	if (filename.empty())
+	char filename[QMAXPATH * 2];
+	qstrncpy(filename, "*.msig", QMAXPATH * 2);
+	const char     format[] =
+		"[hrt] Load MSIG file\n\n"
+		"<###This mode have to be the same as used on MSIG creation#Skip indirect call arguments on scanning:c>>\n"
+		"<File name:f:1:64::>\n\n";
+	if (1 != ask_form(format, &skipCallArgs, filename))
 		return;
 
-	msigs.load(filename.c_str());
+	msigs.load(filename);
 }
