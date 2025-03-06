@@ -150,6 +150,7 @@ ACT_DECL(clear_if42blocks         , AST_ENABLE_FOR(has_if42blocks(vu->cfunc->ent
 ACT_DECL(remove_rettype      , AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
 ACT_DECL(remove_argument     , AST_ENABLE_FOR(is_arg_var(vu)))
 #endif //IDA_SDK_VERSION < 750
+ACT_DECL(import_unf_types        , return ((ctx->widget_type == BWN_TILVIEW) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
 
 
 #undef AST_ENABLE_FOR
@@ -196,11 +197,12 @@ static const action_desc_t actions[] =
 	ACT_DESC("[hrt] Remove this argument",           "A", remove_argument),
 #endif //IDA_SDK_VERSION >= 750
 	ACT_DESC("[hrt] Create MSIG for the function",    NULL, msigAdd),
-	ACT_DESC("[hrt] ~C~ollapse selection",              NULL, selection2block),
+	ACT_DESC("[hrt] ~C~ollapse selection",            NULL, selection2block),
 	ACT_DESC("[hrt] Remove collapsible 'if(42) ...' blocks",  NULL, clear_if42blocks),
 #if IDA_SDK_VERSION < 850
 	ACT_DESC("[hrt] Convert to __usercall golang",   "Shift-G", convert_to_golang_call),
 #endif //IDA_SDK_VERSION < 850
+	ACT_DESC("[hrt] Import user-named func types",    NULL, import_unf_types),
 };
 
 //-------------------------------------------------------------------------
@@ -4157,6 +4159,47 @@ ACT_DEF(do_appcall)
 }
 
 //--------------------------------------------------------------------------
+
+ACT_DEF(import_unf_types)
+{
+	size_t impCnt  = 0;
+	size_t funcqty = get_func_qty();
+
+	show_wait_box("importing...");
+	for (size_t i = 0; i < funcqty; i++) {
+		if (user_cancelled()) {
+			hide_wait_box();
+			msg("[hrt] import_unf_types is canceled\n");
+			return 0;
+		}
+
+		func_t* funcstru = getn_func(i);
+		if(funcstru && 0 == (funcstru->flags & (FUNC_LIB | FUNC_THUNK))) {
+			qstring funcName = get_name(funcstru->start_ea);
+			if (is_uname(funcName.c_str())) {
+				tinfo_t tif;
+				if(get_tinfo(&tif, funcstru->start_ea) && tif.is_func()) {
+#if 1
+					//CHECKME: without NTF_NO_NAMECHK ida creates partially unmangled names probably not suitable for reapplying with signatures, and a lot of "bad name" errors
+					tinfo_code_t err = tif.set_named_type(nullptr, funcName.c_str() , NTF_REPLACE | NTF_NO_NAMECHK);
+#else
+					// 1) a lot of error -1: "failed to save"
+					// 2) imported types are not appears in "local types list" nor exported to "C header file"
+					tinfo_code_t err = tif.set_symbol_type(nullptr, funcName.c_str() , NTF_SYMM);
+#endif
+					if(TERR_OK == err)
+						++impCnt;
+					else
+						msg("[hrt] %a: import func '%s' type error %d %s\n", funcstru->start_ea, funcName.c_str(), err, tinfo_errstr(err));
+				}
+			}
+		}
+	}
+	hide_wait_box();
+	msg("[hrt] %d user named function types imported\n", impCnt);
+	return 0;
+}
+//--------------------------------------------------------------------------
 // brackets matching
 #define BR_BG_COLOR 0x7f7f7f
 struct ida_local bracketsMatching {
@@ -4815,6 +4858,9 @@ static ssize_t idaapi ui_callback(void *user_data, int ncode, va_list va)
 			add_structures_popup_items(widget, p);
 			break;
 #endif //IDA_SDK_VERSION < 850
+		case BWN_TILVIEW:
+			attach_action_to_popup(widget, p, ACT_NAME(import_unf_types), "Export to header file", SETMENU_INS);
+			break;
 		case BWN_DISASM:
 			attach_action_to_popup(widget, p, ACT_NAME(decrypt_data));
 			attach_action_to_popup(widget, p, ACT_NAME(add_VT_struct));
@@ -5157,13 +5203,14 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 			if(local_name || new_name == nullptr)
 				break;
 
-			if (!auto_is_ok()) // disable time-consuming operations during initial autoanalysis
-				break;
-
 			flags64_t ea_fl = get_flags(ea);
+
+#if 0 // this check breaks typesetting on MSIG signature matching
 			tinfo_t oldType;
 			// if there is no typeinfo, or func-type on a pointer
-			if(!get_tinfo(&oldType, ea) || oldType.empty() || (oldType.is_func() && is_ea(ea_fl))) {
+			if(!get_tinfo(&oldType, ea) || oldType.empty() || (oldType.is_func() && is_ea(ea_fl)))
+#endif
+			{
 				tinfo_t t = getType4Name(new_name, is_func(ea_fl));
 				if(!t.empty() && set_tinfo(ea, &t)) {
 					qstring str;
@@ -5171,6 +5218,10 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 					msg("[hrt] %a: set glbl '%s' type '%s'\n", ea, new_name, str.c_str());
 				}
 			}
+
+			//user invoked applying FLIRT signatures and loading pdb files are also autoanalysis
+			if (!auto_is_ok()) // disable time-consuming operations during initial autoanalysis
+				break;
 
 			if(is_func(ea_fl)) {
 				progress();
@@ -5331,7 +5382,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.3.29";
+	addon.version = "2.4.30";
 	register_addon(&addon);	
 
 	msg("[hrt] %s (%s) v.%s for IDA%d is ready to use\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);

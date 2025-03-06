@@ -45,13 +45,14 @@ Special thanks to following peoples for their great plugins were used as base fo
   * [Microcode signatures](doc/msig.md)
   * [De-Inline - detection of inlined functions](doc/deinline.md)
 
-### Structures assistance
+### Type management assistance
   * [Create dummy structs](doc/cr_struc.md)
   * [Assist split gaps in structures](doc/struct-gaps.md)
   * [Union creation for a variable is reused with different types](doc/var-reuse.md)
   * [List of structures with given size, with given offset](doc/struct-sz-off.md)
   * [Assist in creation of new structure definitions](doc/struct-bld.md)
   * [Finds structures with same "shape" as is used](doc/struct-shape.md)
+  * [Import user named functions prototypes into the local type library](doc/import_unf_types.md)
   * [~~New functionality in Structures view~~](doc/ex-unp-struc.md)
 
 ### Virtual/indirect calls assistance

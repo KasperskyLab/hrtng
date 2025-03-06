@@ -305,7 +305,7 @@ void msig_save()
 			}
 
 			func_t* funcstru = getn_func(i);
-			if ((funcstru->flags & (FUNC_LIB | FUNC_THUNK)) ||
+			if (!funcstru || (funcstru->flags & (FUNC_LIB | FUNC_THUNK)) ||
 				(!funcstru->tailqty && funcstru->end_ea - funcstru->start_ea < minMsigLen)) {
 				++skipCnt;
 				continue;

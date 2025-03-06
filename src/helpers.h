@@ -45,6 +45,7 @@
 #if IDA_SDK_VERSION < 910
 #define isIlp32() false
 #else
+#define BWN_TILVIEW BWN_TICSR
 #define isIlp32() inf_is_ilp32()
 #endif
 
@@ -53,11 +54,14 @@
 #define get_named_type_tid(x) get_struc_id(x)
 #define get_tid_name(x, y) get_struc_name(x, y)
 #define merge_blocks combine_blocks
+#define BWN_TILVIEW BWN_LOCTYPS
 #endif // IDA_SDK_VERSION < 850
 
 #if IDA_SDK_VERSION < 840
   #define udm_t udt_member_t
   #define find_udm find_udt_member
+  #define NTF_NO_NAMECHK 0
+  #define tinfo_errstr(err) ""
 #endif // IDA_SDK_VERSION < 840
 
 #if IDA_SDK_VERSION < 830
