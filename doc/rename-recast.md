@@ -1,6 +1,6 @@
 ## User interactive renaming/retyping assistance
 
-- Set type on rename : When user rename a local/global variable or a struct member, and new name is equal to known struct or proc typename this type pointer automatically will be applied to the variable. Then new name is ended with '_' and name is matched with any struct typename, this struct type will be applied to the renamed variable.
+- Set type on rename : When user rename a local/global variable, struct member or a function, and new name is equal to known struct or proc typename this type pointer automatically will be applied to the variable. Then new name is ended with '_' and name is matched with any struct typename, this struct type will be applied to the renamed variable.
 >⚠️ **Notes:** 
 > - Struct member renaming callbacks is broken in IDA 8.4.
 > - Name must exactly match typename. Case sensitive.
