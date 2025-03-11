@@ -364,7 +364,7 @@ static int idaapi jump_to_call_dst(vdui_t *vu)
 	if(!is_call(vu, &call))
 		return 0;
 
-	// jump to VT address in struct comment
+	// jump to address in struct member-to-proc-xref (or by VT/comment/name)
 	ea_t dst_ea = BADADDR;
 	cexpr_t *e = vu->item.e;
 	if (e->op == cot_memptr || e->op == cot_memref) {
@@ -373,46 +373,25 @@ static int idaapi jump_to_call_dst(vdui_t *vu)
 			e = e->x;
 		cexpr_t *var = e->x;
 		tinfo_t t = var->type;
-		while (t.is_ptr_or_array())
+		if(t.is_ptr_or_array())
 			t.remove_ptr_or_array();
-		if (t.is_struct()) {
-#if IDA_SDK_VERSION >= 850
-			// actually get_vftable_ea is appeared in ida 7.6 but here will be used from ida9 because it probably depends on TAUDT_VFTABLE flag has been set in create_VT_struc
-			// get destination from vftable_ea
-			auto tid = t.get_tid();
-			if(tid != BADADDR) {
-				auto vt_ea = get_vftable_ea(get_tid_ordinal(tid));
-				if (vt_ea != BADADDR) {
-					ea_t fnc = get_ea(vt_ea + offset);
-					if (is_func(get_flags(fnc))) {
-						dst_ea = fnc;
-					}
-				}
-			}
-#endif //IDA_SDK_VERSION >= 850
-			// get destination from structure comment
-			qstring sname;
-			if(dst_ea == BADADDR && t.get_type_name(&sname)) {
+		if(t.is_struct()) {
 #if IDA_SDK_VERSION < 850
-				tid_t id = get_struc_id(sname.c_str());
-				if(id != BADNODE) {
-					qstring comment;
-					get_struc_cmt(&comment, id, true);
-#else //IDA_SDK_VERSION >= 850
-				qstring comment;
-				if (t.get_type_rptcmt(&comment)) {
-#endif //IDA_SDK_VERSION < 850
-					ea_t vt_ea;
-					if (at_atoea(comment.c_str(), &vt_ea)) {
-						ea_t fnc = get_ea(vt_ea + offset);
-						// it may be structure has been imported from another idb (when looking another malware version)
-						// so addresses in comments may be wrong
-						if (is_func(get_flags(fnc))) {
-							dst_ea = fnc;
-						}
+			qstring sname;
+			if(t.get_type_name(&sname)) {
+				tid_t sid = get_struc_id(sname.c_str());
+				if(sid != BADNODE) {
+					struc_t* s = get_struc(sid);
+					if(s) {
+						member_t *m = get_member(s, offset);
+						if(m)
+							dst_ea = get_memb2proc_ref(s, m);
 					}
 				}
 			}
+#else
+			dst_ea = get_memb2proc_ref(t, offset);
+#endif
 		}
 	}
 
@@ -4940,8 +4919,7 @@ static void progress()
 }
 
 #if IDA_SDK_VERSION < 850
-typedef void idaapi enumStrucMembersCB_t(struc_t * struc, member_t *member, void *user_data);
-void enumStrucMembers(const char* memberName, enumStrucMembersCB_t cb,  void *user_data)
+void findStrucMembersByName(const char* memberName, tidvec_t* tids)
 {
 	for(uval_t idx = get_first_struc_idx(); idx != BADNODE; idx = get_next_struc_idx(idx)) {
 		tid_t id = get_struc_by_idx(idx);
@@ -4959,44 +4937,16 @@ void enumStrucMembers(const char* memberName, enumStrucMembersCB_t cb,  void *us
 			if(*mn == 0)
 				continue; // skip members w/o name
 			if(!namecmp(mn, memberName))
-				cb(struc, member, user_data);
+				tids->push_back(member->id);
 			off = get_struc_next_offset(struc, off);
 		}
 	}
 }
-
-void idaapi countStrucMembersCB(struc_t * struc, member_t *member, void *cnt)
-{
-	(*(int*)cnt)++;
-}
-
-void idaapi renameStrucMembersCB(struc_t * struc, member_t *member, void *new_name)
-{
-	qstring oldname;
-	get_member_fullname(&oldname, member->id);
-	if (set_member_name(struc, member->soff, (const char*)new_name))
-		msg("[hrt] struc member '%s' renamed to '%s'\n", oldname.c_str(), new_name);
-}
-
-void idaapi recastStrucMembersCB(struc_t * struc, member_t *member, void *user_data)
-{
-	if(member->eoff - member->soff == ea_size) {
-		tinfo_t *tif = (tinfo_t *)user_data;
-		if (SMT_OK == set_member_tinfo(struc, member, 0, *tif, SET_MEMTI_COMPATIBLE)) {
-			  qstring oldname;
-				qstring newType;
-				tif->print(&newType);
-				get_member_fullname(&oldname, member->id);
-				msg("[hrt] struc member '%s' recasted to '%s'\n", oldname.c_str(), newType.c_str());
-		  }
-	}
-}
 #else //IDA_SDK_VERSION >= 850
-typedef void idaapi enumStrucMembersCB_t(tinfo_t& t, qstring& fullname, size_t index, void* user_data);
-void enumStrucMembers(const char* memberName, enumStrucMembersCB_t cb, void* user_data)
+void findStrucMembersByName(const char* memberName, tidvec_t* tids)
 {
 	uint32 limit = get_ordinal_limit();
-	if (limit == -1)
+	if (limit == uint32(-1))
 		return;
 	for (uint32 ord = 1; ord < limit; ++ord) {
 		tinfo_t t;
@@ -5009,39 +4959,13 @@ void enumStrucMembers(const char* memberName, enumStrucMembersCB_t cb, void* use
 					if(*mn == 0)
 						continue; // skip members w/o name
 					if(!namecmp(mn, memberName)) {
-						qstring fullname;
-						t.get_type_name(&fullname); // get_numbered_type_name
-						fullname.append('.');
-						fullname.append(member.name);
-						cb(t, fullname, i, user_data);
+						tid_t tid = t.get_udm_tid(i);
+						if(tid != BADADDR)
+							tids->push_back(tid);
 					}
 				}
 			}
 		}
-	}
-}
-
-void idaapi countStrucMembersCB(tinfo_t& t, qstring& fullname, size_t index, void* cnt)
-{
-	(*(int*)cnt)++;
-}
-
-void idaapi renameStrucMembersCB(tinfo_t& t, qstring& fullname, size_t index, void* new_name)
-{
-	qstring nn = good_udm_name(t, (const char*)new_name);
-	if (t.rename_udm(index, nn.c_str()) == TERR_OK)
-		msg("[hrt] struc member '%s' renamed to '%s'\n", fullname.c_str(), nn.c_str());
-	else
-		warning("[hrt] fail rename struc member '%s' to '%s'\nit seems bad name, press 'Ctrl-Z' and try again", fullname.c_str(), nn.c_str());
-}
-
-void idaapi recastStrucMembersCB(tinfo_t& t, qstring& fullname, size_t index, void* user_data)
-{
-	tinfo_t* tif = (tinfo_t*)user_data;
-	if (t.set_udm_type(index, *tif) == TERR_OK) {
-		qstring newType;
-		tif->print(&newType);
-		msg("[hrt] struc member '%s' recasted to '%s'\n", fullname.c_str(), newType.c_str());
 	}
 }
 #endif //IDA_SDK_VERSION < 850
@@ -5070,25 +4994,18 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 			struc_t  *sptr = va_arg(va, struc_t *);
 			member_t *mptr = va_arg(va, member_t *);
 			const char *newname = va_arg(va, const char *);
-			//msg("[hrt] renaming_struc_member %s\n", newname);
+			if(sptr->is_frame())
+				break;
 
 			//rename VT method impl together with VT member
 			if(qstrlen(newname) &&
 				 strncmp(newname, "sub_", 4) &&
 				 strncmp(newname, "field_", 6)) {
-				qstring struCmt;
-				get_struc_cmt(&struCmt, sptr->id, true);
-				ea_t vt_ea;
-				if (at_atoea(struCmt.c_str(), &vt_ea)) {
-					ea_t subEA = get_ea(vt_ea + mptr->get_soff());
-					if (is_func(get_flags(subEA))) {
-						//avoid recursive renaming
-						if(subEA != funcRenameEa && set_name(subEA, newname, SN_FORCE)) {
-							qstring newGblName = get_name(subEA);
-							//set_member_cmt(mptr, newGblName.c_str(), true);
-							msg("[hrt] %a renamed to %s\n", subEA, newGblName.c_str());
-						}
-					}
+				ea_t dstEA = get_memb2proc_ref(sptr, mptr);
+				//avoid recursive renaming
+				if (dstEA != BADADDR &&	dstEA != funcRenameEa && set_name(dstEA, newname, SN_FORCE)) {
+					qstring newGblName = get_name(dstEA);
+					msg("[hrt] %a renamed to %s\n", dstEA, newGblName.c_str());
 				}
 			}
 		}
@@ -5138,19 +5055,10 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 			break;
 
 		//rename VT method impl together with VT member
-		qstring struCmt;
-		if (struc.get_type_rptcmt(&struCmt)) {
-			ea_t vt_ea;
-			if (at_atoea(struCmt.c_str(), &vt_ea)) {
-				ea_t subEA = get_ea(vt_ea + udm->offset / 8);
-				if (is_func(get_flags(subEA))) {
-					//avoid recursive renaming
-					if (subEA != funcRenameEa && set_name(subEA, newname, SN_FORCE)) {
-						qstring newGblName = get_name(subEA);
-						msg("[hrt] %a renamed to %s\n", subEA, newGblName.c_str());
-					}
-				}
-			}
+		ea_t dstEA = get_memb2proc_ref(struc, udm->offset / 8);
+		if (dstEA != BADADDR && dstEA != funcRenameEa && set_name(dstEA, newname, SN_FORCE)) { //avoid recursive renaming
+			qstring newGblName = get_name(dstEA);
+			msg("[hrt] %a renamed to %s\n", dstEA, newGblName.c_str());
 		}
 
 		// set type for new name if new member name is same as lib function or structure
@@ -5247,13 +5155,39 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 				}
 				if(funcRenameEa == ea && !funcRename.empty()) {
 					//rename VT members and callbacks too
-					int cnt = 0;
-					enumStrucMembers(funcRename.c_str(), countStrucMembersCB, &cnt);
-					if(cnt > 0) {
-						if(cnt == 1 || ASKBTN_YES == ask_yn(ASKBTN_NO, "[hrt] Rename %d struc members?\n%s\nto\n%s", cnt, funcRename.c_str(), new_name))
-							enumStrucMembers(funcRename.c_str(), renameStrucMembersCB, (void*)new_name);
+					tidvec_t tids;
+#if 0			// enable the next line to compatibility with old IDBs without proc2memb_refs
+					findStrucMembersByName(funcRename.c_str(), &tids);
+#endif
+					get_proc2memb_refs(ea, &tids);
+					if(tids.size() > 0) {
+						if(tids.size() == 1 || ASKBTN_YES == ask_yn(ASKBTN_NO, "[hrt] Rename %d struc members?\n%s\nto\n%s", tids.size(), funcRename.c_str(), new_name)) {
+							for (size_t i = 0; i < tids.size(); i++) {
+								qstring fullname;
+								//FIXME: ??? do double check with namecmp(funcRename.c_str(), memb->name)
+#if IDA_SDK_VERSION < 850
+								struc_t *struc;
+								member_t * memb = get_member_by_id(&fullname, tids[i], &struc);
+								if(memb && set_member_name(struc, memb->soff, new_name))
+									msg("[hrt] struc member '%s' renamed to '%s'\n", fullname.c_str(), new_name);
+#else //IDA_SDK_VERSION >= 850
+								udm_t udm;
+								tinfo_t struc;
+								ssize_t idx = struc.get_udm_by_tid(&udm, tids[i]);
+								if(idx != -1) {
+									struc.get_type_name(&fullname); // get_numbered_type_name
+									fullname.append('.');
+									fullname.append(udm.name);
+									if(struc.rename_udm(idx, new_name) == TERR_OK)
+										msg("[hrt] struc member '%s' renamed to '%s'\n", fullname.c_str(), new_name);
+									else
+										warning("[hrt] fail rename struc member '%s' to '%s'\nit seems bad name, press 'Ctrl-Z' and try again", fullname.c_str(), new_name);
+								}
+#endif //IDA_SDK_VERSION < 850
+							}
+						}
 					}
-					//msg("[hrt] %a %s renaming %d members\n", funcRenameEa, funcRename.c_str(), cnt);
+					//msg("[hrt] %a %s renaming %d members\n", funcRenameEa, funcRename.c_str(), tids.size());
 					funcRenameEa = 0; //avoid recursive renaming
 				}
 			}
@@ -5274,18 +5208,37 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 				qstring funcName = get_name(ea);
 				//stripName(&funcName);
 				//set type for VT members too
-				int cnt = 0;
-				enumStrucMembers(funcName.c_str(), countStrucMembersCB, &cnt);
-				if(!cnt)
+				tidvec_t tids;
+#if 0		// enable the next line to compatibility with old IDBs without proc2memb_refs
+				findStrucMembersByName(funcRename.c_str(), &tids);
+#endif
+				get_proc2memb_refs(ea, &tids);
+				if(!tids.size())
 					break;
 				tif = make_pointer(tif);
-				if(cnt > 1) {
-					qstring newType;
-					tif.print(&newType);
-					if(ASKBTN_YES != ask_yn(ASKBTN_NO, "[hrt] Recast %d struc members\n%s\nto\n%s\n?", cnt, funcName.c_str(), newType.c_str()))
-						break;
+				qstring newType; tif.print(&newType);
+				if(tids.size() > 1 && ASKBTN_YES != ask_yn(ASKBTN_NO, "[hrt] Recast %d struc members\n%s\nto\n%s\n?", tids.size(), funcName.c_str(), newType.c_str()))
+					break;
+				for (size_t i = 0; i < tids.size(); i++) {
+					qstring fullname;
+#if IDA_SDK_VERSION < 850
+					struc_t *struc;
+					member_t * memb = get_member_by_id(&fullname, tids[i], &struc);
+					if(memb && SMT_OK == set_member_tinfo(struc, memb, 0, tif, SET_MEMTI_COMPATIBLE))
+						msg("[hrt] struc member '%s' recasted to '%s'\n", fullname.c_str(), newType.c_str());
+#else //IDA_SDK_VERSION >= 850
+					udm_t udm;
+					tinfo_t struc;
+					ssize_t idx = struc.get_udm_by_tid(&udm, tids[i]);
+					if(idx != -1) {
+						struc.get_type_name(&fullname); // get_numbered_type_name
+						fullname.append('.');
+						fullname.append(udm.name);
+						if(struc.set_udm_type(idx, tif) == TERR_OK)
+							msg("[hrt] struc member '%s' recasted to '%s'\n", fullname.c_str(), newType.c_str());
+					}
+#endif //IDA_SDK_VERSION < 850
 				}
-				enumStrucMembers(funcName.c_str(), recastStrucMembersCB, &tif);
 			}
 			break;
 		}
@@ -5382,7 +5335,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.4.30";
+	addon.version = "2.4.31";
 	register_addon(&addon);	
 
 	msg("[hrt] %s (%s) v.%s for IDA%d is ready to use\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);

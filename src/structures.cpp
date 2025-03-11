@@ -506,7 +506,7 @@ ACT_DEF(create_VT_callback)
 #endif // IDA_SDK_VERSION < 850
 
 #if IDA_SDK_VERSION < 850
-void add_vt_member(struc_t* sptr, ea_t offset, const char* name, const tinfo_t& type, const char* comment)
+void add_vt_member(struc_t* sptr, ea_t offset, const char* name, const tinfo_t& type, ea_t ref)
 {
 	flags64_t flag;
 	asize_t nbytes;
@@ -531,28 +531,30 @@ void add_vt_member(struc_t* sptr, ea_t offset, const char* name, const tinfo_t& 
 	}
 	member_t* memb = get_member(sptr, offset);
 	set_member_tinfo(sptr, memb, 0, type, SET_MEMTI_COMPATIBLE);
-	set_member_cmt(memb, comment, true);
+	add_proc2memb_ref(ref, memb->id);
 }
 
 #else //IDA_SDK_VERSION >= 850
 
-void add_vt_member(tinfo_t &struc, ea_t offset, const char* name, const tinfo_t &type, const char* comment)
+void add_vt_member(tinfo_t &struc, ea_t offset, const char* name, const tinfo_t &type, ea_t ref)
 {
 	udm_t udm;
 	udm.offset = offset * 8;
 	udm.size = (is64bit() && !isIlp32()) ? 8 * 8 : 4 * 8;
 	udm.type = type;
 	udm.name = good_udm_name(struc, name);
-	udm.cmt = comment;
-	if (struc.add_udm(udm, ETF_AUTONAME) != TERR_OK) {
+	tinfo_code_t err = struc.add_udm(udm, ETF_AUTONAME);
+	int index = struc.find_udm(udm.offset);
+	if (index < 0)
+		return;
+	if (err != TERR_OK) {
 		// probably already exist
-		int index = struc.find_udm(udm.offset);
-		if (index < 0)
-			return;
 		struc.rename_udm(index, udm.name.c_str());
 		struc.set_udm_type(index, udm.type);
-		struc.set_udm_cmt(index, comment);
 	}
+	tid_t tid = struc.get_udm_tid(index);
+	if(tid != BADADDR)
+		add_proc2memb_ref(ref, tid);
 }
 #endif //IDA_SDK_VERSION < 850
 
@@ -576,7 +578,7 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 			name_vt.sprnt("_%a", VT_ea);
 		}
 	}
-	qstring name_VT_ea = name_vt;
+	qstring name_VT_ea = name_vt.c_str();
 	name_VT_ea += VTBL_SUFFIX "_";
 	name_vt += VTBL_SUFFIX;
 
@@ -666,9 +668,7 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 			msg("[hrt] %a: set dummy ptr type for VTBL member \"%s\"\n", fncea, funcname.c_str());
 		}
 
-		qstring cmt;
-		cmt.sprnt("0x%a", fncea);
-		add_vt_member(newstruc, offset, funcname.c_str(), t, cmt.c_str());
+		add_vt_member(newstruc, offset, funcname.c_str(), t, fncea);
 
 		len++;
 		ea += ea_size;
@@ -726,7 +726,7 @@ int create_VT(tid_t parent, ea_t VT_ea)
 	type.get_type_by_tid(vt_struc_id);
 #endif //IDA_SDK_VERSION < 850
 	type = make_pointer(type);
-	add_vt_member(struc, 0, VTBL_MEMNAME, type, NULL);
+	add_vt_member(struc, 0, VTBL_MEMNAME, type, VT_ea);
 	return 1;
 }
 
@@ -764,3 +764,75 @@ bool confirm_create_struct(tinfo_t &out_type, tinfo_t &in_type, const char* spre
 	return true;
 }
 
+//-------------------------------------------------------------------------
+//these data xrefs works as just a cache, search by VTBL and name still supported
+
+bool add_proc2memb_ref(ea_t proc, tid_t memb)
+{
+	return add_dref(proc, memb, (dref_t)(dr_I | XREF_USER));
+}
+
+void get_proc2memb_refs(ea_t proc, tidvec_t* membs)
+{
+	xrefblk_t x;
+	if(x.first_from(proc, XREF_DATA)) do {
+		if(x.user && x.type == dr_I && !is_mapped(x.to))
+			membs->push_back(x.to);
+	} while(x.next_from());
+}
+
+#if IDA_SDK_VERSION < 850
+ea_t get_memb2proc_ref(struc_t* s, member_t *m)
+{
+	tid_t mtid = m->id;
+#else
+ea_t get_memb2proc_ref(tinfo_t& s, uint32 offInBytes)
+{
+	tid_t mtid;
+	udm_t memb;
+	memb.offset = offInBytes;
+	int index = s.find_udm(&memb, STRMEM_AUTO);
+	if(index < 0 || (mtid = s.get_udm_tid(index)) == BADADDR)
+		return BADADDR;
+#endif
+
+	//search in cache, for now it can be only one member to proc ref on the member
+	xrefblk_t x;
+	if(x.first_to(mtid, XREF_DATA)) do {
+		if(x.user && x.type == dr_I && is_func(get_flags(x.from)))
+			return x.from;
+	} while(x.next_to());
+
+	//find target proc and add ref to it
+	ea_t dstEA = BADADDR;
+	ea_t vt_ea;
+	qstring struCmt;
+#if IDA_SDK_VERSION < 850
+	if (get_struc_cmt(&struCmt, s->id, true) > 0 && at_atoea(struCmt.c_str(), &vt_ea)) {
+		dstEA = get_ea(vt_ea + m->get_soff());
+	} else {
+		qstring mname = get_member_name(m->id);
+		stripName(&mname);
+		dstEA = get_name_ea(BADADDR, mname.c_str());
+	}
+#else
+	// actually get_vftable_ea is appeared in ida 7.6 but here will be used from ida9 because it probably depends on TAUDT_VFTABLE flag has been set in create_VT_struc
+	// get destination from vftable_ea
+	tid_t stid = s.get_tid();
+	if(stid != BADADDR && (vt_ea = get_vftable_ea(get_tid_ordinal(stid))) != BADADDR) {
+		dstEA = get_ea(vt_ea + offInBytes);
+	} else if(s.get_type_rptcmt(&struCmt) && at_atoea(struCmt.c_str(), &vt_ea)) {
+		dstEA = get_ea(vt_ea + offInBytes);
+	} else {
+		qstring mname = memb.name.c_str();
+		stripName(&mname);
+		dstEA = get_name_ea(BADADDR, mname.c_str());
+	}
+#endif //IDA_SDK_VERSION < 850
+
+	if(dstEA != BADADDR && is_func(get_flags(dstEA))) {
+		add_proc2memb_ref(dstEA, mtid);
+		return dstEA;
+	}
+	return BADADDR;
+}

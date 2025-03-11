@@ -253,7 +253,7 @@ static bool renameEa(ea_t refea, ea_t ea, const qstring* name)
 {
   if (!is_mapped(ea))
 		return false;
-  qstring newName = *name;
+  qstring newName = name->c_str();
 	if (newName.size() > MAX_NAME_LEN)
 		newName.resize(MAX_NAME_LEN);
 	if(!validate_name(&newName, VNT_IDENT)) {
