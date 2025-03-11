@@ -208,13 +208,13 @@ void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 			} else {
 				for (size_t i = 0; i < trace.size(); i++) {
 #if IDA_SDK_VERSION < 850
-					member_t * smem = get_member_by_id(trace[i]);
-					res->m = (uint32)smem->soff; // set offset 
-					if (!get_member_type(smem, &res->type)) {
+					member_t* smem = get_member_by_id(trace[i]);
+					if(!smem || !get_member_type(smem, &res->type)) {
 						res->cleanup();
 						delete res;
 						return NULL;
 					}
+					res->m = (uint32)smem->soff; // set offset
 #else //IDA_SDK_VERSION >= 850
 					udm_t udm;
 					tinfo_t imembStrucType;

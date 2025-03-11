@@ -255,7 +255,8 @@ void patch_str(ea_t ea, const char *str, sval_t len, bool bZeroTerm)
 		patch_byte(ea + len, 0);
 		len++;
 	}
-	create_strlit(ea, len, STRTYPE_C);
+	if(len < 1024)
+		create_strlit(ea, len, STRTYPE_C);
 	add_extra_cmt(ea, true, "; patched 0x%x", len);
 }
 
@@ -267,7 +268,8 @@ void patch_wstr(ea_t ea, const char *str, sval_t len)
 	for(sval_t i = 0; i < len; i++, ea += 2)
 		patch_word(ea, str[i]);
 	//patch_bytes(ea, str, len);
-	create_strlit(start, len * 2, STRTYPE_C_16);
+	if(len < 1024)
+		create_strlit(start, len * 2, STRTYPE_C_16);
 	add_extra_cmt(ea, true, "; patched 0x%x", len * 2);
 }
 
@@ -285,7 +287,8 @@ void patch_wstr(ea_t ea, const wchar16_t *str, sval_t len, bool bZeroTerm)
 		patch_word(ea + len2, 0);
 		len++;
 	}
-	create_strlit(ea, len * 2, STRTYPE_C_16);
+	if(len < 1024)
+		create_strlit(ea, len * 2, STRTYPE_C_16);
 	add_extra_cmt(ea, true, "; patched 0x%x", len * 2);
 }
 

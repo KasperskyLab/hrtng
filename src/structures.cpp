@@ -121,7 +121,7 @@ asize_t struct_get_member(tid_t strId, asize_t offset, tid_t* last_member, tidve
 		return 0;
 	asize_t strctSz = get_struc_size(str);
 	if (strctSz <= offset) {
-		member_t* lm = get_member_by_id(*last_member);
+		member_t* lm;
 		if (*last_member != BADNODE && (lm = get_member_by_id(*last_member)) != NULL && strctSz < lm->eoff - lm->get_soff()) {
 			//Struct size not greater then offset. This possible then last_member is array of structs. Adjust offset
 			asize_t newoff = offset % strctSz;
