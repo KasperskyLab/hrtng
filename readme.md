@@ -104,14 +104,14 @@ cmake <path-to/hrtng/src>
 cmake --build . --config Release -j 4 --clean-first
 ```
 
- * On the first build attempt there will be compiling error looks like:
+ * On the first build attempt with IDA SDK before version 9.1 there will be compiling error looks like:
 
 ```
-hrtng/src/deob.cpp:912:60: error: ‘class rangeset_t’ has no member named ‘getbag’
-     fc.create("tmpfc2", ranges.getbag(), 0);//!!! add line into range.hpp, class rangeset_t: "const rangevec_t &getbag() const { return bag; }"
+hrtng/src/deob.cpp:912:60: error: ‘class rangeset_t’ has no member named ‘as_rangevec’
+     fc.create("tmpfc2", ranges.as_rangevec(), 0);//!!! add line into range.hpp, class rangeset_t: "const rangevec_t &as_rangevec() const { return bag; }"
 ```
 
- * To fix the error, edit `IDA_SDK/include/range.hpp` file, adding line with `getbag` function implementation into `class rangeset_t` declaration as in the following example:
+ * To fix the error, edit `IDA_SDK/include/range.hpp` file, adding line with `as_rangevec` function implementation into `class rangeset_t` declaration as in the following example:
 
 ```
 class rangeset_t
@@ -119,7 +119,7 @@ class rangeset_t
   rangevec_t bag;
   ...
   public:
-  const rangevec_t &getbag() const { return bag; }
+  const rangevec_t &as_rangevec() const { return bag; }
   ...
 };
 ```

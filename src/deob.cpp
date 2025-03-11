@@ -968,7 +968,7 @@ int decompile_obfuscated(ea_t eaBgn)
 			do {
 				//using append_to_flowchart is requres to refresh and create_qflow_chart
 				qflow_chart_t fc;
-				fc.create("tmpfc2", ranges.getbag(), 0); // !!! add line into range.hpp, class rangeset_t: "const rangevec_t &getbag() const { return bag; }"
+				fc.create("tmpfc2", ranges.as_rangevec(), 0); // !!! add line into range.hpp, class rangeset_t: "const rangevec_t &as_rangevec() const { return bag; }"
 				bChanged = false;
 				for (int n = 0; n < fc.size(); n++) {
 					const qbasic_block_t* blk = &fc.blocks[n];
@@ -987,7 +987,7 @@ int decompile_obfuscated(ea_t eaBgn)
 		rangevec_t rvTmp;
 		//check if first range is entry point
 		if (ranges.getrange(0).start_ea == eaBgn) {
-			rv = &ranges.getbag(); // !!! add line into range.hpp, class rangeset_t: "const rangevec_t &getbag() const { return bag; }"
+			rv = &ranges.as_rangevec(); // !!! add line into range.hpp, class rangeset_t: "const rangevec_t &as_rangevec() const { return bag; }"
 		} else {
 			//MSG_DO(("[hrt] start_ea != eaBgn\n"));
 			rset2rvec(eaBgn, &ranges, &rvTmp);
@@ -1058,7 +1058,7 @@ int decompile_obfuscated(ea_t eaBgn)
 		COMPAT_open_pseudocode_REUSE_ACTIVE(eaBgn);
 	} else {
 		hexrays_failure_t hf;
-		cfuncptr_t cf = decompile_snippet(ranges.getbag(), &hf, DECOMP_NO_CACHE | DECOMP_NO_FRAME | DECOMP_WARNINGS | DECOMP_ALL_BLKS);
+		cfuncptr_t cf = decompile_snippet(ranges.as_rangevec(), &hf, DECOMP_NO_CACHE | DECOMP_NO_FRAME | DECOMP_WARNINGS | DECOMP_ALL_BLKS);
 		deob_done();
 		if (hf.code != MERR_OK) {
 			msg("[hrt] decompile_snippet error %d: %s\n", hf.code, hf.desc().c_str());
