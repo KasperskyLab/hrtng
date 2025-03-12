@@ -38,19 +38,6 @@
 #define DWORD_SIZE  4
 #define QWORD_SIZE  8
 
-// From https://reverseengineering.stackexchange.com/questions/19843/how-can-i-get-the-byte-size-of-an-operand-in-ida-pro
-int size_of_operand(op_t* op)
-{
-  const int tbyte = 8;
-  const int ldbl = 8;
-  static const int n_bytes[] =
-  { 1, 2, 4, 4, 8,
-    tbyte, -1, 8, 16, -1,
-    -1, 6, -1, 4, 4,
-    ldbl, 32, 64 };
-  return n_bytes[op->dtype];
-}
-
 // Return true if the given operand *looks* like a mem op.
 bool is_mem_op(const op_t& op)  { return op.type == o_mem || op.type == o_displ || op.type == o_phrase; }
 bool is_reg_op(const op_t& op)  { return op.type == o_reg; }
@@ -457,7 +444,7 @@ struct ida_local AVXLifter : microcode_filter_t {
   // VCVTSI2SS xmm1, xmm2, r/m64
   merror_t vcvtsi2ss(codegen_t &cdg)
   {
-    int src_size = size_of_operand(&cdg.insn.Op3);
+    int src_size = (int)get_dtype_size(cdg.insn.Op3.dtype);
     mreg_t r_reg;
     if (is_mem_op(cdg.insn.Op3)) {
       // op3 -- m32/m64
@@ -489,7 +476,7 @@ struct ida_local AVXLifter : microcode_filter_t {
   {
 		int src_size = XMM_SIZE;
 		if (is_xmm_reg(cdg.insn.Op1))
-			src_size = QWORD_SIZE; //???
+			src_size = QWORD_SIZE;
 
 		mreg_t r_reg;
 		if (is_mem_op(cdg.insn.Op2)) {
@@ -677,9 +664,7 @@ struct ida_local AVXLifter : microcode_filter_t {
   merror_t v_bitwise(codegen_t &cdg)
   {
     QASSERT(100619, is_avx_reg(cdg.insn.Op1) && is_avx_reg(cdg.insn.Op2));
-    int op_size = YMM_SIZE;
-    if (is_xmm_reg(cdg.insn.Op1))
-      op_size = XMM_SIZE;
+    int op_size = (int)get_dtype_size(cdg.insn.Op1.dtype);
 
     mreg_t r_reg;
     if (is_mem_op(cdg.insn.Op3)) {
@@ -712,7 +697,18 @@ struct ida_local AVXLifter : microcode_filter_t {
       QASSERT(100621, "wtf");
     }
     mreg_t d_reg = reg2mreg(cdg.insn.Op1.reg);
-    cdg.emit(mcode_op, new mop_t(reg2mreg(cdg.insn.Op2.reg), op_size), new mop_t(r_reg, op_size), new mop_t(d_reg, op_size));
+    //cdg.emit(mcode_op, op_size, reg2mreg(cdg.insn.Op2.reg), r_reg, d_reg, -1); // INTERR(50801); // wrong FPINSN mark
+    if (op_size > XMM_SIZE) {
+      // dirty hack to avoid INTERR(50757) - bad operand size
+      // WRONG SIZED pseudocode will be produced as result of this hack
+      // I've no idea why XMM_SIZE is ok, but YMM_SIZE isn't ok. Is it probly bug in hex-rays mop_t::verify()?
+      // set_udt() for l,r & d - helps to pass over this call cdg.emit() but later happens INTERR(50757) 
+      op_size = XMM_SIZE;
+    }
+    mop_t* l = new mop_t(reg2mreg(cdg.insn.Op2.reg), op_size);
+    mop_t* r = new mop_t(r_reg, op_size); 
+    mop_t* d = new mop_t(d_reg, op_size); 
+    cdg.emit(mcode_op, l, r, d);
     if (op_size == XMM_SIZE)
       clear_upper(cdg, d_reg);
     return MERR_OK;
