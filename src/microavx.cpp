@@ -703,6 +703,7 @@ struct ida_local AVXLifter : microcode_filter_t {
       // WRONG SIZED pseudocode will be produced as result of this hack
       // I've no idea why XMM_SIZE is ok, but YMM_SIZE isn't ok. Is it probly bug in hex-rays mop_t::verify()?
       // set_udt() for l,r & d - helps to pass over this call cdg.emit() but later happens INTERR(50757) 
+			msg("[hrt] %a warning: 128bit operation is displayed instead of %dbit\n" , cdg.insn.ea, op_size * 8);
       op_size = XMM_SIZE;
     }
     mop_t* l = new mop_t(reg2mreg(cdg.insn.Op2.reg), op_size);
