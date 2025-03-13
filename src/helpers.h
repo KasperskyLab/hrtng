@@ -62,6 +62,7 @@
   #define find_udm find_udt_member
   #define NTF_NO_NAMECHK 0
   #define tinfo_errstr(err) ""
+  #define TERR_BAD_TYPE ((tinfo_code_t)-5)
 #endif // IDA_SDK_VERSION < 840
 
 #if IDA_SDK_VERSION < 830

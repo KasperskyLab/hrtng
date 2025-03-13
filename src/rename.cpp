@@ -396,7 +396,7 @@ static bool getUdtMembName(tinfo_t udt, uint32 offset, qstring* name)
 			return false;
 	} else if(!strncmp(memb.name.c_str(), "gap",3)) {
 			return false;
-	} else if(memb.name == "VT" || memb.name == VTBL_MEMNAME)
+	} else if(!strncmp(memb.name.c_str(), "VT_", 3) || memb.name == VTBL_MEMNAME)
 		return false;
 
 	if (name) {
@@ -418,7 +418,7 @@ static bool renameUdtMemb(ea_t refea, tinfo_t udt, uint32 offset, qstring* name)
 	}
 
 	//"VT" handled in getUdtMembName as bad for name source, so disable "VT" autorenaming
-	if(memb.name == "VT" || memb.name == VTBL_MEMNAME)
+	if(!strncmp(memb.name.c_str(), "VT_", 3) || memb.name == VTBL_MEMNAME)
 		return false;
 
 #ifdef _DEBUG

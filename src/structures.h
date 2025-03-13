@@ -35,3 +35,4 @@ ea_t get_memb2proc_ref(tinfo_t& struc, uint32 membOffInBytes);
 #endif // IDA_SDK_VERSION < 850
 bool add_proc2memb_ref(ea_t proc, tid_t memb);
 void get_proc2memb_refs(ea_t proc, tidvec_t* membs);
+void get_memb2proc_refs(tid_t memb, eavec_t* eav);
