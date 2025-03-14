@@ -2132,7 +2132,7 @@ bool set_membr_type(tinfo_t& struc, int idx, udm_t& member, tinfo_t *newType)
 					if (mbsz <= 0)
 						break;
 					fo   += nsz;
-					fname = good_udm_name(struc, "field_%a", fo);
+					fname = good_udm_name(struc, fo * 8, "field_%a", fo);
 				}
 				return true;
 			}
@@ -2308,7 +2308,7 @@ ACT_DEF(convert_gap)
 				udm_t udm;
 				udm.offset = gapOff * 8;
 				udm.size = (fldOff - gapOff) * 8;
-				udm.name = good_udm_name(ts, "gap%X", gapOff);
+				udm.name = good_udm_name(ts, udm.offset, "gap%X", gapOff);
 				create_type_from_size(&udm.type, fldOff - gapOff);
 				ts.add_udm(udm);
 			}
@@ -2319,7 +2319,7 @@ ACT_DEF(convert_gap)
 				udm_t udm;
 				udm.offset = gapOff * 8;
 				udm.size = gapSz * 8;
-				udm.name = good_udm_name(ts, "gap%X", gapOff);
+				udm.name = good_udm_name(ts, udm.offset, "gap%X", gapOff);
 				create_type_from_size(&udm.type, gapSz);
 				ts.add_udm(udm);
 			}
@@ -2328,7 +2328,7 @@ ACT_DEF(convert_gap)
 	udm_t udm;
 	udm.offset = fldOff * 8;
 	udm.size = fldType.get_size() * 8;
-	udm.name = good_udm_name(ts, "field_%X", fldOff);
+	udm.name = good_udm_name(ts, udm.offset, "field_%X", fldOff);
 	udm.type = fldType;
 	tinfo_code_t c = ts.add_udm(udm, ETF_MAY_DESTROY);
 	if(c != TERR_OK)
@@ -5178,10 +5178,11 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 									struc.get_type_name(&fullname); // get_numbered_type_name
 									fullname.append('.');
 									fullname.append(udm.name);
-									if(struc.rename_udm(idx, new_name) == TERR_OK)
-										msg("[hrt] struc member '%s' renamed to '%s'\n", fullname.c_str(), new_name);
+									qstring nn = good_udm_name(struc, udm.offset, new_name);
+									if(struc.rename_udm(idx, nn.c_str()) == TERR_OK)
+										msg("[hrt] struc member '%s' renamed to '%s'\n", fullname.c_str(), nn.c_str());
 									else
-										warning("[hrt] fail rename struc member '%s' to '%s'\nit seems bad name, press 'Ctrl-Z' and try again", fullname.c_str(), new_name);
+										warning("[hrt] fail rename struc member '%s' to '%s'\nit seems bad name, press 'Ctrl-Z' and try again", fullname.c_str(), nn.c_str());
 								}
 #endif //IDA_SDK_VERSION < 850
 							}
@@ -5335,7 +5336,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.4.33";
+	addon.version = "2.4.34";
 	register_addon(&addon);	
 
 	msg("[hrt] %s (%s) v.%s for IDA%d is ready to use\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);

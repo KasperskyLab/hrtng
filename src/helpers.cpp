@@ -221,7 +221,7 @@ int namecmp(const char* name, const char* cmpWith)
 	return strncmp(name, cmpWith, len);
 }
 
-qstring good_udm_name(const tinfo_t &struc, const char *format, ...)
+qstring good_udm_name(const tinfo_t &struc, uint64 offInBits, const char *format, ...)
 {
 	qstring name;
 	va_list va;
@@ -237,6 +237,9 @@ qstring good_udm_name(const tinfo_t &struc, const char *format, ...)
 	m.name = name;
 	int i = 1;
 	while(struc.find_udm(&m, STRMEM_NAME) >= 0 && i < 100) {
+		// the same name in the same position is ok for struct
+		if(m.offset == offInBits && struc.is_struct())
+			break;
 		m.name.sprnt("%s_%d", name.c_str(), i++);
 	}
 	return m.name;

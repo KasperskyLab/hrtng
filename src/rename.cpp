@@ -428,7 +428,7 @@ static bool renameUdtMemb(ea_t refea, tinfo_t udt, uint32 offset, qstring* name)
 	}
 #endif
 
-	qstring newName = good_udm_name(udt, name->c_str());
+	qstring newName = good_udm_name(udt, memb.offset, name->c_str());
 	qstring oldName;
 	udt.get_type_name(&oldName);
 	oldName.append('.');
