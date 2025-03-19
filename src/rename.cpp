@@ -1058,7 +1058,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 						bool already_w = false;
 						size_t w = newName.length() - 1;
 						if(newName[w] == 'w') {
-							while (newName[w] == 'w') --w;
+							while (newName[w] == 'w' && w > 0) --w;
 							if(newName[w] == '_') {
 								newName.append('w');
 								already_w = true;
