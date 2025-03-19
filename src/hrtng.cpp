@@ -4517,12 +4517,14 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 			if (last_globopt_ea == cfunc->entry_ea) { //avoid mba restored from cache
 				const char* msigName = msig_match(cfunc->mba);
 				if (msigName) {
-					qstring cmt; cmt.sprnt("// The function matches msig '%s'", msigName);
+					qstring cmt; cmt.sprnt("// The function matches msig: %s", msigName);
 					cfunc->sv.insert(cfunc->sv.begin(), simpleline_t(cmt));
-					cmt = get_name(cfunc->entry_ea);
-					if(!is_uname(cmt.c_str())) {
-						if(set_name(cfunc->entry_ea, msigName, SN_NOWARN | SN_FORCE))
-							cfunc->sv.front().line.append(". Press F5 to refresh pseudocode.");
+					if(!qstrchr(msigName, ' ')) { //check if the msig has dups where names merged by " or "
+						cmt = get_name(cfunc->entry_ea);
+						if(!is_uname(cmt.c_str())) {
+							if(set_name(cfunc->entry_ea, msigName, SN_NOWARN | SN_FORCE))
+								cfunc->sv.front().line.append(". Press F5 to refresh pseudocode.");
+						}
 					}
 				}
 			}
@@ -5339,7 +5341,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.4.35";
+	addon.version = "2.4.36";
 	register_addon(&addon);	
 
 	msg("[hrt] %s (%s) v.%s for IDA%d is ready to use\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);

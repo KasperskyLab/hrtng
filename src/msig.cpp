@@ -195,18 +195,34 @@ public:
 		for (auto i : *this)
 			delete i;
 	}
+	bool add(msig_t* s)
+	{
+		if (!s->chk()) {
+			msg("[hrt] Bad or too short msig: %s\n", s->name.c_str());
+			delete s;
+			return false;
+		}
+		auto it = find(s);
+		if(it != end()) {
+			if((*it)->name == s->name) {
+				msg("[hrt] Duplicate msig `%s` skipped\n", s->name.c_str());
+			} else {
+				msg("[hrt] Duplicate msig `%s` merged with '%s'\n", s->name.c_str(), (*it)->name.c_str());
+				(*it)->name.append(" or ");
+				(*it)->name.append(s->name);
+			}
+			delete s;
+			return false;
+		}
+		insert(s);
+		//msg("[hrt] msig '%s' has been added!\n", s->name.c_str());
+		return true;
+	}
 	bool add(mbl_array_t* mba)
 	{
 		if (!mba)
 			return false;
-		msig_t* s = new msig_t(mba);
-		if (!s->chk() || !insert(s).second) {
-			msg("[hrt] %a: Bad, too short or duplicate msig: %s\n", mba->entry_ea, s->name.c_str());
-			delete s;
-			return false;
-		}
-		//msg("[hrt] %a: msig '%s' has been added!\n", mba->entry_ea, s->name.c_str());
-		return true;
+		return add(new msig_t(mba));
 	}
 	const char* match(mbl_array_t* mba)
 	{
@@ -243,13 +259,8 @@ public:
 		uint32 cnt = 0;
 		char buf[4096];
 		while (qfgets(buf, 4096, f)) {
-			msig_t* s = new msig_t(buf);
-			if (!s->chk() || !insert(s).second) {
-				msg("[hrt] skip bad or duplicate msig: %s\n", s->print().c_str());
-				delete s;
-			} else {
+			if (add(new msig_t(buf)))
 				cnt++;
-			}
 		}
 		qfclose(f);
 		msg("[hrt] %d msigs are loaded\n", cnt);
@@ -341,7 +352,7 @@ void msig_save()
 	}
 
 	if(skipCnt)
-		msg("[hrt] %d lib func, bad or duplicate msigs skipped\n", skipCnt);
+		msg("[hrt] %d lib func or bad msigs skipped\n", skipCnt);
 
 	if (!msigs.size()) {
 		msg("[hrt] No any msigs are defined\n");
