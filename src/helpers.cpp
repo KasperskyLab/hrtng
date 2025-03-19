@@ -162,7 +162,7 @@ void stripName(qstring* name)
 		len -= 6;
 	}
 
-	if (len > 2 && !strncmp(name->c_str(), "j_", 2)) {
+	while (len > 2 && !strncmp(name->c_str(), "j_", 2)) {
 		name->remove(0, 2);
 		len -= 2;
 	}

@@ -739,7 +739,8 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 					return oldid;
 				}// else msg("[hrt] %a: 4\n", VT_ea);
 			}// else msg("[hrt] %a: 3\n", VT_ea);
-		}// else msg("[hrt] %a: 2 '%s' != '%s'\n", VT_ea, oldType.dstr(), newType.dstr());
+		} else
+			msg("[hrt] %a create_VT_struc: existing type '%s' is not equal to current state '%s', updating\n", VT_ea, oldType.dstr(), newType.dstr());
 	}// else msg("[hrt] %a: 1\n", VT_ea);
 
 #if 0 //IDA_SDK_VERSION >= 850

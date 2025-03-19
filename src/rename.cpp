@@ -1047,17 +1047,25 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			}
 			
 			//rename func itself if it has dummy name and only one statement inside
+			//and mark as a wrapper by "_w" or "_ww" or "_www" .... suffix
+			// unlike "j_" jump functions, wrapper can have some additional code, like set values for args of callee
 			if (stmtCnt <= 1 && callCnt == 1 && has_dummy_name(get_flags(func->entry_ea))) {
 				if (!callProcName.empty() && strncmp(callProcName.c_str(), "sub_", 4)) {
 					qstring newName = callProcName;
-					if (newName.size() > MAX_NAME_LEN - 4)
-						newName.resize(MAX_NAME_LEN - 4);
+					if (newName.size() > MAX_NAME_LEN - 2)
+						newName.resize(MAX_NAME_LEN - 2);
 					if(validate_name(&newName, VNT_IDENT)) {
-						const type_t *type;
-						if(get_named_type(NULL, newName.c_str(), 0, &type) && is_type_func(*type))
-							newName.append("_wrp"); // '_' in the end may be bad because IDA strips last '_' when checks the funcName is a libName and set a wrong type for this wrapper function
-						else
-							newName.append('_');
+						bool already_w = false;
+						size_t w = newName.length() - 1;
+						if(newName[w] == 'w') {
+							while (newName[w] == 'w') --w;
+							if(newName[w] == '_') {
+								newName.append('w');
+								already_w = true;
+							}
+						}
+						if(!already_w)
+							newName.append("_w");
 						if (set_name(func->entry_ea, newName.c_str(), SN_AUTO | SN_NOWARN | SN_FORCE)) {
 							make_name_auto(func->entry_ea);
 							msg("[hrt] %s was renamed to \"%s\"\n", funcname.c_str(), newName.c_str());

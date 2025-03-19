@@ -1701,7 +1701,7 @@ ACT_DEF(recognize_shape)
 		tinfo_t restype;
 		restype.create_udt(utd, BTF_STRUCT);
 		tinfo_t ts;
-		if (!confirm_create_struct(ts, restype, "s"))
+		if (!confirm_create_struct(ts, restype, NULL))
 			return 0;
 
 		vu.set_lvar_type(var, make_pointer(ts));
@@ -2742,16 +2742,17 @@ static cexpr_t* get_assign_or_helper(vdui_t *vu, citem_t* expr, bool check4helpe
 static qstring dummy_struct_prefix;
 qstring dummy_struct_name(size_t size, const char* sprefix)
 {
-	if(sprefix && *sprefix)
-		dummy_struct_prefix = sprefix;
-	else if(dummy_struct_prefix.empty())
-		dummy_struct_prefix = "s";
+	if(!sprefix || !*sprefix) {
+		if(dummy_struct_prefix.empty())
+			sprefix = "s";
+		else
+			sprefix = dummy_struct_prefix.c_str();
+	}
 
-	qstring name;
+	qstring name = sprefix;
 	if(size)
-		name.sprnt("%s%X", dummy_struct_prefix.c_str(), size);
-	else
-		name = dummy_struct_prefix;
+		name.sprnt("%s%X", sprefix, size);
+
 	qstring bn = name;
 	for (char j = 'z'; j > 'f'; j--) {
 		qstring basename = name;
@@ -4518,11 +4519,11 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 				if (msigName) {
 					qstring cmt; cmt.sprnt("// The function matches msig '%s'", msigName);
 					cfunc->sv.insert(cfunc->sv.begin(), simpleline_t(cmt));
-#if 1
 					cmt = get_name(cfunc->entry_ea);
-					if(!is_uname(cmt.c_str()))
-						set_name(cfunc->entry_ea, msigName);
-#endif
+					if(!is_uname(cmt.c_str())) {
+						if(set_name(cfunc->entry_ea, msigName, SN_NOWARN | SN_FORCE))
+							cfunc->sv.front().line.append(". Press F5 to refresh pseudocode.");
+					}
 				}
 			}
 			break;
@@ -5067,11 +5068,13 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 			//int index = struc.find_udm(udm->offset); //returns wrong index for union
 			int index = struc.find_udm(udm->name.c_str());
 			if (index  != -1) {
-				tinfo_code_t code = struc.set_udm_type(index, t);
-				if (code != TERR_OK && ASKBTN_YES == ask_yn(ASKBTN_NO, "[hrt] Set member type of '%s.%s' may destroy other members,\nConfirm?", udtname, newname))
+				tinfo_code_t code = struc.set_udm_type(index, t, ETF_COMPATIBLE);
+				if (code != TERR_OK && ASKBTN_YES == ask_yn(ASKBTN_NO, "[hrt] Set member type '%s'\nof '%s.%s'\nmay destroy other members. Confirm?", t.dstr(), udtname, newname))
 					code = struc.set_udm_type(index, t, ETF_MAY_DESTROY);
 				if (code == TERR_OK)
-					msg("[hrt] type of '%s.%s' refreshed\n", udtname, newname);
+					msg("[hrt] type of '%s.%s' updated\n", udtname, newname);
+				else
+					msg("[hrt] set type \"%s\" on rename of '%s.%s' error %d %s\n", t.dstr(), udtname, newname, code, tinfo_errstr(code));
 			}
 		}
 		break;
@@ -5336,7 +5339,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.4.34";
+	addon.version = "2.4.35";
 	register_addon(&addon);	
 
 	msg("[hrt] %s (%s) v.%s for IDA%d is ready to use\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
