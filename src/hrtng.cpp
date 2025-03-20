@@ -5303,19 +5303,31 @@ plugmod_t*
 #endif //IDA_SDK_VERSION < 750
  idaapi init(void)
 {
-	if(inited)
-		return PLUGIN_KEEP;
+	qstring motd;
+	addon_info_t addon;
+	addon.id = "hrtng";
+	addon.name = "bes's tools collection";
+	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
+									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
+	addon.url = "https://github.com/KasperskyLab/hrtng";
+	addon.version = "2.4.37";
+	motd.sprnt("%s (%s) v%s for IDA%d ", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
-	if ( !init_hexrays_plugin() )
-		return PLUGIN_SKIP; // no decompiler
+	if(inited) {
+		msg("[hrt] %s already inited\n", motd.c_str());
+		return PLUGIN_KEEP;
+	}
+
+	if (!init_hexrays_plugin()) {
+		msg("[hrt] %s does not work without decompiler, sorry\n", motd.c_str());
+		return PLUGIN_SKIP;
+	}
 
 	install_hexrays_callback(callback, NULL);
 	hook_to_notification_point(HT_UI, ui_callback, NULL);	
 	hook_to_notification_point(HT_IDB, idb_callback, NULL);
 	hook_to_notification_point(HT_DBG, dbg_callback, NULL);
 	hook_to_notification_point(HT_IDP, idp_callback, NULL);
-
-	inited = true;
 
 	appcall_view_reg_act();
 	reincast_reg_act();
@@ -5335,16 +5347,10 @@ plugmod_t*
 	deinline_init();
 	opt_init();
 
-	addon_info_t addon;
-	addon.id = "hrtng";
-	addon.name = "bes's tools collection";
-	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
-									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
-	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.4.37";
-	register_addon(&addon);	
-
-	msg("[hrt] %s (%s) v.%s for IDA%d is ready to use\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
+	if(register_addon(&addon) < 0)
+		msg("[hrt] error on register_addon()\n");
+	inited = true;
+	msg("[hrt] %s ready to use\n", motd.c_str());
 	return PLUGIN_KEEP;
 }
 
