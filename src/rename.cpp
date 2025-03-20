@@ -802,7 +802,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			//get name from right side of assignment
 			qstring rname;
 			cexpr_t* right = asgn->y;
-			getExpName(func, right, &rname);
+			getExpName(func, right, &rname, true);
 
 			//have some name on right side?
 			bool renameLeft = false;
@@ -816,11 +816,14 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			//and rename it if possible
 			qstring lname;
 			cexpr_t* left = asgn->x;
-			if(!getExpName(func, left, &lname) && renameLeft)
+			bool hasLeft = getExpName(func, left, &lname);
+			if(hasLeft && right->op == cot_ref && lname[0] == 'p' && lname[1] == '_') // overwrite unbalanced with type annoying IDA's renaming to "p_something"
+				hasLeft = false;
+			if(!hasLeft && renameLeft)
 				varRenamed |= renameExp(asgn->ea, func, left, &comments);
 
 			//rename right if have good name on left side
-			if(!rname.length() && (lname.length() || renameLeft)) {
+			if(!rname.length() && (hasLeft || renameLeft)) {
 				if(lname.length())//assume lname more important then comments
 					comments = lname;
 				varRenamed |= renameExp(asgn->ea, func, right, &comments);

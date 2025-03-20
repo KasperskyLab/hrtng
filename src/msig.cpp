@@ -204,8 +204,16 @@ public:
 		}
 		auto it = find(s);
 		if(it != end()) {
-			if((*it)->name == s->name) {
+			size_t pos = (*it)->name.find(s->name);
+			if(pos != qstring::npos
+				 && (pos == 0 || (*it)->name[pos-1] == ' ')
+				 && (pos + s->name.length() == (*it)->name.length() || (*it)->name[pos + s->name.length()] == ' '))
+			{
 				msg("[hrt] Duplicate msig `%s` skipped\n", s->name.c_str());
+			} else if((*it)->name.length() > 300) {
+				if((*it)->name.last() != '.')          // ATTN !!!
+					(*it)->name.append(" and more ..."); // ATTN !!! this line must be ended by the same letter as above
+				msg("[hrt] Duplicate msig `%s` not merged\n", s->name.c_str());
 			} else {
 				msg("[hrt] Duplicate msig `%s` merged with '%s'\n", s->name.c_str(), (*it)->name.c_str());
 				(*it)->name.append(" or ");

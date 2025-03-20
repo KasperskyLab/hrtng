@@ -1797,7 +1797,7 @@ struct ida_local CFUnflattener
 							PostHandleTwoPreds(dgm, pred, mb->serial, actualDfltTarget, nonJcc, actualNonJccTarget);
 						}
 					} else {
-						MSG_UF1(("[E] goto n preds: The dispatcher predecessor %d, pred index %d block number %d, destination not found\n", mb->serial, i, pred->serial));
+						MSG_UF1(("[E] goto n preds: The dispatcher predecessor %d (%a), pred index %d block number %d (%a), destination not found\n", mb->serial, mb->start, i, pred->serial, pred->start));
 						nPredsOk = false;
 						break;
 					}
