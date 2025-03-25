@@ -385,11 +385,7 @@ ACT_DEF(show_appcall_view)
 	acv->cv = create_custom_viewer(caption.c_str(), &s1, &s2, &s1, NULL, &acv->sv, &handlers, acv);
   hook_to_notification_point(HT_UI, ui_callback, acv);
 
-#if IDA_SDK_VERSION < 730
-	display_widget(acv->cv, WOPN_TAB);
-#else
 	display_widget(acv->cv, WOPN_DP_TAB, "IDA View-A");
-#endif //IDA_SDK_VERSION < 730
 	return 1;
 }
 

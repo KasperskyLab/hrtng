@@ -605,11 +605,7 @@ void showMicrocodeExplorer(mbl_array_t* mba, bool keepMba, const char* name)
 		NULL); // parent
 
 	hook_to_notification_point(HT_UI, ui_callback, si);
-#if IDA_SDK_VERSION < 730
-	display_widget(si->cv, WOPN_TAB | WOPN_NOT_CLOSED_BY_ESC);
-#else
 	display_widget(si->cv, WOPN_DP_TAB | WOPN_NOT_CLOSED_BY_ESC, "IDA View-A");
-#endif //IDA_SDK_VERSION < 730
 }
 
 void ShowMicrocodeExplorer(mbl_array_t* mba, const char* name)

@@ -817,7 +817,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			qstring lname;
 			cexpr_t* left = asgn->x;
 			bool hasLeft = getExpName(func, left, &lname);
-			if(hasLeft && right->op == cot_ref && lname[0] == 'p' && lname[1] == '_') // overwrite unbalanced with type annoying IDA's renaming to "p_something"
+			if(hasLeft && skipCast(right)->op == cot_ref && lname[0] == 'p' && lname[1] == '_') // overwrite unbalanced with type annoying IDA's renaming to "p_something"
 				hasLeft = false;
 			if(!hasLeft && renameLeft)
 				varRenamed |= renameExp(asgn->ea, func, left, &comments);

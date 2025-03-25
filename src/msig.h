@@ -20,5 +20,6 @@
 #pragma once
 void msig_save();
 void msig_load();
+void msig_auto_load();
 bool msig_add(mbl_array_t* mba);
 const char* msig_match(mbl_array_t* mba);

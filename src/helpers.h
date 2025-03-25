@@ -87,24 +87,6 @@
 #define DECOMP_ALL_BLKS 0
 #endif //IDA_SDK_VERSION < 740
 
-#if IDA_SDK_VERSION < 730
-#define inf_set_appcall_options(x) inf.appcall_options = x
-#define inf_is_64bit()             inf.is_64bit()
-#define inf_get_start_ea()         inf.start_ea
-#define inf_get_min_ea()           inf.min_ea
-#define inf_get_max_ea()           inf.max_ea
-#define inf_get_omin_ea()          inf.omin_ea
-#define inf_get_omax_ea()          inf.omax_ea
-#define inf_show_xref_fncoff()     (inf.s_xrefflag & SW_XRFFNC)
-#define inf_show_xref_seg()        (inf.s_xrefflag & SW_SEGXRF)
-#define inf_get_filetype()         ((filetype_t)(inf.filetype))
-#define inf_get_cc_defalign()      inf.cc.defalign
-#define WOPN_DP_TAB                WOPN_TAB
-#define REFRESH_FUNC_CTEXT(pvu)    pvu->refresh_view(false)
-#else //IDA_SDK_VERSION >= 730
-#define REFRESH_FUNC_CTEXT(pvu)    pvu->cfunc->refresh_func_ctext()
-#endif //IDA_SDK_VERSION < 730
-
 #define MAX_NAME_LEN 63 //inf.max_autoname_len (inf_get_max_autoname_len)
 
 bool at_atoea(const char * str, ea_t * pea );

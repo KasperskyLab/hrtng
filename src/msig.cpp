@@ -33,108 +33,111 @@
 #endif
 
 #define MSIGHASHLEN 16
-
 static uval_t minMsigLen = 15;
-static ushort skipCallArgs = 0;
-
-void SerializeInsn(const minsn_t* insn, bytevec_t& buf);
-void SerializeOp(const mop_t& op, bytevec_t& buf, bool indirectCall = false)
-{
-	//consider any kind of variable (register, global, stack) as a local var
-#if IDA_SDK_VERSION < 730
-	if (op.t == mop_r || op.t == mop_v || op.t == mop_S)
-		append_db(buf, mop_l);
-	else
-		append_db(buf, op.t);
-#else //IDA_SDK_VERSION < 730
-	if (op.t == mop_r || op.t == mop_v || op.t == mop_S)
-		buf.pack_db(mop_l);
-	else
-		buf.pack_db(op.t);
-#endif //IDA_SDK_VERSION < 730
-
-	buf.append(&op.size, sizeof(op.size));
-
-	switch (op.t) {
-	case mop_n:
-		buf.append(&op.nnn->value, sizeof(op.nnn->value));
-		break;
-	case mop_d:
-		SerializeInsn(op.d, buf);
-		break;
-	case mop_b:
-		buf.append(&op.b, sizeof(op.b));
-		break;
-	case mop_f:
-		if(indirectCall && skipCallArgs)
-			break;
-		if (op.f->solid_args) {
-			for (size_t i = 0; i < op.f->args.size(); i++)
-				SerializeOp(op.f->args[i], buf);
-		}
-		break;
-	case mop_a:
-		SerializeOp(*op.a, buf);
-		break;
-	case mop_h:
-		buf.append(op.helper, qstrlen(op.helper));
-		break;
-	case mop_str:
-		buf.append(op.cstr, qstrlen(op.cstr));
-		break;
-	case mop_c:
-		for(size_t i = 0; i < op.c->targets.size(); i++)
-			buf.append(&op.c->targets[i], sizeof(int));
-		break;
-	case mop_fn:
-	{
-		const char* str = op.fpc->dstr();
-		buf.append(str, qstrlen(str));
-		break;
-	}
-	case mop_p:
-		SerializeOp(op.pair->lop, buf);
-		SerializeOp(op.pair->hop, buf);
-		break;
-	case mop_sc:
-		break;
-	}
-}
-
-void SerializeInsn(const minsn_t* insn, bytevec_t& buf)
-{
-#if IDA_SDK_VERSION < 730
-	append_db(buf, insn->opcode);
-#else //IDA_SDK_VERSION >= 730
-	buf.pack_db(insn->opcode);
-#endif //IDA_SDK_VERSION < 730
-	SerializeOp(insn->l, buf);
-	SerializeOp(insn->r, buf);
-	SerializeOp(insn->d, buf, insn->opcode == m_call && insn->l.t != mop_v);
-}
-
-void SerializeMba(mbl_array_t* mba, bytevec_t& buf)
-{
-	for (int i = 0; i < mba->qty; i++) {
-		mblock_t* blk = mba->get_mblock(i);
-		for (minsn_t* insn = blk->head; insn != NULL; insn = insn->next) {
-			SerializeInsn(insn, buf);
-		}
-	}
-}
+static const char msigNodeName[] = "$ hrt last MSIG filename";
 
 struct ida_local msig_t {
 	uint8 hash[MSIGHASHLEN];
 	qstring name;
 	bool tooShort;
+	bool strictMode;
+	bool reqRelaxed;
 
-	msig_t(mbl_array_t* mba) 
+	void SerializeOp(const mop_t& op, bytevec_t& buf)
 	{
+		//consider any kind of variable (register, global, stack) as a local var even in strictMode
+		mopt_t opt = op.t;
+		if (opt == mop_r || opt == mop_v || opt == mop_S)
+			opt = mop_l;
+		buf.pack_db(opt);
+
+		//ignore size in relaxed mode
+		if(strictMode)
+			buf.append(&op.size, sizeof(op.size));
+
+		switch (op.t) {
+		case mop_n:
+			buf.append(&op.nnn->value, sizeof(op.nnn->value));
+			break;
+		case mop_d:
+			if(!strictMode &&
+				 (op.d->opcode == m_low || op.d->opcode == m_xdu || op.d->opcode == m_xds) &&
+				 op.d->l.t == mop_d) {
+				//skip resizing in relaxed mode, it may be result of a call with wrong returning size on applying
+				 SerializeInsn(op.d->l.d, buf);
+				 break;
+			}
+			SerializeInsn(op.d, buf);
+			break;
+		case mop_b:
+			buf.append(&op.b, sizeof(op.b));
+			break;
+		case mop_f:
+			if (strictMode && op.f->solid_args) {
+				reqRelaxed = true; // request relaxed mode if call have arguments, it may be incorrectly recognized number of call's args on a msig applying
+				for (size_t i = 0; i < op.f->args.size(); i++)
+					SerializeOp(op.f->args[i], buf);
+			}
+			break;
+		case mop_a:
+			SerializeOp(*op.a, buf);
+			break;
+		case mop_h:
+			buf.append(op.helper, qstrlen(op.helper));
+			break;
+		case mop_str:
+			buf.append(op.cstr, qstrlen(op.cstr));
+			break;
+		case mop_c:
+			for(size_t i = 0; i < op.c->targets.size(); i++)
+				buf.append(&op.c->targets[i], sizeof(int));
+			break;
+		case mop_fn:
+		{
+			const char* str = op.fpc->dstr();
+			buf.append(str, qstrlen(str));
+			break;
+		}
+		case mop_p:
+			SerializeOp(op.pair->lop, buf);
+			SerializeOp(op.pair->hop, buf);
+			break;
+		case mop_sc:
+			break;
+		}
+	}
+	void SerializeInsn(const minsn_t* insn, bytevec_t& buf)
+	{
+		mcode_t op = insn->opcode;
+
+		//top level resizing in relaxed mode become mov
+		if(!strictMode && (op == m_low || op == m_xdu || op == m_xds))
+			op = m_mov;
+		buf.pack_db(op);
+		SerializeOp(insn->l, buf);
+		SerializeOp(insn->r, buf);
+		SerializeOp(insn->d, buf);
+	}
+	void SerializeMba(mbl_array_t* mba, bytevec_t& buf)
+	{
+		for (int i = 0; i < mba->qty; i++) {
+			mblock_t* blk = mba->get_mblock(i);
+			for (minsn_t* insn = blk->head; insn != NULL; insn = insn->next) {
+				SerializeInsn(insn, buf);
+			}
+		}
+	}
+	msig_t(mbl_array_t* mba, bool _strictMode)
+	{
+		strictMode = _strictMode;
+		reqRelaxed = false;
 		name = get_name(mba->entry_ea); //get_visible_name(mba->entry_ea);
 
 		bytevec_t buf;
 		SerializeMba(mba, buf);
 		tooShort = buf.size() < minMsigLen;
+		if(tooShort)
+			return;
 
 		MD5Context ctx;
 		MD5Init(&ctx);
@@ -153,13 +156,16 @@ struct ida_local msig_t {
 		name.rtrim('\n');
 		name.trim2();
 		tooShort = false;
+		strictMode = name[0] != 'r';
+		reqRelaxed = false;
 	}
 	qstring print()
 	{
 		qstring line;
-		line.sprnt("%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X %s",
+		line.sprnt("%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X %s%s",
 			hash[0], hash[1], hash[2],  hash[3],  hash[4],  hash[5],  hash[6],  hash[7],
 			hash[8], hash[9], hash[10], hash[11], hash[12], hash[13], hash[14], hash[15],
+			strictMode ? "" : "r ", // invalidate name of msig created in relaxed mode to not renaming proc on matching
 			name.c_str());
 		return line;
 	}
@@ -216,7 +222,7 @@ public:
 				msg("[hrt] Duplicate msig `%s` not merged\n", s->name.c_str());
 			} else {
 				msg("[hrt] Duplicate msig `%s` merged with '%s'\n", s->name.c_str(), (*it)->name.c_str());
-				(*it)->name.append(" or ");
+				(*it)->name.append(' ');
 				(*it)->name.append(s->name);
 			}
 			delete s;
@@ -230,15 +236,28 @@ public:
 	{
 		if (!mba)
 			return false;
-		return add(new msig_t(mba));
+		msig_t* s = new msig_t(mba, true);
+		bool res = add(s);
+		if(res && s->reqRelaxed)
+			add(new msig_t(mba, false));
+		return res;
 	}
-	const char* match(mbl_array_t* mba)
+	const char* match(msig_t* m)
 	{
-		msig_t m(mba);
-		auto i = find(&m);
+		auto i = find(m);
 		if (i == end())
 			return NULL;
 		return (*i)->name.c_str();
+	}
+	const char* match(mbl_array_t* mba)
+	{
+		msig_t m(mba, true);
+		const char* matched = match(&m);
+		if(!matched && m.reqRelaxed) {
+			msig_t mr(mba, false);
+			matched = match(&mr);
+		}
+		return matched;
 	}
 	void save(const char* filename)
 	{
@@ -261,7 +280,7 @@ public:
 	{
 		FILE* f = qfopen(filename, "r");
 		if (!f) {
-			warning("[hrt] Could not open %s for reading!\n", filename);
+			msg("[hrt] Could not open %s for reading!\n", filename);
 			return;
 		}
 		uint32 cnt = 0;
@@ -271,7 +290,7 @@ public:
 				cnt++;
 		}
 		qfclose(f);
-		msg("[hrt] %d msigs are loaded\n", cnt);
+		msg("[hrt] %d msigs are loaded from %s\n", cnt, filename);
 	}
 };
 msigs_t msigs;
@@ -306,16 +325,21 @@ void msig_save()
 		"<All User Named Functions:R>\n"
 		"<Manually Selected Functions:R>>\n"
 		"<Minimal signature length:u:4:::>\n"
-		"<###Turn it on to get more matches if the sample has a lot of indirect calls (but it will be more false positives too)#Skip indirect call arguments:c>>\n"
 		"<File name:f:1:64::>\n\n";
-	if (1 != ask_form(format, &rbtn, &minMsigLen, &skipCallArgs, buf))
+	if (1 != ask_form(format, &rbtn, &minMsigLen, buf))
 		return;
 	filename = buf;
 
-	size_t skipCnt = 0;
 	if (rbtn == 0) {
-		size_t funcqty = get_func_qty();
+
+		// not clearing already generated signatures makes possible to create MSIG file
+		// containing manually added and all requested MSIG generation
+		//msigs.clear();
+
 		show_wait_box("Decompiling...");
+
+		size_t skipCnt = 0;
+		size_t funcqty = get_func_qty();
 		for (size_t i = 0; i < funcqty; i++) {
 			if (user_cancelled()) {
 				hide_wait_box();
@@ -325,7 +349,7 @@ void msig_save()
 
 			func_t* funcstru = getn_func(i);
 			if (!funcstru || (funcstru->flags & (FUNC_LIB | FUNC_THUNK)) ||
-				(!funcstru->tailqty && funcstru->end_ea - funcstru->start_ea < minMsigLen)) {
+					(!funcstru->tailqty && funcstru->end_ea - funcstru->start_ea < minMsigLen)) {
 				++skipCnt;
 				continue;
 			}
@@ -357,10 +381,9 @@ void msig_save()
 			}
 		}
 		hide_wait_box();
+		if(skipCnt)
+			msg("[hrt] %d lib func or bad msigs skipped\n", skipCnt);
 	}
-
-	if(skipCnt)
-		msg("[hrt] %d lib func or bad msigs skipped\n", skipCnt);
 
 	if (!msigs.size()) {
 		msg("[hrt] No any msigs are defined\n");
@@ -371,14 +394,26 @@ void msig_save()
 
 void msig_load()
 {
-	char filename[QMAXPATH * 2];
-	qstrncpy(filename, "*.msig", QMAXPATH * 2);
-	const char     format[] =
-		"[hrt] Load MSIG file\n\n"
-		"<###This mode have to be the same as used on MSIG creation#Skip indirect call arguments on scanning:c>>\n"
-		"<File name:f:1:64::>\n\n";
-	if (1 != ask_form(format, &skipCallArgs, filename))
+	qstring filename = get_path(PATH_TYPE_IDB);
+	filename.append(".msig");
+	filename = ask_file(0, filename.c_str(), "FILTER MSIG files|*.msig\n[hrt] Load MSIG file:");
+	if(filename.empty())
 		return;
 
-	msigs.load(filename);
+	msigs.load(filename.c_str());
+	netnode nn(msigNodeName, 0, true);
+	nn.set(filename.c_str(), filename.size());
+}
+
+void msig_auto_load()
+{
+	netnode nn(msigNodeName);
+	if(!exist(nn))
+		return;
+
+	qstring filename;
+	if(nn.valstr(&filename) < 0 || filename.empty())
+		return;
+
+	msigs.load(filename.c_str());
 }

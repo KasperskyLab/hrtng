@@ -2359,7 +2359,7 @@ ACT_DEF(rename_inline)
 {
 	vdui_t *vu = get_widget_vdui(ctx->widget);
 	if (ren_inline(vu))
-		REFRESH_FUNC_CTEXT(vu);
+		vu->cfunc->refresh_func_ctext();
 	return 0;
 }
 
@@ -2526,13 +2526,8 @@ static bool save_if42blocks(ea_t funcea, const rangevec_t& ranges)
 {
 	bytevec_t buffer;
 	for (const auto& r : ranges) {
-#if IDA_SDK_VERSION < 730
-		append_ea(buffer, r.start_ea);
-		append_ea(buffer, r.end_ea);
-#else //IDA_SDK_VERSION >= 730
 		buffer.pack_ea(r.start_ea);
 		buffer.pack_ea(r.end_ea);
-#endif //IDA_SDK_VERSION < 730
 	}
 	if (buffer.size() > MAXSPECSIZE) {
 		msg("[hrt] too many if42blocks\n");
@@ -2668,7 +2663,7 @@ ACT_DEF(selection2block)
 		user_iflags_insert(vu->cfunc->user_iflags, citem_locator_t(eaBgn, cit_if), CIT_COLLAPSED);
 		save_user_iflags(vu->cfunc->entry_ea, vu->cfunc->user_iflags);
 		vu->cfunc->verify(ALLOW_UNUSED_LABELS, false);
-		REFRESH_FUNC_CTEXT(vu);
+		vu->cfunc->refresh_func_ctext();
 #if IDA_SDK_VERSION < 810 || IDA_SDK_VERSION > 830
 		unmark_selection();                //TODO: IDA 8.1 crash sometimes randomly on these calls, check with other IDA versions
 		jumpto(eaBgn, -1, UIJMP_DONTPUSH); //TODO: IDA 8.3 also
@@ -3790,7 +3785,7 @@ static int scan_stack_string2(action_activation_ctx_t *ctx, bool bDecrypt)
 		//renameVar(asgn_ea, vu->cfunc, varIdx, &str, vu);
 
 		//msg("[hrt] %a: build stack string for var '%s' - '%s'\n", vu.cfunc->entry_ea, var->name.c_str(), str.c_str());
-		REFRESH_FUNC_CTEXT(vu);
+		vu->cfunc->refresh_func_ctext();
 	}
 	return 0;
 }
@@ -4712,7 +4707,7 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 					if(!isPtr)
 						tname.append('_');
 					if(renameVar(func->entry_ea, func, varIdx, &tname, vu))
-						REFRESH_FUNC_CTEXT(vu);
+						vu->cfunc->refresh_func_ctext();
 				}
 			}
 			break;
@@ -5310,7 +5305,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.4.37";
+	addon.version = "2.4.38";
 	motd.sprnt("%s (%s) v%s for IDA%d ", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {
@@ -5346,6 +5341,7 @@ plugmod_t*
 	lit_init();
 	deinline_init();
 	opt_init();
+	msig_auto_load();
 
 	if(register_addon(&addon) < 0)
 		msg("[hrt] error on register_addon()\n");
