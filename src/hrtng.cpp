@@ -4695,12 +4695,12 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 				break;
 			tinfo_t t = *tinfo;
 			bool isPtr = false;
-			if (t.is_ptr_or_array()) {//do not recurse pointers, else lxe_lvar_name_changed callback change type back to tname*
+			if (t.is_ptr_or_array()) {//do not recourse pointers, else lxe_lvar_name_changed callback change type back to tname*
 				t.remove_ptr_or_array();
 				isPtr = true;
 			}
 			qstring tname;
-			if(t.get_type_name(&tname)) {
+			if(!t.is_scalar() && t.get_type_name(&tname)) {
 				cfunc_t *func = vu->cfunc;
 				ssize_t varIdx = func->get_lvars()->index(*v);
 				if(varIdx != -1) {
@@ -5305,7 +5305,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.4.38";
+	addon.version = "2.4.39";
 	motd.sprnt("%s (%s) v%s for IDA%d ", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

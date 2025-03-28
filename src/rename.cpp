@@ -42,11 +42,11 @@ static bool isIdaInternalComment(const char* comment)
 }
 
 static const char* badVarNames[] = {
-  "this", "inited", "result", "Mem", "Memory", "Block", "String", "ProcName", "ProcAddress", "LibFileName", "ModuleName", "LibraryA", "LibraryW"
+  "inited", "result", "Mem", "Memory", "Block", "String", "ProcName", "ProcAddress", "LibFileName", "ModuleName", "LibraryA", "LibraryW"
 };
 
 //for Vars and Args only (globals and struct members have own checks)
-static bool isNameGood1(const char* name)
+static bool isVarNameGood(const char* name)
 {
 	if(*name == 0)
 		return false;
@@ -108,11 +108,11 @@ static bool isNameGood1(const char* name)
 
 //there are additianal restrictions for names in call arguments
 static const char* badArgNames[] = {
-	"Str", "Src", "Dst", "dwBytes"
+	"this", "Str", "Src", "Dst", "dwBytes"
 };
-static bool isNameGood2(const char* name)
+static bool isArgNameGood(const char* name)
 {
-	if (!isNameGood1(name))
+	if (!isVarNameGood(name))
 		return false;
 
 	for(size_t i = 0; i < qnumber(badArgNames); i++)
@@ -279,7 +279,7 @@ bool getVarName(lvar_t * var, qstring* name)
 {
 	if (!var->has_user_name() && !var->has_nice_name())
 		return false;
-	if(!isNameGood2(var->name.c_str()))
+	if(!isVarNameGood(var->name.c_str()))
 		return false;
 	if (name) {
 		*name = var->name;
@@ -896,8 +896,8 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 					bool fiChanged = false;
 					for(size_t i = 0; i < fi.size(); i++) {
 						cexpr_t *arg = &args[i];
-						qstring name = fi[i].name;
-						stripName(&name);
+						qstring fiIname = fi[i].name;
+						stripName(&fiIname);
 						qstring argVarName;
 						bool argNamed = getExpName(func, arg, &argVarName, true);
 
@@ -906,9 +906,9 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 							if(i == iR) anR = argVarName;
 						}
 
-						if(!argNamed && isNameGood2(name.c_str())) {
-								varRenamed |= renameExp(call->ea, func, arg, &name, nullptr, true);
-						} else if(argNamed && bAllowTypeChange && !isNameGood1(name.c_str())) {
+						if(!argNamed && isArgNameGood(fiIname.c_str())) {
+								varRenamed |= renameExp(call->ea, func, arg, &fiIname, nullptr, true);
+						} else if(argNamed && bAllowTypeChange && !isVarNameGood(fiIname.c_str())) {
 								//msg("[hrt] %a %s: In function %a %s rename arg%d \"%s\" to \"%s\"\n", call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str(), i + 1, fi[i].name.c_str(), argVarName.c_str());
 								fi[i].name = argVarName;
 								fiChanged = true;
@@ -926,7 +926,6 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 										fi[i].type = argType;
 									}
 								}
-							
 						}
 					}
 					if(bCallAssign) {
