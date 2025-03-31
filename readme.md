@@ -73,6 +73,7 @@ Special thanks to following peoples for their great plugins were used as base fo
   * [Convert function to __usercall, detect spoiled registers](doc/usercall.md)
   * [Set calling conventions bit closer to Go-lang](doc/golang.md)
   * Print reversing progress percent on a proc renaming
+  * [Recursively decompile callees](doc/recur-decomp.md)
   * [~~Remove function's return type converting it to void func(...)~~](doc/remove-ret-type.md)
   * [~~Remove function's argument~~](doc/remove-arg.md)
   * [~~Deal with structures with negative offsets or access based on offsets in a middle of structure~~](doc/neg-offs.md)

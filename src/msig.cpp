@@ -336,7 +336,7 @@ void msig_save()
 		// containing manually added and all requested MSIG generation
 		//msigs.clear();
 
-		show_wait_box("Decompiling...");
+		show_wait_box("[hrt] Decompiling...");
 
 		size_t skipCnt = 0;
 		size_t funcqty = get_func_qty();
@@ -364,7 +364,7 @@ void msig_save()
 			hexrays_failure_t hf;
 #if 1
 			mark_cfunc_dirty(funcstru->start_ea);
-			cfunc_t* cf = decompile_func(funcstru, &hf, DECOMP_NO_WAIT);
+			cfuncptr_t cf = decompile_func(funcstru, &hf, DECOMP_NO_WAIT);
 			if (cf && hf.code == MERR_OK) {
 				if(!msig_add(cf->mba))
 					++skipCnt;

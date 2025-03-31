@@ -684,10 +684,10 @@ bool Appcaller::runAll()
 		xreffuncs.insert(std::pair<func_t*, ea_t>(xreffunc, xrefea));
 	}
 	func_t *prevxf = NULL;
-	cfunc_t* cf = NULL;
+	cfuncptr_t cf(nullptr);
 	size_t i = 0;
 	size_t n = xreffuncs.size();
-	show_wait_box("Decompiling...");
+	show_wait_box("[hrt] Decompiling...");
 	for(std::multimap<func_t*, ea_t>::iterator it = xreffuncs.begin(); it != xreffuncs.end(); it++) {
 		if(user_cancelled()) {
 			hide_wait_box();
@@ -698,7 +698,7 @@ bool Appcaller::runAll()
 		ac.ea = it->second;
 		if(it->first == NULL) {
 			ac.error.sprnt("no func for xref %a", ac.ea);
-			cf = NULL;
+			cf.reset();
 		} else if(it->first != prevxf) {
 			prevxf = it->first;
 			replace_wait_box("[hrt] Decompiling %a (%" FMT_Z "/%" FMT_Z ")", it->first->start_ea, i++, n);

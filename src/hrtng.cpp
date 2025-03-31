@@ -104,6 +104,7 @@ ACT_DECL(apihashes, AST_ENABLE_ALW)
 ACT_DECL(create_dec, return (is_patched() ? AST_ENABLE : AST_DISABLE))
 ACT_DECL(clear_hr_cache, AST_ENABLE_ALW)
 ACT_DECL(decomp_obfus, return ((ctx->widget_type == BWN_DISASM || ctx->widget_type == BWN_PSEUDOCODE) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
+ACT_DECL(decomp_recur, return (((ctx->widget_type == BWN_DISASM && get_func(ctx->cur_ea)) || ctx->widget_type == BWN_PSEUDOCODE) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
 ACT_DECL(jmp2xref, return ((ctx->widget_type == BWN_DISASM || ctx->widget_type == BWN_PSEUDOCODE) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
 //ACT_DECL(kill_toolbars, AST_ENABLE_ALW)
 
@@ -313,7 +314,8 @@ void hrt_reg_act()
 	COMPAT_register_and_attach_to_menu("File/Produce file/Create MAP file...", ACT_NAME(msigSave), "[hrt] Create MSIG file...", NULL, SETMENU_INS, &msigSave, &PLUGIN);
 	COMPAT_register_and_attach_to_menu("File/Load file/PDB file...", ACT_NAME(msigLoad), "[hrt] MSIG file...", NULL, SETMENU_INS, &msigLoad, &PLUGIN);
 	//COMPAT_register_and_attach_to_menu("View/Toolbars", ACT_NAME(kill_toolbars), "[hrt] Kill toolbars", NULL, SETMENU_INS, &kill_toolbars, &PLUGIN);
-	COMPAT_register_and_attach_to_menu("View/Open subviews/Generate pseudocode", ACT_NAME(decomp_here), "[hrt] Decompile obfuscated code", "Alt-F5", SETMENU_APP, &decomp_obfus, &PLUGIN);
+	COMPAT_register_and_attach_to_menu("View/Open subviews/Generate pseudocode", ACT_NAME(decomp_recur), "[hrt] Decompile recursively", "Shift-Alt-F5", SETMENU_APP, &decomp_recur, &PLUGIN);
+	COMPAT_register_and_attach_to_menu("View/Open subviews/Generate pseudocode", ACT_NAME(decomp_obfus), "[hrt] Decompile obfuscated code", "Alt-F5", SETMENU_APP, &decomp_obfus, &PLUGIN);
 	COMPAT_register_and_attach_to_menu("Jump/Jump to xref to operand...", ACT_NAME(jmp2xref), "[hrt] Jump to xref Ex...", "Shift-X", SETMENU_APP, &jmp2xref, &PLUGIN);
 
 	for (size_t i = 0, n = qnumber(actions); i < n; ++i)
@@ -340,6 +342,7 @@ void hrt_unreg_act()
 	detach_action_from_menu("File/Load file/[hrt] MSIG file...", ACT_NAME(msigLoad));
 	//detach_action_from_menu("View/[hrt] Kill toolbars", ACT_NAME(kill_toolbars));
 	detach_action_from_menu("View/Open subviews/[hrt] Decompile obfuscated code", ACT_NAME(decomp_obfus));
+	detach_action_from_menu("View/Open subviews/[hrt] Decompile recursively", ACT_NAME(decomp_recur));
 	detach_action_from_menu("Jump/[hrt] Jump to xref Ex...", ACT_NAME(jmp2xref));
 
 	for (size_t i = 0, n = qnumber(actions); i < n; ++i)
@@ -358,16 +361,29 @@ void hrt_unreg_act()
 }
 //-------------------------------------------------------------------------
 
-static int idaapi jump_to_call_dst(vdui_t *vu)
+static ea_t idaapi get_call_dst(cfunc_t* cfunc, cexpr_t *call)
 {
-	cexpr_t *call;
-	if(!is_call(vu, &call))
-		return 0;
+	if(call->op != cot_call)
+		return BADADDR;
+
+	ea_t dst_ea = BADADDR;
+	cexpr_t *callee = skipCast(call->x);
+
+	if(callee->op == cot_obj) {
+		flags64_t flg = get_flags(callee->obj_ea);
+		if(is_func(flg))
+			return callee->obj_ea;
+		if(is_data(flg)) {
+			dst_ea = get_ea(callee->obj_ea);
+			if(is_func(dst_ea))
+				return dst_ea;
+		}
+		return BADADDR;
+	}
 
 	// jump to address in struct member-to-proc-xref (or by VT/comment/name)
-	ea_t dst_ea = BADADDR;
-	cexpr_t *e = vu->item.e;
-	if (e->op == cot_memptr || e->op == cot_memref) {
+	if(callee->op == cot_memptr || callee->op == cot_memref) {
+		cexpr_t *e = callee;
 		int offset = e->m;
 		if (e->x->op == cot_idx)
 			e = e->x;
@@ -395,27 +411,23 @@ static int idaapi jump_to_call_dst(vdui_t *vu)
 		}
 	}
 
-	cexpr_t *callee = skipCast(call->x);
-	if(dst_ea == BADADDR && vu->item.e == callee) { //callee is clicked
-		if(callee->op == cot_obj) {
-			flags64_t flg = get_flags(callee->obj_ea);
-			if(is_func(flg))
-				return 0; // if callee is a func pass handling to IDA
-			if(is_data(flg)) {
-				dst_ea = get_ea(callee->obj_ea);
-				if(!is_mapped(dst_ea))
-					dst_ea = BADADDR;
-			}
-		}
-		if(dst_ea == BADADDR) {
+	if(dst_ea == BADADDR) {
 		//last hope, jump to name
-			qstring callname;
-			if(getExpName(vu->cfunc, callee, &callname))
-				dst_ea = get_name_ea(BADADDR, callname.c_str());
-		}
+		qstring callname;
+		if(getExpName(cfunc, callee, &callname))
+			dst_ea = get_name_ea(BADADDR, callname.c_str());
 	}
+	return dst_ea;
+}
 
-	if (dst_ea != BADADDR && is_func(get_flags(dst_ea))) {
+static int idaapi jump_to_call_dst(vdui_t *vu)
+{
+	cexpr_t *call;
+	if(!is_call(vu, &call))
+		return 0;
+
+	ea_t dst_ea = get_call_dst(vu->cfunc, call);
+	if(dst_ea != BADADDR && is_func(get_flags(dst_ea))) {
 		if(call->ea != BADADDR)
 			add_cref(call->ea, dst_ea, fl_CN);
 		COMPAT_open_pseudocode_REUSE_ACTIVE(dst_ea);
@@ -776,7 +788,7 @@ ACT_DEF(fin_struct)
 		if (!func)
 			return false;
 		hexrays_failure_t failure;
-		cfunc_t* decompilation = decompile_func(func, &failure);
+		cfuncptr_t decompilation = decompile_func(func, &failure);
 #else
 		vdui_t * ui = COMPAT_open_pseudocode_REUSE(it->first);
 		if (!ui)
@@ -794,7 +806,7 @@ ACT_DEF(fin_struct)
 				break;
 		}
 
-		cfunc_t* decompilation = ui->cfunc;
+		cfuncptr_t decompilation = ui->cfunc;
 #endif
 		if(!decompilation)
 			break;
@@ -1367,7 +1379,7 @@ ACT_DEF(convert_to_golang_call)
 	vu.refresh_view(true);
 
 	bool changed;
-	show_wait_box("Maping vars...");
+	show_wait_box("[hrt] Maping vars...");
 	do {
 		changed = false;
 		if (vu.cfunc) {
@@ -3318,7 +3330,143 @@ ACT_DEF(decomp_obfus)
 	} catch (vd_failure_t &e) {
 		warning("[hrt] unhandled Hexrays internal error at %a: %d (%s)\n", e.hf.errea, e.hf.code, e.hf.desc().c_str());
 	}
+	return 0;
+}
 
+//------------------------------------------------
+struct ida_local call_dst_locator_t : public ctree_visitor_t
+{
+	cfunc_t* cfunc;
+	easet_t callees;
+	call_dst_locator_t(cfunc_t* func): ctree_visitor_t(CV_FAST), cfunc(func) {}
+	int idaapi visit_expr(cexpr_t * e)
+	{
+		if(e->op == cot_call) {
+			ea_t callDst = get_call_dst(cfunc, e);
+			if(callDst != BADADDR)
+				callees.insert(callDst);
+		}
+		return 0; //continue
+	}
+};
+
+static volatile uint32 g_typeChanged = 0;
+struct ida_local decompile_recursive_t
+{
+	easet_t visited;
+
+	void decompile(ea_t entry, uint32 level)
+	{
+		if(level > 100) {
+			//msg("[hrt] decompile_recursive %a: too deep\n", entry);
+			return;
+		}
+		func_t* func = get_func(entry);
+		if(!func || func->flags & (FUNC_LIB | FUNC_LUMINA)) {
+			//msg("[hrt] decompile_recursive: no or lib func at %a\n", entry);
+			return;
+		}
+		if(!visited.insert(entry).second) {
+			//msg("[hrt] decompile_recursive %a: visited\n", entry);
+			return;
+		}
+
+		//replace_wait_box("[hrt] Decompiling depth %d", level);
+		qstring funcName = get_short_name(func->start_ea);
+
+		bool userti = true;
+		int decomp_flags = DECOMP_NO_WAIT;
+		tinfo_t t1;
+		if(!is_userti(func->start_ea)) {
+			userti = false;
+			decomp_flags |= DECOMP_NO_CACHE;
+			get_tinfo(&t1, func->start_ea);
+			//msg("[hrt] %a decompile_recursive(%s): 1st pass NO_CACHE for type %s\n", entry, funcName.c_str(), t1.dstr());
+		} else {
+			//msg("[hrt] %a decompile_recursive(%s): 1st pass USE_CACHE\n", entry, funcName.c_str());
+		}
+
+		hexrays_failure_t hf;
+		cfuncptr_t cf = decompile_func(func, &hf, decomp_flags);
+		if(!cf || hf.code != MERR_OK) {
+			msg("[hrt] %a: 1 decompile_func(\"%s\") failed with '%s'\n", func->start_ea, funcName.c_str(), hf.desc().c_str());
+			return;
+		}
+
+		//decompile again if decompile_func changes func type
+		if(!userti) {
+			tinfo_t t2;
+			if(get_tinfo(&t2, func->start_ea) && t1 != t2) {
+				//msg("[hrt] %a decompile_recursive(%s): type changed from %s to %s\n", entry, funcName.c_str(), t1.dstr(), t2.dstr());
+				cf = decompile_func(func, &hf, DECOMP_NO_WAIT | DECOMP_NO_CACHE);
+				if(!cf || hf.code != MERR_OK) {
+					msg("[hrt] %a: 2 decompile_func(\"%s\") failed with '%s'\n", func->start_ea, funcName.c_str(), hf.desc().c_str());
+					return;
+				}
+			}
+		}
+
+		//find calls
+		call_dst_locator_t cloc(cf);
+		cloc.apply_to(&cf->body, NULL);
+		if(!cloc.callees.size()) {
+			//msg("[hrt] %a decompile_recursive(%s): no calls\n", entry, funcName.c_str());
+			return;
+		}
+
+		uint32 typeChanged = g_typeChanged;
+		for(ea_t callee : cloc.callees) {
+			decompile(callee, level + 1);
+			if(user_cancelled()) {
+				//msg("[hrt] decompile_recursive %a: user_cancelled\n", entry);
+				return;
+			}
+		}
+
+		if(typeChanged == g_typeChanged) {
+			//msg("[hrt] decompile_recursive %a: no changes\n", entry);
+			return;
+		}
+		msg("[hrt] %a: on recursive decompile(\"%s\", %d) %d types changed\n", func->start_ea, funcName.c_str(), level, g_typeChanged - typeChanged);
+
+		// force decompile again if changed
+		cf = decompile_func(func, &hf, DECOMP_NO_WAIT | DECOMP_NO_CACHE);
+		if(!cf || hf.code != MERR_OK) {
+			msg("[hrt] %a: 3 decompile_func(\"%s\") failed with '%s'\n", func->start_ea, funcName.c_str(), hf.desc().c_str());
+		}
+	}
+};
+
+bool decompile_recursive(ea_t entry)
+{
+	uint32 typeChanged = g_typeChanged;
+	decompile_recursive_t d;
+	show_wait_box("[hrt] Decompiling...");
+	try {
+		d.decompile(entry, 0);
+	} catch (interr_exc_t &e) {
+		warning("[hrt] unhandled IDA internal error %d", e.code);
+	} catch (vd_failure_t &e) {
+		warning("[hrt] unhandled Hexrays internal error at %a: %d (%s)\n", e.hf.errea, e.hf.code, e.hf.desc().c_str());
+	}
+	hide_wait_box();
+	msg("[hrt] %a: on recursive decompile %d types changed by decompiling %d procs\n", entry, g_typeChanged - typeChanged, d.visited.size());
+	return g_typeChanged != typeChanged;
+}
+
+ACT_DEF(decomp_recur)
+{
+	if (ctx->widget_type == BWN_DISASM) {
+		func_t *f = get_func(ctx->cur_ea);
+		if(f) {
+			decompile_recursive(f->start_ea);
+			COMPAT_open_pseudocode_REUSE(f->start_ea);
+		}
+		return 0;
+	}
+	vdui_t *vu = get_widget_vdui(ctx->widget);
+	if (vu && decompile_recursive(vu->mba->entry_ea))
+		vu->cfunc->refresh_func_ctext();
 	return 0;
 }
 
@@ -4140,7 +4288,7 @@ ACT_DEF(import_unf_types)
 	size_t impCnt  = 0;
 	size_t funcqty = get_func_qty();
 
-	show_wait_box("importing...");
+	show_wait_box("[hrt] importing...");
 	for (size_t i = 0; i < funcqty; i++) {
 		if (user_cancelled()) {
 			hide_wait_box();
@@ -4393,6 +4541,8 @@ int brJump(TWidget *ct, int line)
 static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 {
 	static ea_t last_globopt_ea = BADADDR;
+	static const char* msigName = nullptr;
+	static bool msigRenamed = false;
 #ifdef _DEBUG
 	if (1) { // dump_mba at each stage
 		mbl_array_t *mba = NULL;
@@ -4509,19 +4659,12 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 			else if (ufIsInWL(cfunc->entry_ea))
 				cfunc->sv.insert(cfunc->sv.begin(), simpleline_t("// The function seems has been flattened"));
 
-			if (last_globopt_ea == cfunc->entry_ea) { //avoid mba restored from cache
-				const char* msigName = msig_match(cfunc->mba);
-				if (msigName) {
-					qstring cmt; cmt.sprnt("// The function matches msig: %s", msigName);
-					cfunc->sv.insert(cfunc->sv.begin(), simpleline_t(cmt));
-					if(!qstrchr(msigName, ' ')) { //check if the msig has dups where names merged by " or "
-						cmt = get_name(cfunc->entry_ea);
-						if(!is_uname(cmt.c_str())) {
-							if(set_name(cfunc->entry_ea, msigName, SN_NOWARN | SN_FORCE))
-								cfunc->sv.front().line.append(". Press F5 to refresh pseudocode.");
-						}
-					}
-				}
+			// hxe_func_printed is not called in packet decompiling mode
+			if(msigName && last_globopt_ea == cfunc->entry_ea) { //avoid cfunc restored from cache
+				qstring cmt; cmt.sprnt("// The function matches msig: %s", msigName);
+				cfunc->sv.insert(cfunc->sv.begin(), simpleline_t(cmt));
+				if(msigRenamed)
+					cfunc->sv.front().line.append(". Press F5 to refresh pseudocode.");
 			}
 			break;
 		}
@@ -4643,20 +4786,42 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 				dump_ctree(cfunc, fname);
 			}
 #endif
+			switch (new_maturity) {
+			//case CMAT_ZERO:			break;
+			case CMAT_BUILT: // just generated
 #if IDA_SDK_VERSION <= 730
-			if ( new_maturity == CMAT_BUILT ) { // ctree is ready
 				convert_negative_offset_casts(cfunc);
-			} else 
 #endif //IDA_SDK_VERSION <= 730
-			if (new_maturity == CMAT_CPA) {
+				break;
+			//case CMAT_TRANS1:		break;
+			//case CMAT_NICE:			break;
+			//case CMAT_TRANS2:		break;
+			case CMAT_CPA:
 				convert_offsetof_n_reincasts(cfunc);
-			} else if(new_maturity == CMAT_TRANS3) {
+				break;
+			case CMAT_TRANS3:
 				com_scan(cfunc);
-			}	else if(new_maturity == CMAT_FINAL)	{
+				break;
+			//case CMAT_CASTED:		break;
+			case CMAT_FINAL:
 				apihashes_scan(cfunc);// before autorename_n_pull_comments: so comments be used for renaming
 				autorename_n_pull_comments(cfunc);
 				lit_scan(cfunc); // after autorename_n_pull_comments: to search literals in renamed indirect calls
 				make_if42blocks(cfunc);
+
+				//there is not found a better place that called once after microcode is completed
+				if(last_globopt_ea == cfunc->entry_ea) { //avoid mba restored from cache
+					msigRenamed = false;
+					msigName = msig_match(cfunc->mba);
+					if(msigName &&
+						 !qstrchr(msigName, ' ') && //check if the msig has dups where names merged by " or "
+						 !has_user_name(get_flags(cfunc->entry_ea)) &&
+						 set_name(cfunc->entry_ea, msigName, SN_NOWARN | SN_FORCE))
+						msigRenamed = true;
+				} else {
+					msigName = nullptr; // clear name if cached
+				}
+				break;
 			}
 			//cfunc->verify(ALLOW_UNUSED_LABELS, false);
 		}
@@ -4747,7 +4912,7 @@ bool idaapi runFuncSwitchSync()
     //on ida 7.6 this trick does not works anymore
     //linux IDA 7.4 & 7.5 does not activate widget immediately
     for(int i = 10; i > 0; i--) {
-      show_wait_box("This message is workaround of \"IDA for linux\" bug \n activate_widget() call does not work without this waitbox");
+      show_wait_box("[hrt] This message is workaround of \"IDA for linux\" bug \n activate_widget() call does not work without this waitbox");
       qsleep(100);
       hide_wait_box();
       TWidget * curw = get_current_widget();
@@ -4776,7 +4941,7 @@ bool idaapi runFuncSwitchSync()
       msg("[hrt] AST_DISABLE_FOR_WIDGET\n");
       //update_action_state(FunctionsToggleSync, AST_ENABLE_FOR_WIDGET);
     }
-....bool checked;
+		bool checked;
     bool bc = get_action_checked(FunctionsToggleSync, &checked);
     bool visibility;
     bool bv = get_action_visibility(FunctionsToggleSync, &visibility);
@@ -4797,7 +4962,7 @@ bool idaapi runFuncSwitchSync()
       activate_widget(StartWdg, true);
 #if defined __LINUX__  && IDA_SDK_VERSION >= 740 && IDA_SDK_VERSION <= 750
     //linux IDA does not activate widget immediately
-      show_wait_box("Second waitbox to activate back main window\n after turning on synchronization in Functions window");
+      show_wait_box("[hrt] Second waitbox to activate back main window\n after turning on synchronization in Functions window");
       qsleep(100);
       hide_wait_box();
 #endif //defined __LINUX__  && IDA_SDK_VERSION >= 740 && IDA_SDK_VERSION <= 750
@@ -5127,12 +5292,15 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 				}
 			}
 
+#if 0 // disabled because it works now much faster
 			//user invoked applying FLIRT signatures and loading pdb files are also autoanalysis
 			if (!auto_is_ok()) // disable time-consuming operations during initial autoanalysis
 				break;
+#endif
 
 			if(is_func(ea_fl)) {
-				progress();
+				if (auto_is_ok())
+					progress();
 				const char* ctor = qstrstr(new_name, "::ctor");
 				if(ctor) {
 					tinfo_t tif;
@@ -5200,8 +5368,11 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 			const type_t *type = va_arg(va, type_t *);
 			const p_list *fnames = va_arg(va, p_list *);
 
+			++g_typeChanged;
+#if 0 // disabled because it works now much faster
 			if (!auto_is_ok()) // disable time-consuming operations during initial autoanalysis
 				break;
+#endif
 
 			flags64_t ea_fl = get_flags(ea);
 			tinfo_t tif;
@@ -5305,7 +5476,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.4.39";
+	addon.version = "2.5.39";
 	motd.sprnt("%s (%s) v%s for IDA%d ", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {
