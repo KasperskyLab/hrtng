@@ -76,7 +76,7 @@ struct ida_local ptr_checker_t : public ctree_parentee_t
 				unsigned int vt_len = 0;
 				qstring vtsname;
 				tid_t tid = create_VT_struc(obj->obj_ea, NULL, BADADDR, &vt_len);
-				if(tid != BADNODE && get_tid_name(&vtsname, tid)) {
+				if(tid != BADADDR && get_tid_name(&vtsname, tid)) {
 					t = make_pointer(create_typedef(vtsname.c_str()));
 					for(unsigned int k = 0; k < vt_len; k++) {
 						ea_t fncea = get_ea(obj->obj_ea + k * ea_size);

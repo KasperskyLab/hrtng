@@ -694,7 +694,7 @@ ACT_DEF(add_VT)
 ACT_DEF(add_VT_struct)
 {
 	tid_t VT_struct= create_VT_struc(ctx->cur_ea, NULL);
-	if(VT_struct != BADNODE)
+	if(VT_struct != BADADDR)
 #if IDA_SDK_VERSION < 850
 		open_structs_window(VT_struct);
 #else //IDA_SDK_VERSION >= 850
@@ -4804,6 +4804,7 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 				break;
 			//case CMAT_CASTED:		break;
 			case CMAT_FINAL:
+				auto_create_vtbls(cfunc);
 				apihashes_scan(cfunc);// before autorename_n_pull_comments: so comments be used for renaming
 				autorename_n_pull_comments(cfunc);
 				lit_scan(cfunc); // after autorename_n_pull_comments: to search literals in renamed indirect calls
@@ -4814,7 +4815,7 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 					msigRenamed = false;
 					msigName = msig_match(cfunc->mba);
 					if(msigName &&
-						 !qstrchr(msigName, ' ') && //check if the msig has dups where names merged by " or "
+						 !qstrchr(msigName, ' ') && //check if the msig has multiple names
 						 !has_user_name(get_flags(cfunc->entry_ea)) &&
 						 set_name(cfunc->entry_ea, msigName, SN_NOWARN | SN_FORCE))
 						msigRenamed = true;
@@ -5476,7 +5477,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.5.39";
+	addon.version = "2.5.40";
 	motd.sprnt("%s (%s) v%s for IDA%d ", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {
