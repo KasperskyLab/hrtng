@@ -113,9 +113,17 @@ struct ida_local msig_t {
 	{
 		mcode_t op = insn->opcode;
 
-		//top level resizing in relaxed mode become mov
-		if(!strictMode && (op == m_low || op == m_xdu || op == m_xds))
-			op = m_mov;
+		if(!strictMode) {
+			//top level resizing in relaxed mode become mov
+			if(op == m_low || op == m_xdu || op == m_xds)
+				op = m_mov;
+			//consider func like returning void, ignore mov to return var
+			if(op == m_mov && insn->d.t == mop_l && insn->d.l->idx == insn->d.l->mba->retvaridx) {
+				if(insn->l.t == mop_d)
+					SerializeInsn(insn->l.d, buf);
+				return;
+			}
+		}
 		buf.pack_db(op);
 		SerializeOp(insn->l, buf);
 		SerializeOp(insn->r, buf);
@@ -187,6 +195,10 @@ struct ida_local msig_t {
 				return true;
 		return false;
 	}
+	DECLARE_COMPARISONS(msig_t)
+  {
+    return memcmp(hash, r.hash, MSIGHASHLEN);
+  }
 };
 
 class ida_local lessMsig_t {
@@ -257,8 +269,15 @@ public:
 			return false;
 		msig_t* s = new msig_t(mba, true);
 		bool res = add(s);
-		if(res && s->reqRelaxed)
-			add(new msig_t(mba, false));
+		if(res && s->reqRelaxed) {
+			msig_t* r = new msig_t(mba, false);
+			if(*r == *s) {
+				msg("[hrt] FIXME! Strict msig '%s' is equal to relaxed!\n", s->name.c_str());
+				delete r;
+			} else {
+				add(r);
+			}
+		}
 		return res;
 	}
 	msig_t* match(msig_t* m)
