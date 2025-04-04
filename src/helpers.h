@@ -27,6 +27,9 @@
 #endif //IDA_SDK_VERSION < 850
 #include "warn_on.h"
 
+#define AST_ENABLE_ALW return AST_ENABLE_ALWAYS
+#define AST_ENABLE_FOR_PC return ((ctx->widget_type == BWN_PSEUDOCODE) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET)
+#define AST_ENABLE_FOR(check) vdui_t *vu = get_widget_vdui(ctx->widget); return ((vu == NULL) ? AST_DISABLE_FOR_WIDGET : ((check) ? AST_ENABLE : AST_DISABLE))
 
 #define ACT_NAME(name) "hrt:" # name
 #define ACT_DESC(label, shortcut, name) ACTION_DESC_LITERAL(ACT_NAME(name), label, &name, shortcut, NULL, -1)

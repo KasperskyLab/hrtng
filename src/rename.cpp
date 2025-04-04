@@ -344,7 +344,7 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 					stripName(&fi[argIdx].name);
 					tinfo_t newFType;
 					newFType.create_func(fi);
-					if(newFType.is_correct() && apply_tinfo(func->entry_ea, newFType, TINFO_DEFINITE)) {
+					if(newFType.is_correct() && apply_tinfo(func->entry_ea, newFType, is_userti(func->entry_ea) ? TINFO_DEFINITE : TINFO_GUESSED)) {
 						qstring typeStr;
 						newFType.print(&typeStr);
 						msg("[hrt] %a: Function prototype was recasted for change arg-name into \"%s\"\n", refea, typeStr.c_str());
@@ -938,7 +938,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 						//TODO: some name cleanup, remove duplicates (?)
 						tinfo_t newFType;
 						newFType.create_func(fi);
-						if(newFType.is_correct() && set_tinfo(dstea, &newFType)) //apply_tinfo(dstea, newFType, TINFO_DEFINITE)) or apply_callee_tinfo
+						if(newFType.is_correct() && apply_tinfo(dstea, newFType, TINFO_DELAYFUNC | (is_userti(dstea) ? TINFO_DEFINITE : TINFO_GUESSED))) // apply_callee_tinfo
 						{
 							qstring typeStr;
 							newFType.print(&typeStr);

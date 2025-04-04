@@ -18,8 +18,11 @@
 */
 
 #pragma once
-void msig_save();
-void msig_load();
+void msig_reg_act();
+void msig_unreg_act();
 void msig_auto_load();
-bool msig_add(mbl_array_t* mba);
+void msig_auto_save();
 const char* msig_match(mbl_array_t* mba);
+const char* msig_cached(ea_t ea);
+extern const char msigMessage[];
+bool isMsig(vdui_t *vu, qstring* name);

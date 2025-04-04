@@ -87,9 +87,6 @@ bool has_if42blocks(ea_t funcea);
 
 //-------------------------------------------------------------------------
 // action_handler_t declarations
-#define AST_ENABLE_ALW return AST_ENABLE_ALWAYS
-#define AST_ENABLE_FOR_PC return ((ctx->widget_type == BWN_PSEUDOCODE) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET)
-#define AST_ENABLE_FOR(check) vdui_t *vu = get_widget_vdui(ctx->widget); return ((vu == NULL) ? AST_DISABLE_FOR_WIDGET : ((check) ? AST_ENABLE : AST_DISABLE))
 
 //actions attached to main menu
 ACT_DECL(create_dummy_struct, AST_ENABLE_ALW)
@@ -98,8 +95,6 @@ ACT_DECL(fill_nops, return ((ctx->widget_type == BWN_DISASM) ? AST_ENABLE_FOR_WI
 ACT_DECL(searchNpatch, return ((ctx->widget_type == BWN_DISASM) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
 ACT_DECL(dbg_patch, return ((ctx->widget_type != BWN_DISASM) ? AST_DISABLE_FOR_WIDGET : (is_debugger_on() ? AST_ENABLE : AST_DISABLE)))
 ACT_DECL(file_patch, return ((ctx->widget_type == BWN_DISASM) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
-ACT_DECL(msigLoad, AST_ENABLE_ALW)
-ACT_DECL(msigSave, AST_ENABLE_ALW)
 ACT_DECL(apihashes, AST_ENABLE_ALW)
 ACT_DECL(create_dec, return (is_patched() ? AST_ENABLE : AST_DISABLE))
 ACT_DECL(clear_hr_cache, AST_ENABLE_ALW)
@@ -144,7 +139,6 @@ ACT_DECL(uf_disable              , AST_ENABLE_FOR(ufIsInWL(vu->mba->entry_ea)))
 ACT_DECL(mavx_enable             , AST_ENABLE_FOR(isMicroAvx_avail() && !isMicroAvx_active()))
 ACT_DECL(mavx_disable            , AST_ENABLE_FOR(isMicroAvx_avail() &&  isMicroAvx_active()))
 #endif //IDA_SDK_VERSION >= 750
-ACT_DECL(msigAdd                 , AST_ENABLE_FOR_PC)
 ACT_DECL(selection2block         , return (ctx->widget_type != BWN_PSEUDOCODE ? AST_DISABLE_FOR_WIDGET : (ctx->has_flag(ACF_HAS_SELECTION) ? AST_ENABLE : AST_DISABLE)))
 ACT_DECL(clear_if42blocks         , AST_ENABLE_FOR(has_if42blocks(vu->cfunc->entry_ea)))
 #if IDA_SDK_VERSION < 750
@@ -152,11 +146,6 @@ ACT_DECL(remove_rettype      , AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
 ACT_DECL(remove_argument     , AST_ENABLE_FOR(is_arg_var(vu)))
 #endif //IDA_SDK_VERSION < 750
 ACT_DECL(import_unf_types        , return ((ctx->widget_type == BWN_TILVIEW) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
-
-
-#undef AST_ENABLE_FOR
-#undef AST_ENABLE_FOR_PC
-#undef AST_ENABLE_ALW
 
 //-------------------------------------------------------------------------
 // action_desc_t descriptions
@@ -197,7 +186,6 @@ static const action_desc_t actions[] =
 	ACT_DESC("[hrt] Remove return type",             NULL, remove_rettype),
 	ACT_DESC("[hrt] Remove this argument",           "A", remove_argument),
 #endif //IDA_SDK_VERSION >= 750
-	ACT_DESC("[hrt] Create MSIG for the function",    NULL, msigAdd),
 	ACT_DESC("[hrt] ~C~ollapse selection",            NULL, selection2block),
 	ACT_DESC("[hrt] Remove collapsible 'if(42) ...' blocks",  NULL, clear_if42blocks),
 #if IDA_SDK_VERSION < 850
@@ -286,7 +274,12 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 		attach_action_to_popup(view, p, ACT_NAME(uf_enable));
 	else if (ufIsInWL(vu->mba->entry_ea))
 		attach_action_to_popup(view, p, ACT_NAME(uf_disable));
+
 	attach_action_to_popup(view, p, ACT_NAME(msigAdd));
+	if(isMsig(vu, nullptr)) {
+		attach_action_to_popup(view, p, ACT_NAME(msigEdit));
+		attach_action_to_popup(view, p, ACT_NAME(msigAccept));
+	}
 #if IDA_SDK_VERSION >= 750
 	if(isMicroAvx_avail()) {
 		if(isMicroAvx_active())
@@ -311,8 +304,6 @@ void hrt_reg_act()
 	COMPAT_register_and_attach_to_menu("Edit/Other/", ACT_NAME(apihashes), "[hrt] Turn on API~h~ashes scan...", NULL, SETMENU_INS, &apihashes, &PLUGIN);
 	COMPAT_register_and_attach_to_menu("Edit/Other/", ACT_NAME(clear_hr_cache), "[hrt] Clear cached decompilation results", "`", SETMENU_INS, &clear_hr_cache, &PLUGIN);
 	COMPAT_register_and_attach_to_menu("File/Produce file/Create MAP file...", ACT_NAME(create_dec), "[hrt] Create DEC file...", NULL, SETMENU_INS, &create_dec, &PLUGIN);
-	COMPAT_register_and_attach_to_menu("File/Produce file/Create MAP file...", ACT_NAME(msigSave), "[hrt] Create MSIG file...", NULL, SETMENU_INS, &msigSave, &PLUGIN);
-	COMPAT_register_and_attach_to_menu("File/Load file/PDB file...", ACT_NAME(msigLoad), "[hrt] MSIG file...", NULL, SETMENU_INS, &msigLoad, &PLUGIN);
 	//COMPAT_register_and_attach_to_menu("View/Toolbars", ACT_NAME(kill_toolbars), "[hrt] Kill toolbars", NULL, SETMENU_INS, &kill_toolbars, &PLUGIN);
 	COMPAT_register_and_attach_to_menu("View/Open subviews/Generate pseudocode", ACT_NAME(decomp_recur), "[hrt] Decompile recursively", "Shift-Alt-F5", SETMENU_APP, &decomp_recur, &PLUGIN);
 	COMPAT_register_and_attach_to_menu("View/Open subviews/Generate pseudocode", ACT_NAME(decomp_obfus), "[hrt] Decompile obfuscated code", "Alt-F5", SETMENU_APP, &decomp_obfus, &PLUGIN);
@@ -338,8 +329,6 @@ void hrt_unreg_act()
 	detach_action_from_menu("Edit/Other/[hrt] Turn on APIhashes scan...", ACT_NAME(apihashes));
 	detach_action_from_menu("Edit/Other/[hrt] Clear cached decompilation results", ACT_NAME(clear_hr_cache));
 	detach_action_from_menu("File/Produce file/[hrt] Create DEC file...", ACT_NAME(create_dec));
-	detach_action_from_menu("File/Produce file/[hrt] Create MSIG file...", ACT_NAME(msigSave));
-	detach_action_from_menu("File/Load file/[hrt] MSIG file...", ACT_NAME(msigLoad));
 	//detach_action_from_menu("View/[hrt] Kill toolbars", ACT_NAME(kill_toolbars));
 	detach_action_from_menu("View/Open subviews/[hrt] Decompile obfuscated code", ACT_NAME(decomp_obfus));
 	detach_action_from_menu("View/Open subviews/[hrt] Decompile recursively", ACT_NAME(decomp_recur));
@@ -350,8 +339,6 @@ void hrt_unreg_act()
 	//unregister_action(ACT_NAME(kill_toolbars));
 	unregister_action(ACT_NAME(create_dec));
 	unregister_action(ACT_NAME(apihashes));
-	unregister_action(ACT_NAME(msigLoad));
-	unregister_action(ACT_NAME(msigSave));
 	unregister_action(ACT_NAME(dbg_patch));
 	unregister_action(ACT_NAME(file_patch));
 	unregister_action(ACT_NAME(searchNpatch));
@@ -2004,7 +1991,7 @@ bool set_ea_type(ea_t ea, tinfo_t *ts)
 		if(answer == ASKBTN_NO || answer ==ASKBTN_CANCEL)
 			return false;
 	}
-	return set_tinfo(ea, ts);
+	return apply_tinfo(ea, *ts, TINFO_DEFINITE | TINFO_STRICT | TINFO_DELAYFUNC);
 }
 
 #if IDA_SDK_VERSION < 850
@@ -3225,29 +3212,6 @@ ACT_DEF(apihashes)
 }
 
 //------------------------------------------------
-ACT_DEF(msigLoad)
-{
-	msig_load();
-	return 1;
-}
-
-ACT_DEF(msigSave)
-{
-	msig_save();
-	return 1;
-}
-
-ACT_DEF(msigAdd)
-{
-	vdui_t& vu = *get_widget_vdui(ctx->widget);
-	if (has_cached_cfunc(vu.cfunc->entry_ea))
-		vu.refresh_view(true);
-
-	msig_add(vu.mba);
-	return 1;
-}
-
-//------------------------------------------------
 bool is_patched()
 {
 	//TODO
@@ -3450,7 +3414,7 @@ bool decompile_recursive(ea_t entry)
 		warning("[hrt] unhandled Hexrays internal error at %a: %d (%s)\n", e.hf.errea, e.hf.code, e.hf.desc().c_str());
 	}
 	hide_wait_box();
-	msg("[hrt] %a: on recursive decompile %d types changed by decompiling %d procs\n", entry, g_typeChanged - typeChanged, d.visited.size());
+	msg("[hrt] %a: === on recursive decompile %d types changed by decompiling %d procs ===\n", entry, g_typeChanged - typeChanged, d.visited.size());
 	return g_typeChanged != typeChanged;
 }
 
@@ -3466,7 +3430,7 @@ ACT_DEF(decomp_recur)
 	}
 	vdui_t *vu = get_widget_vdui(ctx->widget);
 	if (vu && decompile_recursive(vu->mba->entry_ea))
-		vu->cfunc->refresh_func_ctext();
+		vu->refresh_view(false);
 	return 0;
 }
 
@@ -4302,6 +4266,7 @@ ACT_DEF(import_unf_types)
 			if (is_uname(funcName.c_str())) {
 				tinfo_t tif;
 				if(get_tinfo(&tif, funcstru->start_ea) && tif.is_func()) {
+					stripName(&funcName);
 #if 1
 					//CHECKME: without NTF_NO_NAMECHK ida creates partially unmangled names probably not suitable for reapplying with signatures, and a lot of "bad name" errors
 					tinfo_code_t err = tif.set_named_type(nullptr, funcName.c_str() , NTF_REPLACE | NTF_NO_NAMECHK);
@@ -4541,7 +4506,6 @@ int brJump(TWidget *ct, int line)
 static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 {
 	static ea_t last_globopt_ea = BADADDR;
-	static const char* msigName = nullptr;
 	static bool msigRenamed = false;
 #ifdef _DEBUG
 	if (1) { // dump_mba at each stage
@@ -4660,8 +4624,9 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 				cfunc->sv.insert(cfunc->sv.begin(), simpleline_t("// The function seems has been flattened"));
 
 			// hxe_func_printed is not called in packet decompiling mode
-			if(msigName && last_globopt_ea == cfunc->entry_ea) { //avoid cfunc restored from cache
-				qstring cmt; cmt.sprnt("// The function matches msig: %s", msigName);
+			const char* msigName = msig_cached(cfunc->entry_ea);
+			if(msigName) {
+				qstring cmt(msigMessage); cmt.append(msigName);
 				cfunc->sv.insert(cfunc->sv.begin(), simpleline_t(cmt));
 				if(msigRenamed)
 					cfunc->sv.front().line.append(". Press F5 to refresh pseudocode.");
@@ -4802,25 +4767,24 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 			case CMAT_TRANS3:
 				com_scan(cfunc);
 				break;
-			//case CMAT_CASTED:		break;
-			case CMAT_FINAL:
-				auto_create_vtbls(cfunc);
+			case CMAT_CASTED:
+				auto_create_vtbls(cfunc); //before all, virtual calls may appear as result of vtbl creation when constructor is inlined into caller proc
 				apihashes_scan(cfunc);// before autorename_n_pull_comments: so comments be used for renaming
 				autorename_n_pull_comments(cfunc);
+				break;
+			case CMAT_FINAL:
 				lit_scan(cfunc); // after autorename_n_pull_comments: to search literals in renamed indirect calls
 				make_if42blocks(cfunc);
 
 				//there is not found a better place that called once after microcode is completed
+				msigRenamed = false;
 				if(last_globopt_ea == cfunc->entry_ea) { //avoid mba restored from cache
-					msigRenamed = false;
-					msigName = msig_match(cfunc->mba);
+					const char* msigName = msig_match(cfunc->mba);
 					if(msigName &&
 						 !qstrchr(msigName, ' ') && //check if the msig has multiple names
 						 !has_user_name(get_flags(cfunc->entry_ea)) &&
 						 set_name(cfunc->entry_ea, msigName, SN_NOWARN | SN_FORCE))
 						msigRenamed = true;
-				} else {
-					msigName = nullptr; // clear name if cached
 				}
 				break;
 			}
@@ -5232,7 +5196,7 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 			int index = struc.find_udm(udm->name.c_str());
 			if (index  != -1) {
 				tinfo_code_t code = struc.set_udm_type(index, t, ETF_COMPATIBLE);
-				if (code != TERR_OK && ASKBTN_YES == ask_yn(ASKBTN_NO, "[hrt] Set member type '%s'\nof '%s.%s'\nmay destroy other members. Confirm?", t.dstr(), udtname, newname))
+				if (code != TERR_OK && (!auto_is_ok() || ASKBTN_YES == ask_yn(ASKBTN_NO, "[hrt] Set member type '%s'\nof '%s.%s'\nmay destroy other members. Confirm?", t.dstr(), udtname, newname)))
 					code = struc.set_udm_type(index, t, ETF_MAY_DESTROY);
 				if (code == TERR_OK)
 					msg("[hrt] type of '%s.%s' updated\n", udtname, newname);
@@ -5258,35 +5222,38 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 		break;
 	case idb_event::savebase:
 		save_inlines();
+		msig_auto_save();
 		break;
 	case idb_event::make_data:
-		{
+	{
 		ea_t ea = va_arg(va, ea_t);
 		flags64_t flags = va_arg(va, flags64_t);
 		tid_t tid = va_arg(va, tid_t);
 		asize_t len = va_arg(va, asize_t);
 		com_make_data_cb(ea, flags, tid, len);
-		  break;
-		}
-	  case idb_event::renamed:
+		break;
+	}
+	case idb_event::renamed:
 		{
 			ea_t ea = va_arg(va, ea_t);
 			const char *new_name = va_arg(va, const char *);
 			int local_name = va_arg(va, int);
-			//< \param old_name    (const char *) can be nullptr // appeared in ida 7.6
 			if(local_name || new_name == nullptr)
 				break;
-
-			flags64_t ea_fl = get_flags(ea);
-
-#if 0 // this check breaks typesetting on MSIG signature matching
-			tinfo_t oldType;
-			// if there is no typeinfo, or func-type on a pointer
-			if(!get_tinfo(&oldType, ea) || oldType.empty() || (oldType.is_func() && is_ea(ea_fl)))
+#if IDA_SDK_VERSION >= 760
+			const char *old_name = va_arg(va, const char *); // appeared in ida 7.6
+			if(old_name && !qstrcmp(old_name, new_name)) {
+				//msg("[hrt] %a: dup rename '%s'\n", ea, new_name);
+				break;
+			}
 #endif
+			flags64_t ea_fl = get_flags(ea);
+			tinfo_t oldType;
+			if(!is_userti(ea) || // if there is no type info by user, or
+				 (is_ea(ea_fl) && get_tinfo(&oldType, ea) && oldType.is_func())) // func-type instead pointer-to-func (TODO: it was very old IDA bug, probably already fixed. Check it!)
 			{
 				tinfo_t t = getType4Name(new_name, is_func(ea_fl));
-				if(!t.empty() && set_tinfo(ea, &t)) {
+				if(!t.empty() && apply_tinfo(ea, t, TINFO_DEFINITE | TINFO_DELAYFUNC | TINFO_STRICT)) { //set_tinfo(ea, &t) left unnecessary arguments in func type, even "t" has not such
 					qstring str;
 					t.print(&str);
 					msg("[hrt] %a: set glbl '%s' type '%s'\n", ea, new_name, str.c_str());
@@ -5294,7 +5261,8 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 			}
 
 #if 0 // disabled because it works now much faster
-			//user invoked applying FLIRT signatures and loading pdb files are also autoanalysis
+			// user invoked applying FLIRT signatures, loading pdb files are also autoanalysis
+			// suddenly wait_box too?!!
 			if (!auto_is_ok()) // disable time-consuming operations during initial autoanalysis
 				break;
 #endif
@@ -5312,8 +5280,7 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 						break;
 					func_type_data_t fi;
 					if(tif.is_decl_func() && tif.get_func_details(&fi)) {
-						qstring retTname;
-						retTname.append(new_name, ctor - new_name);
+						qstring retTname(new_name, ctor - new_name);
 						fi.rettype = make_pointer(create_typedef(retTname.c_str()));
 						tinfo_t newFType;
 						newFType.create_func(fi);
@@ -5330,7 +5297,7 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 #endif
 					get_proc2memb_refs(ea, &tids);
 					if(tids.size() > 0) {
-						if(tids.size() == 1 || ASKBTN_YES == ask_yn(ASKBTN_NO, "[hrt] Rename %d struc members?\n%s\nto\n%s", tids.size(), funcRename.c_str(), new_name)) {
+						if(tids.size() == 1 || !auto_is_ok() || ASKBTN_YES == ask_yn(ASKBTN_NO, "[hrt] Rename %d struc members?\n%s\nto\n%s", tids.size(), funcRename.c_str(), new_name)) {
 							for (size_t i = 0; i < tids.size(); i++) {
 								qstring fullname;
 								//FIXME: ??? do double check with namecmp(funcRename.c_str(), memb->name)
@@ -5363,17 +5330,33 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 			}
 			break;
 		}
-	  case idb_event::ti_changed:
+#if 0 // for debugging recursive decompile mode to find repeating type changes.
+	case idb_event::changing_ti:
+	  {
+			ea_t ea = va_arg(va, ea_t);
+			const type_t *new_type = va_arg(va, type_t *);
+			if(!new_type)
+				break;
+			const p_list *new_fnames = va_arg(va, p_list *);
+
+			tinfo_t oldTi;
+			tinfo_t newTi;
+			if(!get_tinfo(&oldTi, ea) || !newTi.deserialize(nullptr, &new_type, &new_fnames) || !oldTi.compare_with(newTi, TCMP_IGNMODS)) {
+				msg("[hrt] %a: changing_ti+", ea);
+			} else {
+				msg("[hrt] %a: changing_ti-", ea);
+			}
+			qstring name = get_short_name(ea);
+			msg(" %s: from '%s' to '%s'\n", name.c_str(), oldTi.dstr(), newTi.dstr());
+			break;
+	  }
+#endif
+  case idb_event::ti_changed:
 		{
 			ea_t ea = va_arg(va, ea_t);
 			const type_t *type = va_arg(va, type_t *);
 			const p_list *fnames = va_arg(va, p_list *);
-
 			++g_typeChanged;
-#if 0 // disabled because it works now much faster
-			if (!auto_is_ok()) // disable time-consuming operations during initial autoanalysis
-				break;
-#endif
 
 			flags64_t ea_fl = get_flags(ea);
 			tinfo_t tif;
@@ -5390,7 +5373,7 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 					break;
 				tif = make_pointer(tif);
 				qstring newType; tif.print(&newType);
-				if(tids.size() > 1 && ASKBTN_YES != ask_yn(ASKBTN_NO, "[hrt] Recast %d struc members\n%s\nto\n%s\n?", tids.size(), funcName.c_str(), newType.c_str()))
+				if(tids.size() > 1 && auto_is_ok() && ASKBTN_YES != ask_yn(ASKBTN_NO, "[hrt] Recast %d struc members\n%s\nto\n%s\n?", tids.size(), funcName.c_str(), newType.c_str()))
 					break;
 				for (size_t i = 0; i < tids.size(); i++) {
 					qstring fullname;
@@ -5415,7 +5398,7 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 			}
 			break;
 		}
-		case idb_event::op_ti_changed:
+	case idb_event::op_ti_changed:
 		{
 		//FIXME: only 32bit is affected
 			ea_t ea = va_arg(va, ea_t);
@@ -5477,7 +5460,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.5.40";
+	addon.version = "2.5.41";
 	motd.sprnt("%s (%s) v%s for IDA%d ", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {
@@ -5513,6 +5496,7 @@ plugmod_t*
 	lit_init();
 	deinline_init();
 	opt_init();
+	msig_reg_act();
 	msig_auto_load();
 
 	if(register_addon(&addon) < 0)
@@ -5535,6 +5519,7 @@ void idaapi term(void)
 #endif //IDA_SDK_VERSION <= 730
 		new_struct_view_unreg_act();
 
+		msig_unreg_act();
 		appcall_view_unreg_act();
 		reincast_unreg_act();
 		unregisterMicrocodeExplorer();

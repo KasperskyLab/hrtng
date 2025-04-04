@@ -1,9 +1,9 @@
 ## Virtual calls assists
 Context menu *"Add VT"*, *"Add VT struct"*
 
-The plugin automatically creates VTBL structures on a fly during decompilation then detects VTBL assignment statement with the following limitations:
+The plugin automatically creates VTBL structures on a fly during decompilation, when detects VTBL assignment statement. The following limitation works in auto mode:
   * If the VTBL in an assignment statement was already added it will not been checked for VTBL was changed since then
-  * Abstract class's VTBL will be ignored if it has any member contains `purecall` sub-string in the name. For the sake of skipping unnecessary union types for vtables. In [recursive decompile](doc/recur-decomp.md) mode uncontrolled selection of a wrong vtable union member may offends right virtual call target search.
+  * Abstract class's VTBL will be ignored if it has any member contains `purecall` sub-string in the name. For the sake of skipping unnecessary union types for vtables. In [recursive decompile](recur-decomp.md) mode uncontrolled selection of a wrong vtable union member may offends right virtual call target search.
 
 Please watch IDA Output window messages for the following common errors may occur:
 ```

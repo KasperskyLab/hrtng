@@ -640,7 +640,7 @@ bool lit_overrideTypes()
 				newFType.create_func(fi);
 				if (ptr)
 					newFType = make_pointer(newFType);
-				if (set_tinfo(ea, &newFType)) {
+				if (apply_tinfo(ea, newFType, TINFO_DEFINITE | TINFO_STRICT)) {
 					qstring typeStr;
 					newFType.print(&typeStr);
 					msg("[hrt] Function %a %s was recast to \"%s\"\n", ea, funcnames[i], typeStr.c_str());

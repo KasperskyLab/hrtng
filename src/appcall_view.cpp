@@ -43,7 +43,6 @@ struct ida_local appcall_view_info_t
 appcall_view_info_t *acv = NULL;
 
 //-------------------------------------------------------------------------
-#define AST_ENABLE_ALW return AST_ENABLE_ALWAYS
 ACT_DECL(show_appcall_view, return (appcaller.funcea == BADADDR ? AST_DISABLE : AST_ENABLE))
 
 #define AST_ENABLE_FOR_ME return ((acv && ctx->widget == acv->cv) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET)
@@ -54,7 +53,6 @@ ACT_DECL(write_cmt, AST_ENABLE_FOR_ME)
 ACT_DECL(write_ptch, AST_ENABLE_FOR_ME)
 ACT_DECL(write_2fil, AST_ENABLE_FOR_ME)
 ACT_DECL(reExecAppcall, return ((acv && ctx->widget == acv->cv && appcaller.bDbgEngine) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
-#undef AST_ENABLE_ALW
 #undef AST_ENABLE_FOR_ME
 
 static const action_desc_t actions[] =

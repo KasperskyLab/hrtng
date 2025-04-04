@@ -20,9 +20,11 @@
 #include "warn_off.h"
 #include <hexrays.hpp>
 #include <md5.h>
+#include <kernwin.hpp>
 #include "warn_on.h"
 
 #include <set>
+#include <map>
 
 #include "helpers.h"
 #include "msig.h"
@@ -35,6 +37,7 @@
 #define MSIGHASHLEN 16
 static uval_t minMsigLen = 15;
 static const char msigNodeName[] = "$ hrt last MSIG filename";
+const char msigMessage[] = "// The function matches msig: ";
 
 struct ida_local msig_t {
 	uint8 hash[MSIGHASHLEN];
@@ -132,6 +135,9 @@ struct ida_local msig_t {
 		strictMode = _strictMode;
 		reqRelaxed = false;
 		name = get_name(mba->entry_ea); //get_visible_name(mba->entry_ea);
+		stripName(&name); //use clear name and strip suffix like "_12", that may be caused by msig applying during msig generation decompiling
+		if(!strictMode)
+			name.insert("r "); // invalidate name of msig created in relaxed mode to not renaming proc on matching
 
 		bytevec_t buf;
 		SerializeMba(mba, buf);
@@ -156,16 +162,15 @@ struct ida_local msig_t {
 		name.rtrim('\n');
 		name.trim2();
 		tooShort = false;
-		strictMode = name[0] != 'r';
+		strictMode = !(name[0] == 'r' && name[1] != ' ');
 		reqRelaxed = false;
 	}
 	qstring print()
 	{
 		qstring line;
-		line.sprnt("%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X %s%s",
+		line.sprnt("%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X %s",
 			hash[0], hash[1], hash[2],  hash[3],  hash[4],  hash[5],  hash[6],  hash[7],
 			hash[8], hash[9], hash[10], hash[11], hash[12], hash[13], hash[14], hash[15],
-			strictMode ? "" : "r ", // invalidate name of msig created in relaxed mode to not renaming proc on matching
 			name.c_str());
 		return line;
 	}
@@ -195,7 +200,10 @@ public:
 // set of msig sorted by hash
 class ida_local msigs_t : public std::set<msig_t*, lessMsig_t>
 {
+	std::map<ea_t, msig_t*, std::less<ea_t>> cache;
 public:
+	bool modified = false;
+
 	~msigs_t()
 	{
 		for (auto i : *this)
@@ -210,10 +218,14 @@ public:
 		}
 		auto it = find(s);
 		if(it != end()) {
-			size_t pos = (*it)->name.find(s->name);
+			qstring sname = s->name;
+			if(sname[0] == 'r' && sname[1] == ' ')
+				sname.remove(0, 2); 			// strip "relaxed" prefix if exist
+
+			size_t pos = (*it)->name.find(sname);
 			if(pos != qstring::npos
 				 && (pos == 0 || (*it)->name[pos-1] == ' ')
-				 && (pos + s->name.length() == (*it)->name.length() || (*it)->name[pos + s->name.length()] == ' '))
+				 && (pos + sname.length() == (*it)->name.length() || (*it)->name[pos + sname.length()] == ' '))
 			{
 				msg("[hrt] Duplicate msig `%s` skipped\n", s->name.c_str());
 			} else if((*it)->name.length() > 300) {
@@ -223,7 +235,14 @@ public:
 			} else {
 				msg("[hrt] Duplicate msig `%s` merged with '%s'\n", s->name.c_str(), (*it)->name.c_str());
 				(*it)->name.append(' ');
-				(*it)->name.append(s->name);
+				(*it)->name.append(sname);
+			}
+
+			//poison *it to be also relaxed
+			if(!s->strictMode) {
+				(*it)->strictMode = false;
+				if(!((*it)->name[0] == 'r' && (*it)->name[1] == ' '))
+					(*it)->name.insert("r ");
 			}
 			delete s;
 			return false;
@@ -242,22 +261,50 @@ public:
 			add(new msig_t(mba, false));
 		return res;
 	}
-	const char* match(msig_t* m)
+	msig_t* match(msig_t* m)
 	{
 		auto i = find(m);
 		if (i == end())
 			return NULL;
-		return (*i)->name.c_str();
+		return *i;
 	}
 	const char* match(mbl_array_t* mba)
 	{
 		msig_t m(mba, true);
-		const char* matched = match(&m);
+		msig_t* matched = match(&m);
 		if(!matched && m.reqRelaxed) {
 			msig_t mr(mba, false);
 			matched = match(&mr);
 		}
-		return matched;
+		if(matched) {
+			cache[mba->entry_ea] = matched;
+			return matched->name.c_str();
+		}
+		cache.erase(mba->entry_ea);
+		return nullptr;
+	}
+	const char* cached(ea_t ea)
+	{
+		auto it = cache.find(ea);
+		if(it != cache.end())
+			return it->second->name.c_str();
+		return nullptr;
+	}
+	bool rename(ea_t ea, const char* newname)
+	{
+		auto it = cache.find(ea);
+		if(it == cache.end())
+			return false;
+
+		if(!newname || !qstrlen(newname)) {
+			erase(it->second);
+			cache.erase(it);
+		} else {
+			//TODO: check if newname is valid
+			it->second->name = newname;
+		}
+		modified = true;
+		return true;
 	}
 	void save(const char* filename)
 	{
@@ -274,7 +321,7 @@ public:
 				cnt++;
 		}
 		qfclose(f);
-		msg("[hrt] %d msigs are saved\n", cnt);
+		msg("[hrt] %d msigs are saved to %s\n", cnt, filename);
 	}
 	void load(const char* filename)
 	{
@@ -295,7 +342,7 @@ public:
 };
 msigs_t msigs;
 
-bool msig_add(mbl_array_t* mba)
+inline bool msig_add(mbl_array_t* mba)
 {
 	return msigs.add(mba);
 }
@@ -310,7 +357,107 @@ const char* msig_match(mbl_array_t* mba)
 	return name;
 }
 
-void msig_save()
+const char* msig_cached(ea_t ea)
+{
+	return msigs.cached(ea);
+}
+
+inline bool msig_rename(ea_t ea, const char* newname)
+{
+	return msigs.rename(ea, newname);
+}
+
+inline qstring msig_auto_filename()
+{
+	qstring filename;
+	netnode nn(msigNodeName);
+	if(exist(nn))
+		nn.valstr(&filename);
+	return filename;
+}
+
+void msig_auto_load()
+{
+	qstring filename = msig_auto_filename();
+	if(filename.empty())
+		return;
+	msigs.load(filename.c_str());
+}
+
+void msig_auto_save()
+{
+	if(!msigs.modified)
+		return;
+	qstring filename = msig_auto_filename();
+	if(filename.empty())
+		return;
+	msigs.save(filename.c_str());
+}
+
+bool isMsig(vdui_t *vu, qstring* name)
+{
+	ctext_position_t &pos = vu->cpos;
+	if (pos.lnnum < 0)
+		return false;
+	size_t ypos = pos.lnnum;
+	const strvec_t &sv = vu->cfunc->get_pseudocode();
+	if(ypos >= sv.size())
+		return false;
+	if(sv[ypos].line.length() <= qnumber(msigMessage) || strncmp(sv[ypos].line.c_str(), msigMessage, qnumber(msigMessage) - 1))
+		return false;
+	if(name)
+		*name = sv[ypos].line.substr(qnumber(msigMessage) - 1);
+	return true;
+}
+
+/*-------------------------------------------------------------------------------------------------------------------------*/
+ACT_DECL(msigLoad  , AST_ENABLE_ALW)
+ACT_DECL(msigSave  , AST_ENABLE_ALW)
+ACT_DECL(msigAdd   , AST_ENABLE_FOR_PC)
+ACT_DECL(msigEdit  , AST_ENABLE_FOR(isMsig(vu, nullptr)))
+ACT_DECL(msigAccept, AST_ENABLE_FOR(isMsig(vu, nullptr)))
+
+static const action_desc_t actions[] =
+{
+	ACT_DESC("[hrt] Create MSIG for the function",  "", msigAdd),
+	ACT_DESC("[hrt] Edit MSIG"                   ,  "E", msigEdit),
+	ACT_DESC("[hrt] Accept MSIG"                 ,  "A", msigAccept),
+};
+
+void msig_reg_act()
+{
+	COMPAT_register_and_attach_to_menu("File/Produce file/Create MAP file...", ACT_NAME(msigSave), "[hrt] Create MSIG file...", NULL, SETMENU_INS, &msigSave, &PLUGIN);
+	COMPAT_register_and_attach_to_menu("File/Load file/PDB file...", ACT_NAME(msigLoad), "[hrt] MSIG file...", NULL, SETMENU_INS, &msigLoad, &PLUGIN);
+	for (size_t i = 0, n = qnumber(actions); i < n; ++i)
+		register_action(actions[i]);
+}
+
+void msig_unreg_act()
+{
+	detach_action_from_menu("File/Produce file/[hrt] Create MSIG file...", ACT_NAME(msigSave));
+	detach_action_from_menu("File/Load file/[hrt] MSIG file...", ACT_NAME(msigLoad));
+	unregister_action(ACT_NAME(msigLoad));
+	unregister_action(ACT_NAME(msigSave));
+	for (size_t i = 0, n = qnumber(actions); i < n; ++i)
+		unregister_action(actions[i].name);
+}
+
+//------------------------------------------------
+ACT_DEF(msigLoad)
+{
+	qstring filename = get_path(PATH_TYPE_IDB);
+	filename.append(".msig");
+	filename = ask_file(0, filename.c_str(), "FILTER MSIG files|*.msig\n[hrt] Load MSIG file:");
+	if(filename.empty())
+		return 0;
+
+	msigs.load(filename.c_str());
+	netnode nn(msigNodeName, 0, true);
+	nn.set(filename.c_str(), filename.size());
+	return 1;
+}
+
+ACT_DEF(msigSave)
 {
 	qstring filename;
 	filename += get_path(PATH_TYPE_IDB);
@@ -322,12 +469,12 @@ void msig_save()
 
 	const char     format[] =
 		"[hrt] Create MSIG file\n\n"
-		"<All User Named Functions:R>\n"
-		"<Manually Selected Functions:R>>\n"
+		"<All user named functions:R>\n"
+		"<Manually selected functions:R>>\n"
 		"<Minimal signature length:u:4:::>\n"
 		"<File name:f:1:64::>\n\n";
 	if (1 != ask_form(format, &rbtn, &minMsigLen, buf))
-		return;
+		return 0;
 	filename = buf;
 
 	if (rbtn == 0) {
@@ -344,7 +491,7 @@ void msig_save()
 			if (user_cancelled()) {
 				hide_wait_box();
 				msg("[hrt] msig save is canceled\n");
-				return;
+				return 0;
 			}
 
 			func_t* funcstru = getn_func(i);
@@ -387,33 +534,67 @@ void msig_save()
 
 	if (!msigs.size()) {
 		msg("[hrt] No any msigs are defined\n");
-		return;
+		return 0;
 	}
 	msigs.save(filename.c_str());
+	return 0;
 }
 
-void msig_load()
+ACT_DEF(msigAdd)
 {
-	qstring filename = get_path(PATH_TYPE_IDB);
-	filename.append(".msig");
-	filename = ask_file(0, filename.c_str(), "FILTER MSIG files|*.msig\n[hrt] Load MSIG file:");
-	if(filename.empty())
-		return;
-
-	msigs.load(filename.c_str());
-	netnode nn(msigNodeName, 0, true);
-	nn.set(filename.c_str(), filename.size());
+	vdui_t& vu = *get_widget_vdui(ctx->widget);
+	if(has_cached_cfunc(vu.cfunc->entry_ea))
+		vu.refresh_view(true); // force rebuild mba if cached
+	msig_add(vu.mba);
+	return 1;
 }
 
-void msig_auto_load()
+ACT_DEF(msigEdit)
 {
-	netnode nn(msigNodeName);
-	if(!exist(nn))
-		return;
+	vdui_t* vu = get_widget_vdui(ctx->widget);
+	qstring name;
+	if(!vu || !isMsig(vu, &name))
+		return 0;
+	if(!ask_str(&name, HIST_CMT, "[hrt] edit msig\nempty name to delete"))
+		return 0;
+	name.trim2();
+	if(msig_rename(vu->cfunc->entry_ea, name.c_str()))
+		vu->refresh_view(false);
+	return 0;
+}
 
-	qstring filename;
-	if(nn.valstr(&filename) < 0 || filename.empty())
-		return;
+ACT_DEF(msigAccept)
+{
+	vdui_t* vu = get_widget_vdui(ctx->widget);
+	qstring name;
+	if(!vu || !isMsig(vu, &name))
+		return 0;
+	// get_highlight(&name, ctx->widget, &out_flags); //does not take names with '::' inside
 
-	msigs.load(filename.c_str());
+	vu->get_current_item(USE_KEYBOARD); // vu->cpos  is valid after get_current_item
+	int pos = vu->cpos.x - (qnumber(msigMessage) - 1);
+
+	//skip "relaxed" prefix
+	if(name[0] == 'r' && name[1] == ' ') {
+		name.remove(0, 2);
+		pos -= 2;
+	}
+	if(pos < 0 || pos >= (int)name.length() || name[pos] == ' ')
+		return 0;
+
+	const char* n = name.c_str();
+	const char* bgn = n + pos;
+	for(; bgn > n && *(bgn - 1) != ' '; --bgn)
+		;
+
+	const char* end = qstrchr(bgn, ' ');
+	if(end)
+		name = qstring(bgn, end - bgn);
+	else
+		name = qstring(bgn);
+	if(set_name(vu->cfunc->entry_ea, name.c_str(), SN_FORCE)) {
+		msg("[hrt] %a: msig name accepted '%s'\n",vu->cfunc->entry_ea, name.c_str());
+		vu->refresh_view(true);
+	}
+	return 0;
 }

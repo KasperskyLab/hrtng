@@ -647,7 +647,6 @@ mba_maturity_t AskDesiredMaturity()
 
 
 //-------------------------------------------------------------------------
-#define AST_ENABLE_ALW return AST_ENABLE_ALWAYS
 ACT_DECL(show_microcode_explorer, AST_ENABLE_ALW)
 
 void registerMicrocodeExplorer()

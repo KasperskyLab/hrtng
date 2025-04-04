@@ -439,7 +439,7 @@ void apihashes_init()
 		return;
 	}
 
-	show_wait_box("Calculating...");
+	show_wait_box("[hrt] Calculating...");
 	hashes.clear();
 	qstring dllName;
 	bool bNextIsDll = true;

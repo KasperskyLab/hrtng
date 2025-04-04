@@ -364,7 +364,7 @@ bool setComment4Exp(cfunc_t* func, user_cmts_t *cmts, cexpr_t *expr, const char*
 		func->set_user_cmt(loc, s.c_str());
 		return true;
 	}
-	msg("[hrt] %a not join comments '%s' and '%s'\n", expr->ea, existCmt, comment);
+	//msg("[hrt] %a not join comments '%s' and '%s'\n", expr->ea, existCmt, comment);
 	return false;
 }
 

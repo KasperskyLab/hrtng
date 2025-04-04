@@ -626,12 +626,10 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 	}
 	name_vt += VTBL_SUFFIX;
 
-	{//TODO: do this better
-		ea_t fncea = get_ea(VT_ea);
-		if (!is_mapped(fncea)) {
-			msg("[hrt] scan VT at %a failed, !is_mapped(%a)\n", VT_ea, fncea);
-			return BADADDR;
-		}
+	ea_t fncea = get_ea(VT_ea);
+	if (!is_mapped(fncea)) {
+		msg("[hrt] scan VT at %a failed, !is_mapped(%a)\n", VT_ea, fncea);
+		return BADADDR;
 	}
 
 	qstring struccmt;
@@ -758,10 +756,8 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 	if(!ok) {
 #if IDA_SDK_VERSION < 850
 		del_struc(newstruc);
-#else //IDA_SDK_VERSION >= 850
-		newstruc.clear();
+		//del_named_type(nullptr, name_vt.c_str(), NTF_TYPE);
 #endif //IDA_SDK_VERSION < 850
-		del_named_type(nullptr, name_vt.c_str(), NTF_TYPE);
 		return newid;
 	}
 
