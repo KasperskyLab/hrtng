@@ -262,7 +262,8 @@ bool getKeyFromValranges(mblock_t* blk, mop_t *var, Key_t* key)
 {
 	valrng_t vr;
 	uvlr_t v;
-	if (blk->get_valranges(&vr, *var, VR_EXACT) && vr.cvt_to_single_value(&v)) {
+	vivl_t vivl(*var); // INTERR 52047 if not mop_r nor mop_S
+	if (vivl.defined() && blk->get_valranges(&vr, vivl, VR_EXACT) && vr.cvt_to_single_value(&v)) {
 		QASSERT(100508, nullptr == qstrchr(vr.dstr(), '|'));
 		*key = (Key_t)v;
 		return true;
