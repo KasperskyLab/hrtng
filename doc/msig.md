@@ -4,7 +4,7 @@ Menu *"File/Produce file/Create MSIG file..."*, *"File/Load file/MSIG file..."*
 
 Ida's flirt signatures depends a lot on a processor architecture and fails on an obfuscated code. Microcode signatures have no such limitation. It is applied on microcode during latest decompilation stage, when obfuscations possible gone.
 
-You can create MSIGs in "all at once" mode or "one by one" with selecting *"Create MSIG for the function"* in pseudocode context menu and then save them all by menu *"File/Produce file/Create MSIG file..."*. 
+MSIGs can be created in "one by one" mode with selecting *"Create MSIG for the function"* in pseudocode context menu and then save them all by menu *"File/Produce file/Create MSIG file..."*. 
 
 There are options of the "Create MSIG file" dialog:
  * All user named functions - functions will be re-decompiled for MSIG generation and MSIGs saved including those manually added
@@ -41,7 +41,7 @@ For a matched 'Relaxed' signature or a signature with multiple names, the proc w
 ```
 // The function matches msig: r msig_nameX msig_nameY msig_nameZ
 ```
-You may right click to one of signature names and select *"Accept MSIG"* (or press "A" key) to accept the correct proc name.  
+Double click or right click to one of signature names and select *"Accept MSIG"* (or press "A" key) to accept the correct proc name.  
 Or select *"Edit MSIG"* (or press "E" key) to:
  * remove duplicate names
  * delete the signature by set empty name

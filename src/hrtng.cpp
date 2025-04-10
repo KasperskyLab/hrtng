@@ -362,7 +362,7 @@ static ea_t idaapi get_call_dst(cfunc_t* cfunc, cexpr_t *call)
 			return callee->obj_ea;
 		if(is_data(flg)) {
 			dst_ea = get_ea(callee->obj_ea);
-			if(is_func(dst_ea))
+			if(is_func(get_flags(dst_ea)))
 				return dst_ea;
 		}
 		return BADADDR;
@@ -4725,9 +4725,14 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 		break;
 	case hxe_double_click:
 		{
-			vdui_t &vu = *va_arg(va, vdui_t *);
-			vu.get_current_item(USE_MOUSE);
-			return jump_to_call_dst(&vu); // Should return: 1 if the event has been handled
+			vdui_t* vu = va_arg(va, vdui_t *);
+			vu->get_current_item(USE_MOUSE);
+			if(isMsig(vu, nullptr)) {
+				//it possible to directly call msig_accept internals, but there is no API to create undo point, so this double click will be un-undo-able
+				process_ui_action(ACT_NAME(msigAccept));
+				return 1; // force return 1 to IDA don't catch handled double click
+			}
+			return jump_to_call_dst(vu); // Should return: 1 if the event has been handled
 		}
 		break;
 	case hxe_maturity:
@@ -5460,7 +5465,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.5.42";
+	addon.version = "2.5.43";
 	motd.sprnt("%s (%s) v%s for IDA%d ", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

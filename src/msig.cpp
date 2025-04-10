@@ -117,11 +117,18 @@ struct ida_local msig_t {
 			//top level resizing in relaxed mode become mov
 			if(op == m_low || op == m_xdu || op == m_xds)
 				op = m_mov;
-			//consider func like returning void, ignore mov to return var
-			if(op == m_mov && insn->d.t == mop_l && insn->d.l->idx == insn->d.l->mba->retvaridx) {
-				if(insn->l.t == mop_d)
-					SerializeInsn(insn->l.d, buf);
-				return;
+			if(op == m_mov) {
+				//consider func like returning void, ignore mov to return var
+				if(insn->d.t == mop_l && insn->d.l->idx == insn->d.l->mba->retvaridx) {
+					//TODO: check if (insn->d) is not used anywhere else
+					if(insn->l.t == mop_d)
+						SerializeInsn(insn->l.d, buf);
+					return;
+				}
+				// ignore strange (not combinable) var-to-var move
+				// mov arg.4{2}, arg_1.4{2} ; 180055988 not_combinable split4 u=edx.4 d=ebx.4
+				if(!insn->is_combinable() && insn->d.t == mop_l && insn->l.t == mop_l)
+					return;
 			}
 		}
 		buf.pack_db(op);
@@ -341,6 +348,7 @@ public:
 		}
 		qfclose(f);
 		msg("[hrt] %d msigs are saved to %s\n", cnt, filename);
+		modified = false;
 	}
 	void load(const char* filename)
 	{
@@ -378,6 +386,8 @@ const char* msig_match(mbl_array_t* mba)
 
 const char* msig_cached(ea_t ea)
 {
+	if(ea == BADADDR || !msigs.size())
+		return NULL;
 	return msigs.cached(ea);
 }
 
