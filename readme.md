@@ -89,11 +89,11 @@ Special thanks to following peoples for their great plugins were used as base fo
 
 ## Building
 
- * Clone or download [Crypto++® Library CMake](https://github.com/abdes/cryptopp-cmake) source code to `hrtng/src/cryptopp-cmake` folder.
+ * Clone hrtng together with [Crypto++® Library CMake](https://github.com/abdes/cryptopp-cmake) submodule. Or put manually downloaded `cryptopp-cmake` source code to `hrtng/src/cryptopp-cmake` folder.
  
 ```
 cd src
-git clone https://github.com/abdes/cryptopp-cmake
+git clone --recurse-submodules https://github.com/KasperskyLab/hrtng.git
 ```
 
  * Copy `IDA_DIR/plugins/hexrays_sdk/include/hexrays.hpp` file to the `include` directory of the IDA SDK. (Not necessary since IDA 9.0/8.5)
