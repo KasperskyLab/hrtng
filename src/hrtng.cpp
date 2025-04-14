@@ -155,8 +155,8 @@ static const action_desc_t actions[] =
 	ACT_DESC("[hrt] Open structure builder",         NULL, show_struct_bld),
 	ACT_DESC("[hrt] Finalize structure",             NULL, fin_struct),
 	ACT_DESC("[hrt] Recognize var type shape",       "T", recognize_shape),
-	ACT_DESC("[hrt] Which structs have this offset?",NULL, possible_structs_for_one_offset),
-	ACT_DESC("[hrt] Which structs have this size?",  NULL, structs_with_this_size),
+	ACT_DESC("[hrt] Which structs have this offset?","O", possible_structs_for_one_offset),
+	ACT_DESC("[hrt] Which structs have this size?",  "S", structs_with_this_size),
 	ACT_DESC("[hrt] Unite var reuse",                NULL, var_reuse),
 	ACT_DESC("[hrt] Convert to __usercall",          "U", convert_to_usercall),
 	ACT_DESC("[hrt] Jump to indirect call",          "J", jump_to_indirect_call),
@@ -2798,16 +2798,17 @@ ACT_DEF(create_dummy_struct)
 	qstring name;
 	static ushort empty = 1;
 	const char format[] =
+		"STARTITEM 1\n"
 		//title
 		"[hrt] Create struct\n\n"
 		"%/\n" // callback
+		"<~P~refix:q4::16::>\n"
 		"<~S~ize  :L1:32:16::>\n"
 		"<~N~ame  :q2::16::>\n"
-	  "<~P~refix:q4::16::>\n"
 		"<###create only last field#~E~mpty:c3>>\n"
 		"\n\n";
 	do {
-		if (1 != ask_form(format, dummy_struct_cb, &size, &name, &dummy_struct_prefix, &empty))
+		if (1 != ask_form(format, dummy_struct_cb, &dummy_struct_prefix, &size, &name, &empty))
 			return 0;
 		if (get_named_type_tid(name.c_str()) != BADADDR) {
 			msg("[hrt] struct '%s' already exists\n", name.c_str());
@@ -5465,7 +5466,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.5.43";
+	addon.version = "2.5.44";
 	motd.sprnt("%s (%s) v%s for IDA%d ", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

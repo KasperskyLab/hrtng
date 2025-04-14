@@ -1,5 +1,5 @@
 ## List structures with given size or offset
-Context menu *"Which structs have this size?"*, *"Which structs have this offset?"*
+Context menu *"Which structs have this size? (S)"*, *"Which structs have this offset? (O)"*
 
 Right clicking on any number in pseudocode view. There are two new items in the context menu appeared:
  - *Which structs have this offset?*
