@@ -51,20 +51,23 @@ static bool isVarNameGood(const char* name)
 	if(*name == 0)
 		return false;
 
-	const char* vname = NULL;
+	// names like: arg10, a10, arg_10, a_10, a2a
+	//             var10, v10, var_10, v_10
+	// (with and without '_')
 	if ((name[0] == 'a' || name[0] == 'v')) {
-		if((name[1] == 'r' && name[2] == 'g' && name[3] == '_') ||
-			 (name[1] == 'a' && name[2] == 'r' && name[3] == '_'))
-			vname = name + 4;
-		else
-			vname = name + 1;
-	}
-	if(vname &&
+		const char* vname = name + 1;
+		if((name[0] == 'a' && name[1] == 'r' && name[2] == 'g') ||
+			 (name[0] == 'v' && name[1] == 'a' && name[2] == 'r' ))
+			vname = name + 3;
+		if(*vname == '_')
+			vname++;
+		if(
 	  (vname[0] == 0 ||   (vname[0] >= '0' && vname[0] <= '9' &&
 		(vname[1] == 0 || (((vname[1] >= '0' && vname[1] <= '9') || vname[1] == 'a') && //smth like 'a22' or 'a2a'
 		(vname[2] == 0 ||   (vname[2] >= '0' && vname[2] <= '9' &&
 	   vname[3] == 0)))))))
 		return false;
+	}
 
 #if IDA_SDK_VERSION == 760
 	//annoing p_fld_xx renaming with ida 7.6
