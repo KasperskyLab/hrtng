@@ -417,7 +417,7 @@ static int idaapi jump_to_call_dst(vdui_t *vu)
 	if(dst_ea != BADADDR && is_func(get_flags(dst_ea))) {
 		if(call->ea != BADADDR)
 			add_cref(call->ea, dst_ea, fl_CN);
-		COMPAT_open_pseudocode_REUSE_ACTIVE(dst_ea);
+		jumpto(dst_ea); //COMPAT_open_pseudocode_REUSE_ACTIVE(dst_ea);
 		return 1;
 	}
 	//pass unhandled action to IDA
@@ -5466,7 +5466,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.5.44";
+	addon.version = "2.5.45";
 	motd.sprnt("%s (%s) v%s for IDA%d ", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

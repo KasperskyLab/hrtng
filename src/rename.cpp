@@ -508,40 +508,37 @@ bool getExpName(cfunc_t *func, cexpr_t* exp, qstring* name, bool derefPtr /* =fa
 				if(ref.length() > 1 && ref.last() == '_') {
 					ref.remove_last();
 					*name = ref;
+					res = true;
 				} else {
 					qstring tname;
 					if(!exp->x->type.get_type_name(&tname) || tname != ref) {
 						*name = "p_";
 						name->append(ref);
+						res = true;
 					}
 				}
-				res = true;
 			}
 		}
 		break;
-#if 0
 	case cot_ptr:
 		if (derefPtr) {
+#if 0
 			if(exp->x->op == cot_cast){
 				//here is not deref, check is it looks like type recast
 				if(exp->x->type.is_ptr())
 					return getExpName(func, exp->x->x, name);
 			} else {
+#endif
 				qstring deref;
 				if(getExpName(func, exp->x, &deref)) {
 					if(deref.length() > 2 && deref[0] == 'p' && deref[1] == '_') {
 						*name = deref.substr(2);
-					} else {
-						*name = "r_";
-						name->append(deref);
+						res = true;
 					}
-					res = true;
-					msg("[hrt] %a: derefPtr ptr '%s'\n", exp->ea, name->c_str());
 				}
-			}
+			//}
 		}
 		break;
-#endif
 	}
 	if (res) {
 		stripName(name);

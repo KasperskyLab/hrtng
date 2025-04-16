@@ -19,7 +19,7 @@ The first thing I've seen very annoying when begins reverse a lot - I spend too 
 		+ `&X_` produce name `X` (last '_' symbol stripped)
 		+ `&X`  produce name `p_X` ('p_' inserted)
 * Bad-Name-Sources are:
-	- names like: `var_XX`, `arg_XX`, `varXX`, `argXX`, `aXX`, `vXX, `a_XX`, `v_XX, vXa,` where `XX` one or two digits
+	- names like: `var_XX`, `arg_XX`, `varXX`, `argXX`, `aXX`, `vXX`, `a_XX`, `v_XX`, `vXa`, where `XX` one or two digits
 	- CPU register names with optional numeric suffix (like `ecx0`)
 	- struct member with name `VT` / `__vftable` or name begins from `field_`, `fld_`, `gap`
   - case sensitive names optionally prefixed with `lp` : `this`, `inited`, `result`, `Mem`, `Memory`, `Block`, `String`, `ProcName`, `ProcAddress`, `LibFileName`, `ModuleName`, `LibraryA`, `LibraryW`
