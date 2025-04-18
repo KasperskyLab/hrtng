@@ -333,30 +333,6 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 		return false;
 	}
 
-	//if var is arg it will be useful to rename argument inside function prototype
-	if(var->is_arg_var()) {
-		int vIdx = (int)varIdx;
-		ssize_t argIdx = func->argidx.index(vIdx);
-		if(argIdx != -1) {
-			tinfo_t funcType;
-			if(func->get_func_type(&funcType)) {
-				func_type_data_t fi;
-				if(funcType.get_func_details(&fi) && fi.size() > (size_t)argIdx) {
-					//msg("[hrt] %a: Rename arg%d \"%s\" to \"%s\"\n", refea, argIdx + 1, fi[argIdx].name.c_str(), newName.c_str());
-					fi[argIdx].name = newName;
-					stripName(&fi[argIdx].name);
-					tinfo_t newFType;
-					newFType.create_func(fi);
-					if(newFType.is_correct() && apply_tinfo(func->entry_ea, newFType, is_userti(func->entry_ea) ? TINFO_DEFINITE : TINFO_GUESSED)) {
-						qstring typeStr;
-						newFType.print(&typeStr);
-						msg("[hrt] %a: Function prototype was recasted for change arg-name into \"%s\"\n", refea, typeStr.c_str());
-					}
-				}
-			}
-		}
-	}
-
 	bool res = true;
 	qstring oldname = var->name;
 	if (vdui) {
@@ -371,11 +347,42 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 		var->name = newName;
 		var->set_user_name();
 
+		tinfo_t newType;
 		if(!var->has_user_type()) {
 			tinfo_t t = getType4Name(newName.c_str());
 			if(!t.empty() && var->accepts_type(t))
-				if(var->set_lvar_type(t, true))
+				if(var->set_lvar_type(t, true)) {
 					msg("[hrt] %a: type of var '%s' refreshed\n", refea, newName.c_str());
+					newType = t;
+				}
+		}
+
+		//if var is arg it will be useful to rename argument inside function prototype
+		if(var->is_arg_var()) {
+			int vIdx = (int)varIdx;
+			ssize_t argIdx = func->argidx.index(vIdx);
+			if(argIdx != -1) {
+				tinfo_t funcType;
+				if(func->get_func_type(&funcType)) {
+					func_type_data_t fi;
+					if(funcType.get_func_details(&fi) && fi.size() > (size_t)argIdx) {
+						//msg("[hrt] %a: Rename arg%d \"%s\" to \"%s\"\n", refea, argIdx + 1, fi[argIdx].name.c_str(), newName.c_str());
+						if(!isVarNameGood(fi[argIdx].name.c_str())) {
+							fi[argIdx].name = newName;
+							stripName(&fi[argIdx].name);
+							if(!newType.empty() && isDummyType(fi[argIdx].type.get_decltype()))
+								fi[argIdx].type = newType;
+							tinfo_t newFType;
+							newFType.create_func(fi);
+							if(newFType.is_correct() && apply_tinfo(func->entry_ea, newFType, is_userti(func->entry_ea) ? TINFO_DEFINITE : TINFO_GUESSED)) {
+								qstring typeStr;
+								newFType.print(&typeStr);
+								msg("[hrt] %a: Function prototype was recasted for change arg%d into \"%s\"\n", refea, argIdx, typeStr.c_str());
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 	if(res)
@@ -912,20 +919,15 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 								//msg("[hrt] %a %s: In function %a %s rename arg%d \"%s\" to \"%s\"\n", call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str(), i + 1, fi[i].name.c_str(), argVarName.c_str());
 								fi[i].name = argVarName;
 								fiChanged = true;
-								if(!remove_pointer(fi[i].type).is_struct()) { //retrieve, compare and set type
-									arg = skipCast(arg); //remove typecast
-									tinfo_t argType = getExpType(func, arg);
-									if(remove_pointer(argType).is_struct()) {
-#if 0
-										qstring oldType; fi[i].type.print(&oldType);
-										qstring newType; argType.print(&newType);
-										msg("[hrt] %a %s: In function %a %s recast arg%d %s from \"%s\" to \"%s\"\n", 
-											call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str(), i + 1, fi[i].name.c_str(),
-											oldType.c_str(), newType.c_str());
-#endif
+								if(isDummyType(fi[i].type.get_decltype())) {
+									tinfo_t argType = getType4Name(argVarName.c_str());
+									if(argType.empty())
+										argType = getExpType(func, skipCast(arg));
+									if(!isDummyType(argType.get_decltype()) && argType.is_scalar()) {
+										//msg("[hrt] %a %s: In function %a %s recasted arg%d `%s` from \"%s\" to \"%s\"\n", 	call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str(), i + 1, fi[i].name.c_str(), fi[i].type.dstr(), argType.dstr());
 										fi[i].type = argType;
 									}
-								}
+								} //else msg("[hrt] arg%d `%s` (%d - %s) of %s", i + 1, fi[i].name.c_str(), fi[i].type.get_decltype(), fi[i].type.dstr(), get_short_name(dstea).c_str());
 						}
 					}
 					if(bCallAssign) {
@@ -939,11 +941,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 						tinfo_t newFType;
 						newFType.create_func(fi);
 						if(newFType.is_correct() && apply_tinfo(dstea, newFType, TINFO_DELAYFUNC | (is_userti(dstea) ? TINFO_DEFINITE : TINFO_GUESSED))) // apply_callee_tinfo
-						{
-							qstring typeStr;
-							newFType.print(&typeStr);
-							msg("[hrt] %a %s: Function %a %s was recast to \"%s\"\n", call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str(), typeStr.c_str());
-						}
+							msg("[hrt] %a %s: Function %a %s recasted to \"%s\"\n", call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str(), newFType.dstr());
 					}
 				}
 			} else if(!tif.empty()){

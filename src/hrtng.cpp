@@ -1980,14 +1980,12 @@ bool set_ea_type(ea_t ea, tinfo_t *ts)
 
 	tinfo_t oldType;
 	if(get_tinfo(&oldType, ea)) {
-		qstring typestr;
-		ts->print(&typestr);
 		qstring name;
     if (has_any_name(get_flags(ea)))
 			name = get_short_name(ea);
 		else
 			name.sprnt("0x%a", ea);
-		int answer = ask_yn(ASKBTN_NO, "[hrt] Change type of '%s' to '%s'?", name.c_str(), typestr.c_str());
+		int answer = ask_yn(ASKBTN_NO, "[hrt] Change type of '%s' to '%s'?", name.c_str(), ts->dstr());
 		if(answer == ASKBTN_NO || answer ==ASKBTN_CANCEL)
 			return false;
 	}
@@ -5029,7 +5027,7 @@ static ssize_t idaapi idp_callback(void *user_data, int ncode, va_list va)
 	return 0;
 }
 
-static void progress()
+static void progress(const char *new_name)
 {
 	size_t funcqty = get_func_qty();
 	if(!funcqty)
@@ -5047,7 +5045,7 @@ static void progress()
 	}
 	if(!total)
 		return;
-	msg("[hrt] --------------- progress: %.2f%% (done %d of %d, left %d) ---------------\n", done * 100.0 / total, done, total, total - done);
+	msg("[hrt] --------------- progress: %.2f%% (done %d of %d, left %d) on '%s' ---------------\n", done * 100.0 / total, done, total, total - done, new_name);
 
 	//if(done == total) TODO congratulation firework
 }
@@ -5259,11 +5257,8 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 				 (is_ea(ea_fl) && get_tinfo(&oldType, ea) && oldType.is_func())) // func-type instead pointer-to-func (TODO: it was very old IDA bug, probably already fixed. Check it!)
 			{
 				tinfo_t t = getType4Name(new_name, is_func(ea_fl));
-				if(!t.empty() && apply_tinfo(ea, t, TINFO_DEFINITE | TINFO_DELAYFUNC | TINFO_STRICT)) { //set_tinfo(ea, &t) left unnecessary arguments in func type, even "t" has not such
-					qstring str;
-					t.print(&str);
-					msg("[hrt] %a: set glbl '%s' type '%s'\n", ea, new_name, str.c_str());
-				}
+				if(!t.empty() && apply_tinfo(ea, t, TINFO_DEFINITE | TINFO_DELAYFUNC | TINFO_STRICT)) //set_tinfo(ea, &t) left unnecessary arguments in func type, even "t" has not such
+					msg("[hrt] %a: set glbl '%s' type '%s'\n", ea, new_name, t.dstr());
 			}
 
 #if 0 // disabled because it works now much faster
@@ -5275,7 +5270,7 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 
 			if(is_func(ea_fl)) {
 				if (auto_is_ok())
-					progress();
+					progress(new_name);
 				const char* ctor = qstrstr(new_name, "::ctor");
 				if(ctor) {
 					tinfo_t tif;
@@ -5466,7 +5461,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.5.45";
+	addon.version = "2.5.46";
 	motd.sprnt("%s (%s) v%s for IDA%d ", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

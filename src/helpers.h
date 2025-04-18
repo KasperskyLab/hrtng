@@ -153,6 +153,7 @@ void dump_ctree(cfunc_t* func, const char* fname);
 inline THREAD_SAFE bool isRegOvar(mopt_t mop) { return mop == mop_r || mop == mop_S /*|| mop == mop_l*/; }
 inline THREAD_SAFE cexpr_t* skipCast(cexpr_t* e) {if(e->op == cot_cast) return e->x; return e;}
 inline THREAD_SAFE bool isRenameble(ctype_t ct) {	return (ct == cot_var || ct == cot_obj || ct == cot_memptr || ct == cot_memref);}
+inline THREAD_SAFE bool isDummyType(type_t t) { return is_type_partial(t) ||  get_full_type(t) == ((is64bit() ? BT_INT64 : BT_INT32) | BTMT_UNKSIGN);}
 
 struct qstr_printer_t : public vd_printer_t
 {

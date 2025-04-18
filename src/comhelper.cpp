@@ -307,13 +307,11 @@ bool chkCall(cexpr_t *call, qstring &comment)
 					if (argObj->op == cot_var) {
 						lvar_t& var = func->get_lvars()->at(argObj->v.idx);
 						tinfo_t &oldType = var.type();
-						if (oldType.is_unknown() || oldType.is_pvoid() || oldType.is_scalar()) {
+						if(isDummyType(oldType.get_decltype()) || oldType.is_pvoid()) {
 							tinfo_t t = make_pointer(create_typedef(tname.c_str()));
 							if (var.set_lvar_type(t)) {
 								(&args[ipObj])->calc_type(false); //recalc arg type
-								qstring typeStr;
-								t.print(&typeStr);
-								msg("[hrt] %a %s: Var %s was recast to \"%s\"\n", call->ea, funcname.c_str(), var.name.c_str(), typeStr.c_str());
+								msg("[hrt] %a %s: Var %s was recast to \"%s\"\n", call->ea, funcname.c_str(), var.name.c_str(), t.dstr());
 								return true;
 							}
 						}
