@@ -354,20 +354,33 @@ struct ida_local ah_visitor_t : public ctree_visitor_t
 			func->save_user_cmts();
 		user_cmts_free(cmts);
 	}
+	void chkVal(hash_t val, citem_t *expr)
+	{
+		if(val) {
+			auto it = hashes.find(val);
+			if(it != hashes.end()) {
+				msg("[hrt] %a: Found API hash %" FMT_64 "x for %s\n", expr->ea, it->first, it->second.c_str());
+				cmtModified |= setComment4Exp(func, cmts, expr, it->second.c_str());
+			}
+		}
+	}
 	virtual int idaapi visit_expr(cexpr_t *expr)
 	{
-		if(expr->op == cot_num && expr->n->nf.org_nbytes >= 4) {
-			hash_t val = expr->numval();
-			if(val) {
-				auto it = hashes.find(val);
-				if(it != hashes.end()) {
-					msg("[hrt] %a: Found API hash %" FMT_64 "x for %s\n", expr->ea, it->first, it->second.c_str());
-					cmtModified |= setComment4Exp(func, cmts, expr, it->second.c_str());
-				}
-			}
+		if(expr->op == cot_num && expr->n->nf.org_nbytes >= 4)
+			chkVal(expr->numval(), expr);
+		return 0;
+	}
+	virtual int idaapi visit_insn(cinsn_t *insn)
+	{
+		if(insn->op == cit_switch) {
+			ccases_t &cases = insn->cswitch->cases;
+			for(size_t i = 0; i < cases.size(); i++)
+				for(size_t j = 0; j < cases[i].size(); j++)
+					chkVal(cases[i].value(j), &cases[i]);
 		}
 		return 0;
 	}
+
 };
 
 static bool bApihashesInited = false;

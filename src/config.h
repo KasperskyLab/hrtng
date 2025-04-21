@@ -19,13 +19,31 @@
 
 #pragma once
 
+#ifdef _MSC_VER
+# pragma pack(push,1)
+#else
+# pragma pack(1)
+#endif
+#ifdef __GNUC__
+# define ATTR_PACKED(al) __attribute__((__packed__)) __attribute__((__aligned__(al)))
+#else
+# define ATTR_PACKED
+#endif
+
 struct config_t {
 	// !!! here must be only simple scalar types inside because it saved/restored as a binary blob
 	// !!! types of members must be compatible with types used by `ask_form` API
 	ushort disable_autorename = 0;
 	// !!! add new fields to the end of the struct to keep backward compatibility
 	// !!! search "add new config_t fields" comment in `config.cpp`
-};
+} ATTR_PACKED(16);
+
+#ifdef _MSC_VER
+# pragma pack(pop)
+#else
+# pragma pack()
+#endif
+
 extern config_t cfg;
 
 void configLoad();

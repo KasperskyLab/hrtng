@@ -143,7 +143,7 @@ bool jump_custom_viewer(TWidget *custom_viewer, int line, int x, int y);
 
 bool isWnd();
 bool appendComment(qstring &comments, qstring &newCmt, bool bDuplicable = false);
-bool setComment4Exp(cfunc_t* func, user_cmts_t *cmts, cexpr_t *expr, const char* comment, bool bDisasmOnly = false, bool bSemicolonCmt = false, bool bOverride = false);
+bool setComment4Exp(cfunc_t* func, user_cmts_t *cmts, citem_t *expr, const char* comment, bool bDisasmOnly = false, bool bSemicolonCmt = false, bool bOverride = false);
 tinfo_t getCallInfo(cexpr_t *call, ea_t* dstea);
 void replace_colortag_inplace(char *line, int pos, char prefix, char find, char replace);
 void replaceExp(const cfunc_t *func, cexpr_t *expr, cexpr_t *newExp, bool clean = true);

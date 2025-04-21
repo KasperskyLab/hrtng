@@ -321,7 +321,7 @@ bool appendComment(qstring &comments, qstring &newCmt, bool bDuplicable)
 	return false;
 }
 
-bool setComment4Exp(cfunc_t* func, user_cmts_t *cmts, cexpr_t *expr, const char* comment, bool bDisasmOnly, bool bSemicolonCmt, bool bOverride)
+bool setComment4Exp(cfunc_t* func, user_cmts_t *cmts, citem_t *expr, const char* comment, bool bDisasmOnly, bool bSemicolonCmt, bool bOverride)
 {
 	if (!expr || !qstrlen(comment))
 		return false;
