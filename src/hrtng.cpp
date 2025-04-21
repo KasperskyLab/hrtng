@@ -1,5 +1,5 @@
 /*
-    Copyright © 2017-2024 AO Kaspersky Lab
+    Copyright © 2017-2025 AO Kaspersky Lab
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -43,6 +43,7 @@
 #include "warn_on.h"
 
 #include "helpers.h"
+#include "config.h"
 #include "structures.h"
 #include "cast.h"
 #include "lit.h"
@@ -4771,12 +4772,13 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 			case CMAT_TRANS3:
 				com_scan(cfunc);
 				break;
-			case CMAT_CASTED:
+			//case CMAT_CASTED:
+			//	break;
+			case CMAT_FINAL:
 				auto_create_vtbls(cfunc); //before all, virtual calls may appear as result of vtbl creation when constructor is inlined into caller proc
 				apihashes_scan(cfunc);// before autorename_n_pull_comments: so comments be used for renaming
-				autorename_n_pull_comments(cfunc);
-				break;
-			case CMAT_FINAL:
+				if(!cfg.disable_autorename)
+					autorename_n_pull_comments(cfunc);
 				lit_scan(cfunc); // after autorename_n_pull_comments: to search literals in renamed indirect calls
 				make_if42blocks(cfunc);
 
@@ -5461,7 +5463,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.5.46";
+	addon.version = "2.5.47";
 	motd.sprnt("%s (%s) v%s for IDA%d ", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {
@@ -5473,6 +5475,7 @@ plugmod_t*
 		msg("[hrt] %s does not work without decompiler, sorry\n", motd.c_str());
 		return PLUGIN_SKIP;
 	}
+	configLoad();
 
 	install_hexrays_callback(callback, NULL);
 	hook_to_notification_point(HT_UI, ui_callback, NULL);	
@@ -5544,7 +5547,7 @@ void idaapi term(void)
 //--------------------------------------------------------------------------
 bool idaapi run(size_t)
 {
-	// should not be called because of PLUGIN_HIDE
+	configDlg();
 	return true;
 }
 
@@ -5552,13 +5555,13 @@ bool idaapi run(size_t)
 plugin_t PLUGIN =
 {
 	IDP_INTERFACE_VERSION,
-	PLUGIN_HIDE,          // plugin flags
+	0,                    // plugin flags
 	init,                 // initialize
 	term,                 // terminate. this pointer may be NULL.
 	run,                  // invoke plugin
 	"\n[hrt] Useful tools for IDA and Hex-Rays decompiler",  // long comment about the plugin it could appear in the status line or as a hint
 	"",                   // multiline help about the plugin
-	"[hrt] bes's compilation of hexrays tools collection", // the preferred short name of the plugin
+	"hrtng options",      // the preferred short name of the plugin
 	""                    // the preferred hotkey to run the plugin
 };
 //--------------------------------------------------------------------------

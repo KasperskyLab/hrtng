@@ -18,5 +18,16 @@
 */
 
 #pragma once
-void com_make_data_cb(ea_t ea, flags64_t flags, tid_t tid, asize_t len);
-void com_scan(cfunc_t *cfunc);
+
+struct config_t {
+	// !!! here must be only simple scalar types inside because it saved/restored as a binary blob
+	// !!! types of members must be compatible with types used by `ask_form` API
+	ushort disable_autorename = 0;
+	// !!! add new fields to the end of the struct to keep backward compatibility
+	// !!! search "add new config_t fields" comment in `config.cpp`
+};
+extern config_t cfg;
+
+void configLoad();
+void configDlg();
+

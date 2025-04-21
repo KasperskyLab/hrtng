@@ -28,6 +28,7 @@ ADD_IDA_PLUGIN(hrtng
   appcall_view.cpp
   cast.cpp
   comhelper.cpp
+  config.cpp
   crpp.cpp
   decr.cpp
   deinline.cpp
