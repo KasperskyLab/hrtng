@@ -177,7 +177,7 @@ static const action_desc_t actions[] =
 	ACT_DESC("[hrt] Disable inlines",                NULL, disable_inlines),
 	ACT_DESC("[hrt] Enable inlines",                 NULL, enable_inlines),
 	ACT_DESC("[hrt] Rename inline...",                "N", rename_inline),
-	ACT_DESC("[hrt] Rename func...",             "Shift-N", rename_func),
+	ACT_DESC("[hrt] Rename func...",             "Ctrl-N", rename_func),
 	ACT_DESC("[hrt] Create 'inline' from grouped nodes",  NULL, create_inline_gr),
 	ACT_DESC("[hrt] Create 'inline' from selection",  NULL, create_inline_sel),
 	ACT_DESC("[hrt] Enable Unflattener",              NULL, uf_enable),
