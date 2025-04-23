@@ -358,7 +358,7 @@ bool setComment4Exp(cfunc_t* func, user_cmts_t *cmts, citem_t *expr, const char*
 		return true;
 	}
 	const char* existCmt = func->get_user_cmt(loc, RETRIEVE_ALWAYS);
-	if(qstrcmp(existCmt, comment)) {
+	if(!qstrstr(existCmt, comment)) {
 		qstring s;
 		s.sprnt("%s %s", existCmt, comment); // join old and new comment
 		func->set_user_cmt(loc, s.c_str());

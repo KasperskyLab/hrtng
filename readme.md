@@ -59,6 +59,13 @@ Special thanks to following peoples for their great plugins were used as base fo
   * [Virtual calls assistance](doc/virtual-calls.md)
   * [Jump to indirect call destination](doc/ijmp.md)
   * [Fix stack pointer for indirect call](doc/fix-stack.md)
+ 
+### Function name and prototype
+  * [Smart rename func](doc/rename-func.md)
+  * [Convert function to __usercall, detect spoiled registers](doc/usercall.md)
+  * [Set calling conventions bit closer to Go-lang](doc/golang.md)
+  * [~~Remove function's return type converting it to void func(...)~~](doc/remove-ret-type.md)
+  * [~~Remove function's argument~~](doc/remove-arg.md)
 
 ### IDA UI improvements
   * [Extended xrefs](doc/xrefs_ex.md)
@@ -70,12 +77,8 @@ Special thanks to following peoples for their great plugins were used as base fo
   * [AVX lifter](doc/avx.md)
   * [Dump strings, comments and names from the IDA database](doc/dump-strings.md)
   * [Offsets table creation](doc/offsets-tbl.md)
-  * [Convert function to __usercall, detect spoiled registers](doc/usercall.md)
-  * [Set calling conventions bit closer to Go-lang](doc/golang.md)
   * Print reversing progress percent on a proc renaming
   * [Recursively decompile callees](doc/recur-decomp.md)
-  * [~~Remove function's return type converting it to void func(...)~~](doc/remove-ret-type.md)
-  * [~~Remove function's argument~~](doc/remove-arg.md)
   * [~~Deal with structures with negative offsets or access based on offsets in a middle of structure~~](doc/neg-offs.md)
 
 ### Patching

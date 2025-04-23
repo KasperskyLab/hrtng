@@ -11,6 +11,7 @@
 
 #include "helpers.h"
 #include "structures.h"
+#include "rename.h"
 
 //-------------------------------------------------------------------------
 #if IDA_SDK_VERSION < 850
@@ -990,6 +991,10 @@ void auto_create_vtbls(cfunc_t *cfunc)
 			tinfo_t classType = left->x->type;
 			classType.remove_ptr_or_array();
 			if(!classType.is_struct())
+				return 0;
+
+			//do not overwrite well named first field, probably a wrong type was pushed to arg/var
+			if(getUdtMembName(classType, 0, nullptr))
 				return 0;
 
 #if IDA_SDK_VERSION < 850

@@ -391,7 +391,7 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 	return res;
 }
 
-static bool getUdtMembName(tinfo_t udt, uint32 offset, qstring* name)
+bool getUdtMembName(tinfo_t udt, uint32 offset, qstring* name)
 {
 	udt.remove_ptr_or_array();
 	udm_t memb;

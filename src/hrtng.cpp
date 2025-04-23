@@ -141,7 +141,8 @@ ACT_DECL(mavx_enable             , AST_ENABLE_FOR(isMicroAvx_avail() && !isMicro
 ACT_DECL(mavx_disable            , AST_ENABLE_FOR(isMicroAvx_avail() &&  isMicroAvx_active()))
 #endif //IDA_SDK_VERSION >= 750
 ACT_DECL(selection2block         , return (ctx->widget_type != BWN_PSEUDOCODE ? AST_DISABLE_FOR_WIDGET : (ctx->has_flag(ACF_HAS_SELECTION) ? AST_ENABLE : AST_DISABLE)))
-ACT_DECL(clear_if42blocks         , AST_ENABLE_FOR(has_if42blocks(vu->cfunc->entry_ea)))
+ACT_DECL(clear_if42blocks        , AST_ENABLE_FOR(has_if42blocks(vu->cfunc->entry_ea)))
+ACT_DECL(rename_func             , AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
 #if IDA_SDK_VERSION < 750
 ACT_DECL(remove_rettype      , AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
 ACT_DECL(remove_argument     , AST_ENABLE_FOR(is_arg_var(vu)))
@@ -176,6 +177,7 @@ static const action_desc_t actions[] =
 	ACT_DESC("[hrt] Disable inlines",                NULL, disable_inlines),
 	ACT_DESC("[hrt] Enable inlines",                 NULL, enable_inlines),
 	ACT_DESC("[hrt] Rename inline...",                "N", rename_inline),
+	ACT_DESC("[hrt] Rename func...",             "Shift-N", rename_func),
 	ACT_DESC("[hrt] Create 'inline' from grouped nodes",  NULL, create_inline_gr),
 	ACT_DESC("[hrt] Create 'inline' from selection",  NULL, create_inline_sel),
 	ACT_DESC("[hrt] Enable Unflattener",              NULL, uf_enable),
@@ -208,6 +210,7 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 		attach_action_to_popup(view, p, ACT_NAME(var_reuse));
 	}
 	if (vu->item.citype == VDI_FUNC) {
+		attach_action_to_popup(view, p, ACT_NAME(rename_func));
 		attach_action_to_popup(view, p, ACT_NAME(convert_to_usercall));
 #if IDA_SDK_VERSION < 850
 		attach_action_to_popup(view, p, ACT_NAME(convert_to_golang_call));
@@ -838,6 +841,54 @@ ACT_DEF(fin_struct)
 	//restore old visible func
 	COMPAT_open_pseudocode_REUSE(save_ea);
 	return 1;
+}
+
+ACT_DEF(rename_func)
+{
+	vdui_t *vu = get_widget_vdui(ctx->widget);
+	if(!vu || vu->item.citype != VDI_FUNC || vu->cfunc->entry_ea == BADADDR)
+		return 0;
+
+	tinfo_t ftype;
+	if(!vu->cfunc->get_func_type(&ftype))
+		return 0;
+
+	qstring newName;
+	func_type_data_t fti;
+	ftype.get_func_details(&fti);
+	if(fti.size()) {
+		tinfo_t argt = fti[0].type.get_pointed_object();
+		if(argt.is_struct() && argt.get_type_name(&newName))
+			newName.append("::");
+	}
+
+	qstring oldname = get_short_name(vu->cfunc->entry_ea);
+	if(has_user_name(get_flags(vu->cfunc->entry_ea)))
+		newName.append(oldname);
+
+	while (1) {
+		if(!ask_ident(&newName, "[hrt] Rename %s:", oldname.c_str()))
+			return 0;
+
+		if(set_name(vu->cfunc->entry_ea, newName.c_str(), SN_NOCHECK | SN_NOWARN /*| SN_FORCE*/))
+			break;
+
+		// manually implement SN_FORCE like behavior because numeric suffix like "_12" is stripped by the plugin on a type-to-name and name-to-type checks
+		// but the functions with such names may have different prototypes, so need to add different suffix, for example without "_"
+
+		if (newName.size() > MAX_NAME_LEN)
+			newName.resize(MAX_NAME_LEN);
+		if(!validate_name(&newName, VNT_IDENT))
+			continue;
+
+		qstring name = newName;
+		for(int i = 1; get_name_ea(BADADDR, newName.c_str()) != BADADDR && i < 100; i++) {
+			newName.sprnt("%s%d", name.c_str(), i);
+		}
+	}
+
+	vu->refresh_view(true);
+	return 0;
 }
 
 #if IDA_SDK_VERSION < 750
@@ -5463,7 +5514,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.5.48";
+	addon.version = "2.6.49";
 	motd.sprnt("%s (%s) v%s for IDA%d ", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

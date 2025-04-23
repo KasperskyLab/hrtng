@@ -23,4 +23,4 @@ bool renameExp(ea_t refea, cfunc_t *func, cexpr_t* exp, qstring* name, vdui_t *v
 void autorename_n_pull_comments(cfunc_t *cfunc);
 bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, vdui_t *vdui = NULL); //vdui->rename_lvar can rebuild all internal structures/ call later!!!
 bool getVarName(lvar_t * var, qstring* name);
-
+bool getUdtMembName(tinfo_t udt, uint32 offset, qstring* name);
