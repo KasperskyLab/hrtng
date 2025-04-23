@@ -73,7 +73,7 @@ hexdsp_t *hexdsp = NULL;
 #endif //IDA_SDK_VERSION < 760
 
 bool set_var_type(vdui_t *vu, lvar_t *lv, tinfo_t *ts);
-bool is_arg_var(vdui_t *vu);
+bool is_arg_var(vdui_t *vu, lvar_t **var = nullptr);
 bool is_call(vdui_t *vu, cexpr_t **call = nullptr, bool argsDeep = false);
 bool is_recastable(vdui_t *vu, tinfo_t *ts);
 bool is_stack_var_assign(vdui_t *vu, int* varIdx, ea_t *ea, sval_t* size);
@@ -142,7 +142,7 @@ ACT_DECL(mavx_disable            , AST_ENABLE_FOR(isMicroAvx_avail() &&  isMicro
 #endif //IDA_SDK_VERSION >= 750
 ACT_DECL(selection2block         , return (ctx->widget_type != BWN_PSEUDOCODE ? AST_DISABLE_FOR_WIDGET : (ctx->has_flag(ACF_HAS_SELECTION) ? AST_ENABLE : AST_DISABLE)))
 ACT_DECL(clear_if42blocks        , AST_ENABLE_FOR(has_if42blocks(vu->cfunc->entry_ea)))
-ACT_DECL(rename_func             , AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
+ACT_DECL(rename_func             , AST_ENABLE_FOR(vu->item.citype == VDI_FUNC || is_arg_var(vu)))
 #if IDA_SDK_VERSION < 750
 ACT_DECL(remove_rettype      , AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
 ACT_DECL(remove_argument     , AST_ENABLE_FOR(is_arg_var(vu)))
@@ -209,8 +209,9 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 		attach_action_to_popup(view, p, ACT_NAME(recognize_shape));
 		attach_action_to_popup(view, p, ACT_NAME(var_reuse));
 	}
-	if (vu->item.citype == VDI_FUNC) {
+	if (vu->item.citype == VDI_FUNC || is_arg_var(vu))
 		attach_action_to_popup(view, p, ACT_NAME(rename_func));
+	if (vu->item.citype == VDI_FUNC) {
 		attach_action_to_popup(view, p, ACT_NAME(convert_to_usercall));
 #if IDA_SDK_VERSION < 850
 		attach_action_to_popup(view, p, ACT_NAME(convert_to_golang_call));
@@ -846,7 +847,8 @@ ACT_DEF(fin_struct)
 ACT_DEF(rename_func)
 {
 	vdui_t *vu = get_widget_vdui(ctx->widget);
-	if(!vu || vu->item.citype != VDI_FUNC || vu->cfunc->entry_ea == BADADDR)
+	lvar_t *var = nullptr;
+	if(!vu || (vu->item.citype != VDI_FUNC  && !is_arg_var(vu, &var)) || vu->cfunc->entry_ea == BADADDR)
 		return 0;
 
 	tinfo_t ftype;
@@ -857,7 +859,11 @@ ACT_DEF(rename_func)
 	func_type_data_t fti;
 	ftype.get_func_details(&fti);
 	if(fti.size()) {
-		tinfo_t argt = fti[0].type.get_pointed_object();
+		tinfo_t argt;
+		if(var)
+			argt = var->tif.get_pointed_object();
+		else
+			argt = fti[0].type.get_pointed_object();
 		if(argt.is_struct() && argt.get_type_name(&newName))
 			newName.append("::");
 	}
@@ -891,15 +897,19 @@ ACT_DEF(rename_func)
 	return 0;
 }
 
-#if IDA_SDK_VERSION < 750
-bool is_arg_var(vdui_t *vu)
+bool is_arg_var(vdui_t *vu, lvar_t **var)
 {
-	if (vu->item.citype == VDI_LVAR &&
-		vu->item.get_lvar()->is_arg_var())
-		return true;
-	return false;
+	if(vu->item.citype != VDI_LVAR)
+		return false;
+	lvar_t *v = vu->item.get_lvar();
+	if(!v || !v->is_arg_var())
+		return false;
+	if(var)
+		*var = v;
+	return true;
 }
 
+#if IDA_SDK_VERSION < 750
 ACT_DEF(remove_argument)
 {
 	vdui_t &vu = *get_widget_vdui(ctx->widget);

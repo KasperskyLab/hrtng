@@ -396,7 +396,7 @@ bool Appcaller::getString(idc_value_t &r, qstring *decodedStr, qstring &error)
 					return true;
 			}
 		}
-		error.cat_sprnt(" can't get string from %a, try to change type of expected string or prototype to void*", ea);
+		error.cat_sprnt(" can't get string from %a, try to change type of expected string to void*", ea);
 		return false;
 		}
 	case VT_STR:

@@ -357,7 +357,7 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 				}
 		}
 
-		//if var is arg it will be useful to rename argument inside function prototype
+		//if var is arg it will be useful to rename argument inside function type
 		if(var->is_arg_var()) {
 			int vIdx = (int)varIdx;
 			ssize_t argIdx = func->argidx.index(vIdx);
@@ -377,7 +377,7 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 							if(newFType.is_correct() && apply_tinfo(func->entry_ea, newFType, is_userti(func->entry_ea) ? TINFO_DEFINITE : TINFO_GUESSED)) {
 								qstring typeStr;
 								newFType.print(&typeStr);
-								msg("[hrt] %a: Function prototype was recasted for change arg%d into \"%s\"\n", refea, argIdx, typeStr.c_str());
+								msg("[hrt] %a: Function type was recasted for change arg%d into \"%s\"\n", refea, argIdx, typeStr.c_str());
 							}
 						}
 					}

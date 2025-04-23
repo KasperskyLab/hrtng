@@ -60,7 +60,7 @@ Special thanks to following peoples for their great plugins were used as base fo
   * [Jump to indirect call destination](doc/ijmp.md)
   * [Fix stack pointer for indirect call](doc/fix-stack.md)
  
-### Function name and prototype
+### Function name and type
   * [Smart rename func](doc/rename-func.md)
   * [Convert function to __usercall, detect spoiled registers](doc/usercall.md)
   * [Set calling conventions bit closer to Go-lang](doc/golang.md)
