@@ -1,11 +1,9 @@
 # hrtng IDA plugin
 hrtng IDA plugin is a collection of tools, ideas and experiments from different sources I've found interesting and useful in my reversing work.
 
+*"This open-source tool, now available on GitHub under the GPLv3 license, promises to be a game-changer for cybersecurity professionals and malware analysts worldwide. The plugin allows analysts to focus on higher-level analysis and threat assessment by automating tedious and time-consuming tasks. This could lead to faster identification and mitigation of new malware threats."* Guru Baran (https://cybersecuritynews.com)
+
 A practical guide to the reverse of a complex malware using the example of dissecting a FinSpy module with help of hrtng IDA plugin on [securelist](https://securelist.com/hrtng-ida-pro-plugin/)
-
-There is no one place in menu where all functionality of the plugin grouped together. hrtng menu items placed closer to logically related standard IDA & Hex-Rays decompiler functions. Messages, menu items, popup windows and dialog boxes belong to this plugin are marked with "`[hrt]`" prefix.  
-
-The plugin requires Hex-Rays decompiler presence in your IDA installation. The plugin can be compiled with IDA SDK >= 7.3 but not well tested with old versions.
 
 Special thanks to following peoples for their great plugins were used as base for my work:
   * Milan Bohacek, [hexrays_tools](https://github.com/nihilus/hexrays_tools) and [hexrays_hlight](https://hex-rays.com/contests_details/contest2016/hexlight/hexrays_hlight.py)
@@ -14,7 +12,14 @@ Special thanks to following peoples for their great plugins were used as base fo
   * Ali Rahbar, Ali Pezeshk and Elias Bachaalany [GraphSlick plugin](https://github.com/lallousx86/GraphSlick)
   * Markus Gaasedelen [AVX support for the Hex-Rays x64 Decompiler](https://github.com/gaasedelen/microavx)
 
+The plugin requires Hex-Rays decompiler presence in your IDA installation.  
+Only latest version of IDA is supported and evolves. However the plugin can be compiled with IDA SDK >= 7.3
+but new features and fixes have been added for a newer IDA version are not tested with old versions.
+
 ## Features of the plugin:
+There is no one place in menu where all functionality of the plugin grouped together.
+The plugin's menu items placed closer to logically related standard IDA & Hex-Rays decompiler functions.
+Messages, menu items, popup windows and dialog boxes belong to this plugin are marked with "`[hrt]`" prefix.
 
 ### Automation
   * [Pull up comments from disasm to pseudocode view](doc/pull-cmt.md)
@@ -134,6 +139,6 @@ class rangeset_t
 ## License
 This program is released under GPL v3 license
 
-## Authors
+## Author
 * Sergey.Belov at kaspersky.com
 

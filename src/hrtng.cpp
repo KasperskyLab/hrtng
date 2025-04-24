@@ -142,7 +142,7 @@ ACT_DECL(mavx_disable            , AST_ENABLE_FOR(isMicroAvx_avail() &&  isMicro
 #endif //IDA_SDK_VERSION >= 750
 ACT_DECL(selection2block         , return (ctx->widget_type != BWN_PSEUDOCODE ? AST_DISABLE_FOR_WIDGET : (ctx->has_flag(ACF_HAS_SELECTION) ? AST_ENABLE : AST_DISABLE)))
 ACT_DECL(clear_if42blocks        , AST_ENABLE_FOR(has_if42blocks(vu->cfunc->entry_ea)))
-ACT_DECL(rename_func             , AST_ENABLE_FOR(vu->item.citype == VDI_FUNC || is_arg_var(vu)))
+ACT_DECL(rename_func             , AST_ENABLE_FOR_PC)
 #if IDA_SDK_VERSION < 750
 ACT_DECL(remove_rettype      , AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
 ACT_DECL(remove_argument     , AST_ENABLE_FOR(is_arg_var(vu)))
@@ -209,8 +209,6 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 		attach_action_to_popup(view, p, ACT_NAME(recognize_shape));
 		attach_action_to_popup(view, p, ACT_NAME(var_reuse));
 	}
-	if (vu->item.citype == VDI_FUNC || is_arg_var(vu))
-		attach_action_to_popup(view, p, ACT_NAME(rename_func));
 	if (vu->item.citype == VDI_FUNC) {
 		attach_action_to_popup(view, p, ACT_NAME(convert_to_usercall));
 #if IDA_SDK_VERSION < 850
@@ -296,6 +294,7 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 	attach_action_to_popup(view, p, ACT_NAME(selection2block));
 	if (has_if42blocks(vu->cfunc->entry_ea))
 		attach_action_to_popup(view, p, ACT_NAME(clear_if42blocks));
+	attach_action_to_popup(view, p, ACT_NAME(rename_func));
 }
 
 void hrt_reg_act()
@@ -847,8 +846,7 @@ ACT_DEF(fin_struct)
 ACT_DEF(rename_func)
 {
 	vdui_t *vu = get_widget_vdui(ctx->widget);
-	lvar_t *var = nullptr;
-	if(!vu || (vu->item.citype != VDI_FUNC  && !is_arg_var(vu, &var)) || vu->cfunc->entry_ea == BADADDR)
+	if(!vu || vu->cfunc->entry_ea == BADADDR)
 		return 0;
 
 	tinfo_t ftype;
@@ -860,7 +858,8 @@ ACT_DEF(rename_func)
 	ftype.get_func_details(&fti);
 	if(fti.size()) {
 		tinfo_t argt;
-		if(var)
+		lvar_t *var = nullptr;
+		if(is_arg_var(vu, &var))
 			argt = var->tif.get_pointed_object();
 		else
 			argt = fti[0].type.get_pointed_object();
@@ -869,7 +868,11 @@ ACT_DEF(rename_func)
 	}
 
 	qstring oldname = get_short_name(vu->cfunc->entry_ea);
-	if(has_user_name(get_flags(vu->cfunc->entry_ea)))
+	qstring highlight;
+	uint32 hlflg;
+	if(vu->item.citype == VDI_EXPR && get_highlight(&highlight, ctx->widget, &hlflg))
+		newName.append(highlight);
+	else if(has_user_name(get_flags(vu->cfunc->entry_ea)))
 		newName.append(oldname);
 
 	while (1) {
