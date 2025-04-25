@@ -27,7 +27,7 @@
 #ifdef __GNUC__
 # define ATTR_PACKED(al) __attribute__((__packed__)) __attribute__((__aligned__(al)))
 #else
-# define ATTR_PACKED
+# define ATTR_PACKED(al)
 #endif
 
 struct config_t {
