@@ -25,7 +25,9 @@
 # pragma pack(1)
 #endif
 #ifdef __GNUC__
-# define ATTR_PACKED(al) __attribute__((__packed__)) __attribute__((__aligned__(al)))
+
+#define ATTR_PACKED __attribute__((__packed__, __aligned__(16)))
+
 #else
 # define ATTR_PACKED
 #endif
@@ -36,7 +38,7 @@ struct config_t {
 	ushort disable_autorename = 0;
 	// !!! add new fields to the end of the struct to keep backward compatibility
 	// !!! search "add new config_t fields" comment in `config.cpp`
-} ATTR_PACKED(16);
+} ATTR_PACKED;
 
 #ifdef _MSC_VER
 # pragma pack(pop)
