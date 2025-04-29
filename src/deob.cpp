@@ -639,6 +639,15 @@ static bool ensure_code(ea_t ea)
 }
 #endif
 
+static void fill_nops(ea_t ea, uval_t len) {
+	add_extra_cmt(ea, true, "; patched %d bytes", len);
+	for (uval_t i = 0; i < len; i++) {
+		del_items(ea);
+		patch_byte(ea, 0x90);
+		create_insn(ea++);
+	}
+}
+
 bool disasm_dbl_jc(ea_t ea)
 {
 	if (!isX86())
@@ -647,8 +656,43 @@ bool disasm_dbl_jc(ea_t ea)
 	insn_t insn2;
 	if (decode_insn(&insn1, ea) <= 0)
 		return false;
+
+#if 1 //example1 of dirty hack is used to breakthrough some custom obfuscation
+	// patch jump into middle of self instr
+	// 0401249        loc_401249:
+	// 0401249 EB FF  jmp     short near ptr loc_401249+1
+	if((dflags & DF_PATCH) != 0 && insn1.itype == NN_jmp && insn1.ops[0].type == o_near && insn1.ops[0].addr == ea + 1) {
+		fill_nops(ea, 1);
+		return true;
+	}
+#endif //example1
+
 	if (decode_insn(&insn2, ea + insn1.size) <= 0)
 		return false;
+
+#if 1 //example2 of dirty hack is used to breakthrough some custom obfuscation
+	// patch xor & jz into middle of prev instr
+	// 0401357                 loc_401357:
+	// 0401357 66 41 BF EB 05  mov     r15w, 5EBh
+	// 040135C 31 C0           xor     eax, eax
+	// 040135E 74 FA           jz      short near ptr loc_401357+3
+	if((dflags & DF_PATCH) != 0
+		 && insn1.itype == NN_xor && insn1.ops[0].type == o_reg && insn1.ops[1].type == o_reg && insn1.ops[0].reg == insn1.ops[1].reg    // insn1 is: xor same reg
+		 && insn2.itype == NN_jz && insn2.ops[0].type == o_near && insn2.ops[0].addr == ea - 2 && is_tail(get_flags(insn2.ops[0].addr))) // insn2 is: jz to middle of prev instr
+	{
+		insn_t insn3;                                                                                                                    // insn3 is: short jmp is hidden inside "mov r15w, 5EBh"
+		if(decode_insn(&insn3, insn2.ops[0].addr) > 0 && insn3.itype == NN_jmp && insn3.ops[0].type == o_near && insn3.ops[0].addr == ea + insn1.size + insn2.size + 1)
+		{
+			//find beginning of prev instr
+			ea_t prev = insn2.ops[0].addr;
+			while (is_tail(get_flags(--prev))) ;
+
+			fill_nops(prev, insn3.ops[0].addr - prev);
+			return true;
+		}
+	}
+#endif //#endif //example1
+
 	bool isPair = false;
 	switch (insn1.itype)
 	{
