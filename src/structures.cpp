@@ -521,16 +521,7 @@ void add_vt_member(struc_t* sptr, ea_t offset, const char* name, const tinfo_t& 
 	}
 	add_struc_member(sptr, NULL, offset, flag, NULL, nbytes); //ifnore error, member may exists
 
-	if (!set_member_name(sptr, offset, name)) {
-		for (int i = 1; i < 100; i++) {
-			qstring newName = name;
-			newName.cat_sprnt("_%d", i);
-			if (!get_member_by_name(sptr, newName.c_str())) {
-				set_member_name(sptr, offset, newName.c_str());
-				break;
-			}
-		}
-	}
+	set_member_name(sptr, offset, good_smember_name(sptr, offset, name).c_str());
 	member_t* memb = get_member(sptr, offset);
 	set_member_tinfo(sptr, memb, 0, type, SET_MEMTI_COMPATIBLE);
 	add_proc2memb_ref(ref, memb->id);

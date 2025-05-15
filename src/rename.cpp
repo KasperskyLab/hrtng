@@ -147,8 +147,7 @@ static bool getCallName(cfunc_t *func, cexpr_t* call, qstring* name)
 	if (!getExpName(func, call->x, &funcname))
 		return false;
 
-	stripName(&funcname);
-
+	stripName(&funcname, true);
 	size_t get = funcname.find("get");
 	if(get != qstring::npos
 		 //&& get != 0 // ignore "get" in the beginning
@@ -157,7 +156,6 @@ static bool getCallName(cfunc_t *func, cexpr_t* call, qstring* name)
 		if(funcname[get + cnt] == '_') // strip '_' after "get" too
 			++cnt;
 		*name = funcname.substr(get + cnt);
-		//stripName(name); // is it need here?
 		return true;
 	}
 
@@ -168,7 +166,6 @@ static bool getCallName(cfunc_t *func, cexpr_t* call, qstring* name)
 	}
 
 	carglist_t &args = *call->a;
-
 	if (args.size() == 0 && funcname == "GetLastError") {
 		*name = "err";
 		return true;
@@ -233,7 +230,7 @@ static bool getEaName(ea_t ea, qstring* name)
 		if(!stristr(n.c_str(), VTBL_SUFFIX)) { // avoid renaming derived class vtbl to base one by the redundant assignment in ctor/dtor
 			if (name) {
 				*name = n;
-				stripName(name);
+				stripName(name, is_func(flg));
 			}
 			return true;
 		}
@@ -252,7 +249,7 @@ static bool getEaName(ea_t ea, qstring* name)
 	return false;
 }
 
-static bool renameEa(ea_t refea, ea_t ea, const qstring* name)
+bool renameEa(ea_t refea, ea_t ea, const qstring* name)
 {
   if (!is_mapped(ea))
 		return false;
@@ -260,7 +257,7 @@ static bool renameEa(ea_t refea, ea_t ea, const qstring* name)
 	if (newName.size() > MAX_NAME_LEN)
 		newName.resize(MAX_NAME_LEN);
 	if(!validate_name(&newName, VNT_IDENT)) {
-		msg("[hrt] FIXME: renameEa(%a, \"%s\")\n", refea, newName.c_str());
+		msg("[hrt] bad name for renameEa(%a, \"%s\")\n", refea, newName.c_str());
 		return false;
 	}
 	if (!has_cmt(get_flags(ea)) && newName != *name)
@@ -304,46 +301,32 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 	}
 
 	//check if proc doesnt already has such name
-	bool acceptName = false;
-	qstring basename = newName;
-	for(int i = 0; i < 100; i++) {
-		lvars_t::iterator it = vars->begin();
-		for(; it != vars->end(); it++) {
-			if(it->name == newName) {
-				if(it == var) {//why it tries rename again?
+	newName = unique_name(newName.c_str(),
+												[&vars, &var](const qstring &n)
+	{
+		for(auto it = vars->begin(); it != vars->end(); it++) {
+			if(it->name == n) {
+				if(it == var) {//old name is equal to new, why?
 					//msg("[hrt] FIXME: renameVar(%a, \"%s\") dup\n", refea, newName.c_str());
-					return false;
+					return true;
 				}
-				break;
+				return false;
 			}
 		}
-		if(it == vars->end()) {
-			// it seems ida donsnt allow renaming local var to the name of existing proc, but OK with global var
-			ea_t nnea = get_name_ea(BADADDR, newName.c_str());
-			if (nnea == BADADDR || !is_func(get_flags(nnea))) {
-				acceptName = true;
-				break;
-			}
-		}
-		newName = basename;
-		newName.cat_sprnt("_%d", i + 1);
-	}
-	if(!acceptName) {
+		// it seems ida donsnt allow renaming local var to the name of existing proc, but OK with global var
+		ea_t nnea = get_name_ea(BADADDR, n.c_str());
+		if(nnea == BADADDR || !is_func(get_flags(nnea)))
+			return true;
 		//msg("[hrt] FIXME: renameVar(%a, \"%s\") not accepted\n", refea, newName.c_str());
 		return false;
-	}
+	});
 
 	bool res = true;
 	qstring oldname = var->name;
 	if (vdui) {
 		res = vdui->rename_lvar(var, newName.c_str(), true); // vdui->rename_lvar can rebuild all internal structures/ call later!!!
 	} else {
-		//this way of renaming/retyping is not stored in database, use:
-		//restore_user_lvar_settings save_user_lvar_settings modify_user_lvars
-		///< use mbl_array_t::set_nice_lvar_name() and
-		///< mbl_array_t::set_user_lvar_name() to modify it
-		//
-		//CHECKME! mba->set_lvar_name(lvar_t &v, const char *name, int flagbits);  appeared in ida8.3
+		//this way of renaming/retyping is not stored in database. And don't need, it's temporary renaming
 		var->name = newName;
 		var->set_user_name();
 
@@ -824,7 +807,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			qstring lname;
 			cexpr_t* left = asgn->x;
 			bool hasLeft = getExpName(func, left, &lname);
-			if(hasLeft && skipCast(right)->op == cot_ref && lname[0] == 'p' && lname[1] == '_') // overwrite unbalanced with type annoying IDA's renaming to "p_something"
+			if(hasLeft && skipCast(right)->op == cot_ref && lname[0] == 'p' && lname[1] == '_' && strncmp(comments.c_str(), "p_", 2)) // overwrite unbalanced with type annoying IDA's renaming to "p_something"
 				hasLeft = false;
 			if(!hasLeft && renameLeft)
 				varRenamed |= renameExp(asgn->ea, func, left, &comments);
@@ -887,7 +870,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			qstring anL, anR;
 			size_t  iL, iR;
 			if(!callProcName.empty()) {
-				stripName(&callProcName);
+				stripName(&callProcName, true);
 				if(isCallAssignName(callProcName.c_str(), &iL, &iR))
 					bCallAssign = true;
 			}

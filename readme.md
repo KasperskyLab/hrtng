@@ -1,9 +1,5 @@
 # hrtng IDA plugin
-hrtng IDA plugin is a collection of tools, ideas and experiments from different sources I've found interesting and useful in my reversing work.
-
-*"This open-source tool, now available on GitHub under the GPLv3 license, promises to be a game-changer for cybersecurity professionals and malware analysts worldwide. The plugin allows analysts to focus on higher-level analysis and threat assessment by automating tedious and time-consuming tasks. This could lead to faster identification and mitigation of new malware threats."* Guru Baran (https://cybersecuritynews.com)
-
-A practical guide to the reverse of a complex malware using the example of dissecting a FinSpy module with help of hrtng IDA plugin on [securelist](https://securelist.com/hrtng-ida-pro-plugin/)
+hrtng IDA plugin is a collection of tools, ideas and experiments I've found interesting and useful in my reversing work.
 
 Special thanks to following peoples for their great plugins were used as base for my work:
   * Milan Bohacek, [hexrays_tools](https://github.com/nihilus/hexrays_tools) and [hexrays_hlight](https://hex-rays.com/contests_details/contest2016/hexlight/hexrays_hlight.py)
@@ -14,7 +10,7 @@ Special thanks to following peoples for their great plugins were used as base fo
 
 The plugin requires Hex-Rays decompiler presence in your IDA installation.  
 Only latest version of IDA is supported and evolves. However the plugin can be compiled with IDA SDK >= 7.3
-but new features and fixes have been added for a newer IDA version are not tested with old versions.
+New features and fixes added for the current IDA usually not well tested with old versions.
 
 ## Features of the plugin:
 There is no one place in menu where all functionality of the plugin grouped together.
@@ -84,6 +80,7 @@ Messages, menu items, popup windows and dialog boxes belong to this plugin are m
   * [Offsets table creation](doc/offsets-tbl.md)
   * Print reversing progress percent on a proc renaming
   * [Recursively decompile callees](doc/recur-decomp.md)
+  * [Refactoring (global Find and Replace)](doc/refactoring.md)
   * [~~Deal with structures with negative offsets or access based on offsets in a middle of structure~~](doc/neg-offs.md)
 
 ### Patching

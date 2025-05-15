@@ -796,14 +796,7 @@ struct ida_local sInlinesLib : std::set<sInline*, lessInline>
 				}
 			}
 			qstring fullpath;
-			qstring basename = path;
-			for (int i = 0; i >= 0; i++) {
-				fullpath = basePath + path + ".inl";
-				if (!qfileexist(fullpath.c_str()))
-					break;
-				path = basename;
-				path.cat_sprnt("_%d", i + 1);
-			}
+			fullpath = unique_name(path.c_str(), [&basePath](const qstring &n){qstring fullpath = basePath + n + ".inl"; return !qfileexist(fullpath.c_str());});
 			FILE *fd = qfopen(fullpath.c_str(), "wb");
 			if(fd) {
 				bytevec_t buf;

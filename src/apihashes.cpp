@@ -376,7 +376,7 @@ struct ida_local ah_visitor_t : public ctree_visitor_t
 			ccases_t &cases = insn->cswitch->cases;
 			for(size_t i = 0; i < cases.size(); i++)
 				for(size_t j = 0; j < cases[i].size(); j++)
-					chkVal(cases[i].value(j), &cases[i]);
+					chkVal(cases[i].value((int)j), &cases[i]);
 		}
 		return 0;
 	}

@@ -43,6 +43,7 @@ ADD_IDA_PLUGIN(hrtng
   new_struc_view.cpp
   new_struct.cpp
   structures.cpp
+  refactoring.cpp
   rename.cpp
   unflat.cpp
   )

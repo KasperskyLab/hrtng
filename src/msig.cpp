@@ -332,6 +332,19 @@ public:
 		modified = true;
 		return true;
 	}
+	uint32 rename(msig_rename_cb_t* cb, void* ctx)
+	{
+		uint32 count = 0;
+		for(auto it = begin(); it != end(); it++) {
+			const char* newName = cb(ctx, (*it)->name.c_str());
+			if(newName) {
+				(*it)->name = newName;
+				modified = true;
+				++count;
+			}
+		}
+		return count;
+	}
 	void save(const char* filename)
 	{
 		FILE* f = qfopen(filename, "w");
@@ -394,6 +407,11 @@ const char* msig_cached(ea_t ea)
 inline bool msig_rename(ea_t ea, const char* newname)
 {
 	return msigs.rename(ea, newname);
+}
+
+uint32 msig_rename(msig_rename_cb_t* cb, void* ctx)
+{
+	return msigs.rename(cb, ctx);
 }
 
 inline qstring msig_auto_filename()

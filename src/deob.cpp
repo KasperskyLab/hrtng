@@ -691,7 +691,7 @@ bool disasm_dbl_jc(ea_t ea)
 			return true;
 		}
 	}
-#endif //#endif //example1
+#endif //example2
 
 	bool isPair = false;
 	switch (insn1.itype)

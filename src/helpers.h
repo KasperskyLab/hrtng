@@ -46,48 +46,53 @@
 	static name ## _t name;
 
 #if IDA_SDK_VERSION < 910
-#define isIlp32() false
+  #define isIlp32() false
 #else
-#define BWN_TILVIEW BWN_TICSR
-#define isIlp32() inf_is_ilp32()
-#endif
+  #define isIlp32() inf_is_ilp32()
+#endif // IDA_SDK_VERSION < 910
+
+#if IDA_SDK_VERSION >= 850 && IDA_SDK_VERSION <= 900
+ #define BWN_TICSR BWN_TILVIEW
+#endif // IDA_SDK_VERSION >= 850 && IDA_SDK_VERSION <= 900
 
 #if IDA_SDK_VERSION < 850
-#define interactive_graph_t mutable_graph_t
-#define get_named_type_tid(x) get_struc_id(x)
-#define get_tid_name(x, y) get_struc_name(x, y)
-#define merge_blocks combine_blocks
-#define BWN_TILVIEW BWN_LOCTYPS
+	#define interactive_graph_t mutable_graph_t
+	#define get_named_type_tid(x) get_struc_id(x)
+	#define get_tid_name(x, y) get_struc_name(x, y)
+	#define merge_blocks combine_blocks
+	#define BWN_TICSR BWN_LOCTYPS
 #endif // IDA_SDK_VERSION < 850
 
 #if IDA_SDK_VERSION < 840
-  #define udm_t udt_member_t
-  #define find_udm find_udt_member
-  #define NTF_NO_NAMECHK 0
-  #define tinfo_errstr(err) ""
-  #define TERR_BAD_TYPE ((tinfo_code_t)-5)
+	#define udm_t udt_member_t
+	#define find_udm find_udt_member
+	#define NTF_NO_NAMECHK 0
+	#define tinfo_errstr(err) ""
+	#define TERR_BAD_TYPE ((tinfo_code_t)-5)
+	#define BWN_TILIST BWN_STRUCTS // not the same, just to decrease number of ifdefs
 #endif // IDA_SDK_VERSION < 840
 
 #if IDA_SDK_VERSION < 830
-#define flags64_t flags_t
+	#define flags64_t flags_t
 #endif // IDA_SDK_VERSION < 830
 
 #if IDA_SDK_VERSION < 750
-#define COMPAT_register_and_attach_to_menu(a,b,c,d,e,f,g) register_and_attach_to_menu(a,b,c,d,e,f,g)
-#define COMPAT_open_pseudocode_REUSE(a) open_pseudocode(a, 0);
-#define COMPAT_open_pseudocode_REUSE_ACTIVE(a) open_pseudocode(a, -1);
-#define COMPAT_open_pseudocode_NEW(a) open_pseudocode(a, 1);
-#define PH ph
+	#define COMPAT_register_and_attach_to_menu(a,b,c,d,e,f,g) register_and_attach_to_menu(a,b,c,d,e,f,g)
+	#define COMPAT_open_pseudocode_REUSE(a) open_pseudocode(a, 0);
+	#define COMPAT_open_pseudocode_REUSE_ACTIVE(a) open_pseudocode(a, -1);
+	#define COMPAT_open_pseudocode_NEW(a) open_pseudocode(a, 1);
+	#define PH ph
+	#define CHCOL_INODENAME 0
 #else //IDA_SDK_VERSION < 750
-#define COMPAT_register_and_attach_to_menu(a,b,c,d,e,f,g) register_and_attach_to_menu(a,b,c,d,e,f,g, ADF_OT_PLUGIN)
-#define COMPAT_open_pseudocode_REUSE(a) open_pseudocode(a, OPF_REUSE);
-#define COMPAT_open_pseudocode_REUSE_ACTIVE(a) open_pseudocode(a, OPF_REUSE_ACTIVE);
-#define COMPAT_open_pseudocode_NEW(a) open_pseudocode(a, OPF_NEW_WINDOW);
+	#define COMPAT_register_and_attach_to_menu(a,b,c,d,e,f,g) register_and_attach_to_menu(a,b,c,d,e,f,g, ADF_OT_PLUGIN)
+	#define COMPAT_open_pseudocode_REUSE(a) open_pseudocode(a, OPF_REUSE);
+	#define COMPAT_open_pseudocode_REUSE_ACTIVE(a) open_pseudocode(a, OPF_REUSE_ACTIVE);
+	#define COMPAT_open_pseudocode_NEW(a) open_pseudocode(a, OPF_NEW_WINDOW);
 #endif //IDA_SDK_VERSION < 750
 
 #if IDA_SDK_VERSION < 740
-#define PRTYPE_COLORED 0
-#define DECOMP_ALL_BLKS 0
+	#define PRTYPE_COLORED 0
+	#define DECOMP_ALL_BLKS 0
 #endif //IDA_SDK_VERSION < 740
 
 #define MAX_NAME_LEN 63 //inf.max_autoname_len (inf_get_max_autoname_len)
@@ -130,10 +135,13 @@ tinfo_t getType4Name(const char *name, bool funcType = false);
 bool is_ea(flags64_t flg);
 ea_t get_ea(ea_t ea);
 void create_type_from_size(tinfo_t* t, asize_t size);
-void stripName(qstring* name);
+void stripName(qstring* name, bool funcSuffixToo = false);
 void stripNum(qstring* name);
 int namecmp(const char* name, const char* cmpWith);
 qstring good_udm_name(const tinfo_t &struc, uint64 offInBits, const char *format, ...);
+#if IDA_SDK_VERSION < 850
+qstring good_smember_name(const struc_t* sptr, ea_t offset, const char *format, ...);
+#endif
 
 void patch_str(ea_t ea, const char *str, sval_t len, bool forceZeroTerm = false);
 void patch_wstr(ea_t ea, const char *str, sval_t len);
@@ -185,4 +193,18 @@ struct qstr_printer_t : public vd_printer_t
 		return (int)(s.size() - oldsz);
 	}
 };
+
+template< class IsUniqueFunc >
+qstring unique_name(const char* name, IsUniqueFunc isUnique)
+{
+	qstring uName = name;
+	for(int i = 1; i < 100; i++) {
+		if(isUnique(uName))
+			return uName;
+		uName = name;
+		uName.cat_sprnt("_%d", i);
+	}
+	msg("[hrt] FIXME! unique_name '%s' in not unique\n", uName.c_str());
+	return uName;
+}
 

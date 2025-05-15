@@ -18,15 +18,5 @@
 */
 
 #pragma once
-void msig_reg_act();
-void msig_unreg_act();
-void msig_auto_load();
-void msig_auto_save();
-const char* msig_match(mbl_array_t* mba);
-const char* msig_cached(ea_t ea);
-extern const char msigMessage[];
-bool isMsig(vdui_t *vu, qstring* name);
 
-// returns new name or nullptr to refuse renaming
-typedef const char* msig_rename_cb_t(void* ctx, const char* name);
-uint32 msig_rename(msig_rename_cb_t* cb, void* ctx);
+int do_refactoring(action_activation_ctx_t *ctx);

@@ -59,6 +59,7 @@
 #include "opt.h"
 #include "MicrocodeExplorer.h"
 #include "msig.h"
+#include "refactoring.h"
 #include "new_struct.h"
 #include "new_struc_view.h"
 #include "new_struc_place.h"
@@ -147,7 +148,8 @@ ACT_DECL(rename_func             , AST_ENABLE_FOR_PC)
 ACT_DECL(remove_rettype      , AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
 ACT_DECL(remove_argument     , AST_ENABLE_FOR(is_arg_var(vu)))
 #endif //IDA_SDK_VERSION < 750
-ACT_DECL(import_unf_types        , return ((ctx->widget_type == BWN_TILVIEW) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
+ACT_DECL(import_unf_types        , return ((ctx->widget_type == BWN_TICSR || ctx->widget_type == BWN_TILIST) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
+ACT_DECL(refactoring             , return (ctx->widget_type == BWN_PSEUDOCODE || ctx->widget_type == BWN_DISASM || ctx->widget_type == BWN_TILIST ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
 
 //-------------------------------------------------------------------------
 // action_desc_t descriptions
@@ -195,6 +197,7 @@ static const action_desc_t actions[] =
 	ACT_DESC("[hrt] Convert to __usercall golang",   "Shift-G", convert_to_golang_call),
 #endif //IDA_SDK_VERSION < 850
 	ACT_DESC("[hrt] Import user-named func types",    NULL, import_unf_types),
+	ACT_DESC("[hrt] Refactoring...",                  NULL, refactoring),
 };
 
 //-------------------------------------------------------------------------
@@ -295,6 +298,7 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 	if (has_if42blocks(vu->cfunc->entry_ea))
 		attach_action_to_popup(view, p, ACT_NAME(clear_if42blocks));
 	attach_action_to_popup(view, p, ACT_NAME(rename_func));
+	attach_action_to_popup(view, p, ACT_NAME(refactoring));
 }
 
 void hrt_reg_act()
@@ -544,7 +548,7 @@ static error_t idaapi dump_names_idc(idc_value_t *argv, idc_value_t *res)
 		// IAT and other function pointers
 		if(is_ea(f)) {
 			qstring nn = name;
-			stripName(&nn);
+			stripName(&nn, true);
 			const type_t *type;
 			if(get_named_type(NULL, nn.c_str(), 0, &type) && is_type_func(*type))
 				continue;
@@ -610,7 +614,7 @@ ACT_DEF(zeal_doc_help)
 	if(!is_call(vu, &call) || !getExpName(vu->cfunc, call->x, &name))
 		return 0;
 
-	stripName(&name);
+	stripName(&name, true);
 	qstring dname;
 	if(demangle_name(&dname, name.c_str(), MNG_NODEFINIT) >= 0)
 		name = dname;
@@ -870,7 +874,7 @@ ACT_DEF(rename_func)
 	qstring oldname = get_short_name(vu->cfunc->entry_ea);
 	qstring highlight;
 	uint32 hlflg;
-	if(vu->item.citype == VDI_EXPR && get_highlight(&highlight, ctx->widget, &hlflg))
+	if(vu->item.citype != VDI_FUNC && !is_arg_var(vu) && get_highlight(&highlight, ctx->widget, &hlflg))
 		newName.append(highlight);
 	else if(has_user_name(get_flags(vu->cfunc->entry_ea)))
 		newName.append(oldname);
@@ -4311,6 +4315,13 @@ ACT_DEF(do_appcall)
 
 //--------------------------------------------------------------------------
 
+ACT_DEF(refactoring)
+{
+	return do_refactoring(ctx);
+}
+
+//--------------------------------------------------------------------------
+
 ACT_DEF(import_unf_types)
 {
 	size_t impCnt  = 0;
@@ -4330,7 +4341,7 @@ ACT_DEF(import_unf_types)
 			if (is_uname(funcName.c_str())) {
 				tinfo_t tif;
 				if(get_tinfo(&tif, funcstru->start_ea) && tif.is_func()) {
-					stripName(&funcName);
+					stripName(&funcName, true);
 #if 1
 					//CHECKME: without NTF_NO_NAMECHK ida creates partially unmangled names probably not suitable for reapplying with signatures, and a lot of "bad name" errors
 					tinfo_code_t err = tif.set_named_type(nullptr, funcName.c_str() , NTF_REPLACE | NTF_NO_NAMECHK);
@@ -5030,17 +5041,22 @@ static ssize_t idaapi ui_callback(void *user_data, int ncode, va_list va)
 		TPopupMenu *p = va_arg(va, TPopupMenu *);
 		const action_activation_ctx_t* ctx = va_arg(va, const action_activation_ctx_t*);
 		switch (get_widget_type(widget)) {
+		case BWN_TILIST: // is redefined as BWN_STRUCTS for IDA_SDK_VERSION < 850
 #if IDA_SDK_VERSION < 850
-		case BWN_STRUCTS:
 			add_structures_popup_items(widget, p);
+#endif // IDA_SDK_VERSION < 850
+#if IDA_SDK_VERSION >= 840
+			attach_action_to_popup(widget, p, ACT_NAME(import_unf_types));
+#endif // IDA_SDK_VERSION >= 840
+			attach_action_to_popup(widget, p, ACT_NAME(refactoring));
 			break;
-#endif //IDA_SDK_VERSION < 850
-		case BWN_TILVIEW:
+		case BWN_TICSR:
 			attach_action_to_popup(widget, p, ACT_NAME(import_unf_types), "Export to header file", SETMENU_INS);
 			break;
 		case BWN_DISASM:
 			attach_action_to_popup(widget, p, ACT_NAME(decrypt_data));
 			attach_action_to_popup(widget, p, ACT_NAME(add_VT_struct));
+			attach_action_to_popup(widget, p, ACT_NAME(refactoring));
 			if (get_view_renderer_type(widget) == TCCRT_GRAPH) {
 				attach_action_to_popup(widget, p, ACT_NAME(create_inline_gr), "Group nodes", SETMENU_APP);
 			} else {
@@ -5084,7 +5100,7 @@ static ssize_t idaapi idp_callback(void *user_data, int ncode, va_list va)
 			//int flags = va_arg(va, int);
 			if(is_func(get_flags(ea))) {
 				get_ea_name(&funcRename, ea);
-				//stripName(&funcRename);
+				//stripName(&funcRename, true);
 				if(!funcRename.empty())
 					funcRenameEa = ea;
 			}
@@ -5124,19 +5140,14 @@ void findStrucMembersByName(const char* memberName, tidvec_t* tids)
 		struc_t * struc = get_struc(id);
 		if(!struc || is_union(id))
 			continue;
-		asize_t off = 0;
-		while (off != BADADDR) {
-			member_t *member = get_member(struc, off);
-			if (!member)
-				break;
+		for (uint32 i = 0; i < struc->memqty; i++) {
 			qstring membName;
-			get_member_name(&membName, member->id);
+			get_member_name(&membName, struc->members[i].id);
 			const char* mn = membName.c_str();
 			if(*mn == 0)
 				continue; // skip members w/o name
 			if(!namecmp(mn, memberName))
-				tids->push_back(member->id);
-			off = get_struc_next_offset(struc, off);
+				tids->push_back(struc->members[i].id);
 		}
 	}
 }
@@ -5371,8 +5382,11 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 #if IDA_SDK_VERSION < 850
 								struc_t *struc;
 								member_t * memb = get_member_by_id(&fullname, tids[i], &struc);
-								if(memb && set_member_name(struc, memb->soff, new_name))
-									msg("[hrt] struc member '%s' renamed to '%s'\n", fullname.c_str(), new_name);
+								if(memb) {
+									qstring nn = good_smember_name(struc, memb->soff, new_name);
+									if(set_member_name(struc, memb->soff, nn.c_str()))
+										msg("[hrt] struc member '%s' renamed to '%s'\n", fullname.c_str(), nn.c_str());
+								}
 #else //IDA_SDK_VERSION >= 850
 								udm_t udm;
 								tinfo_t struc;
@@ -5429,7 +5443,7 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 			tinfo_t tif;
 			if(type && is_func(ea_fl) && is_type_func(*type) && tif.deserialize(NULL, &type, &fnames) && tif.is_func()) {
 				qstring funcName = get_name(ea);
-				//stripName(&funcName);
+				//stripName(&funcName, true);
 				//set type for VT members too
 				tidvec_t tids;
 #if 0		// enable the next line to compatibility with old IDBs without proc2memb_refs
@@ -5527,7 +5541,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.6.49";
+	addon.version = "2.7.50";
 	motd.sprnt("%s (%s) v%s for IDA%d ", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

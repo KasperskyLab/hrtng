@@ -1,0 +1,869 @@
+/*
+    Copyright © 2017-2025 AO Kaspersky Lab
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+    Author: Sergey.Belov at kaspersky.com
+*/
+
+/*
+ * Search and rename the following entities:
+ * func and arg names
+ * global and local vars
+ * type and udt member names
+ * msig names
+ */
+
+
+#include "warn_off.h"
+#include <pro.h>
+#include <hexrays.hpp>
+#include <kernwin.hpp>
+#include <name.hpp>
+#include <regex.h>
+#if IDA_SDK_VERSION >= 770
+#include <dirtree.hpp>
+#endif // IDA_SDK_VERSION >= 770
+#include "warn_on.h"
+
+#include "helpers.h"
+#include "msig.h"
+#include "rename.h"
+#include "refactoring.h"
+
+enum eRF_kind_t {
+	eRF_funcName,
+	eRF_funcArg,
+	eRF_glblVar,
+	eRF_loclVar,
+	eRF_typeName,
+	eRF_udmName,
+	eRF_msigName,
+	eRF_last
+};
+
+const char* eRFkindName(eRF_kind_t kind)
+{
+	switch(kind) {
+	case eRF_funcName: return "func";
+	case eRF_funcArg:  return "farg";
+	case eRF_glblVar:  return "gvar";
+	case eRF_loclVar:  return "lvar";
+	case eRF_typeName: return "type";
+	case eRF_udmName:  return "udm";
+	case eRF_msigName: return "msig";
+	default:           return "unk";
+	}
+}
+
+eRF_kind_t eRFname2kind(const char* n)
+{
+	if(!qstrcmp(n, "func")) return eRF_funcName;
+	if(!qstrcmp(n, "farg")) return eRF_funcArg;
+	if(!qstrcmp(n, "gvar")) return eRF_glblVar;
+	if(!qstrcmp(n, "lvar")) return eRF_loclVar;
+	if(!qstrcmp(n, "type")) return eRF_typeName;
+	if(!qstrcmp(n, "udm"))  return eRF_udmName;
+	if(!qstrcmp(n, "msig")) return eRF_msigName;
+	return eRF_last;
+}
+
+struct ida_local rf_match_t {
+	qstring name;
+	ea_t ea;
+	eRF_kind_t kind;
+	bool deleted;
+};
+DECLARE_TYPE_AS_MOVABLE(rf_match_t);
+typedef qvector<rf_match_t> rf_matches_t;
+
+struct refac_t;
+//--------------------------------------------------------------------------
+
+#if IDA_SDK_VERSION >= 770
+struct ida_local rf_dirspec_t : public dirspec_t
+{
+	refac_t* rf;
+	dirvec_t dirvec;
+	rf_dirspec_t(refac_t* rf_) : dirspec_t(nullptr, 0/*DSF_ORDERABLE*/), rf(rf_) {}
+	virtual ~rf_dirspec_t() {}
+	virtual bool get_name(qstring* out, inode_t inode, uint32 name_flags = DTN_FULL_NAME);
+	virtual inode_t get_inode(const char* dirpath, const char* name);
+  virtual qstring get_attrs(inode_t) const 	{	return qstring("attrs");	}
+  virtual bool rename_inode(inode_t, const char *) {	return false;	}
+};
+#endif //IDA_SDK_VERSION >= 770
+
+//--------------------------------------------------------------------------
+const char* msig_search(void* ctx, const char* name);
+const char* msig_replace(void* ctx, const char* name);
+
+// !!! these flags below depend on order of checkboxes in the open_form below
+//"<Case sensitive:c><|><Whole words only:c><|><Use regular expression:c>4>\n\n";
+#define RFF_CASESN 1
+#define RFF_WWORDS 2
+#define RFF_REGEXP 4
+
+struct ida_local refac_t {
+	TWidget* rfform = nullptr;
+	qstring searchFor;
+	qstring replaceWith;
+	ushort flags = RFF_WWORDS; // see RFF_* above
+	rf_matches_t matches;
+	regex_ptr_t re;
+#if IDA_SDK_VERSION >= 770
+	rf_dirspec_t ds;
+	dirtree_t dt;
+#endif //IDA_SDK_VERSION >= 770
+
+	refac_t(const char *sname) : searchFor(sname), replaceWith(sname), re(NULL)
+#if IDA_SDK_VERSION >= 770
+	, ds(this), dt(&ds)
+#endif //IDA_SDK_VERSION >= 770
+	{
+		searchFor.trim2();
+		replaceWith.trim2();
+	}
+
+	void clear()
+	{
+#if IDA_SDK_VERSION >= 770
+		for(size_t i = 0; i < matches.size(); i++) {
+			qstring path;
+			path.sprnt("/%s/%s", eRFkindName(matches[i].kind), matches[i].name.c_str());
+			//if(dt.resolve_path(path.c_str()).valid())
+				dt.unlink(path.c_str());
+		}
+		for (int i = 0; i < eRF_last; i++)
+			dt.rmdir(eRFkindName((eRF_kind_t)i));
+#endif //IDA_SDK_VERSION >= 770
+		matches.clear();
+	}
+
+	bool isWord(char c) const
+	{
+		if((c >= 'a' && c <= 'z') ||
+			 (c >= 'A' && c <= 'Z') ||
+			 (c >= '0' && c <= '9'))
+				return true;
+		return false;
+	}
+
+	size_t find_ex(const qstring &s, const qstring &searchFor, size_t pos, bool casesn) const
+  {
+    if(pos <= s.length()) {
+      const char *bgn = s.c_str();
+      const char *fnd;
+			if(casesn)
+				fnd = qstrstr(bgn + pos, searchFor.c_str());
+			else
+				fnd = stristr(bgn + pos, searchFor.c_str());
+      if ( fnd != nullptr )
+        return fnd - bgn;
+    }
+    return qstring::npos;
+  }
+
+	bool match(const qstring &s, qstring *r = nullptr)
+	{
+		if(s.empty())
+			return false;
+		if(r)
+			r->reserve(s.size());
+
+		bool res = false;
+		size_t so = 0;
+		size_t prev;
+		while(1) {
+			prev = so;
+			size_t eo;
+			if(re != NULL && (flags & RFF_REGEXP)) {
+				regmatch_t m;
+				if(re->exec(s.c_str() + so, 1, &m, 0))
+					break;
+				eo = so + m.rm_eo;
+				so = so + m.rm_so;
+			} else {
+				so = find_ex(s, searchFor, so, (flags & RFF_CASESN) != 0);
+				if(so == qstring::npos)
+					break;
+				eo = so + searchFor.length();
+			}
+
+			//check word boundaries, '_' is excluded from the set of word chars
+			if((flags & RFF_WWORDS) != 0 &&
+				 ((so > 0 && isWord(s[so - 1])) ||
+					(eo < s.length() && isWord(s[eo])))) {
+				//msg("[hrt] unmatch `%s %d %d`\n", s.c_str(), so, eo);
+				break;
+			}
+			//qstring match(s.c_str() + so, eo - so);
+			//msg("[hrt] match `%s` in %s\n", match.c_str(), s.c_str());
+
+			res = true;
+			if(!r) // find once if not replace
+				break;
+			if(so > prev)
+				r->append(s.c_str() + prev, so - prev);
+			r->append(replaceWith);
+			so = eo;
+		}
+		if(r && res && s.length() > prev)
+			r->append(s.c_str() + prev, s.length() - prev);
+		return res && (!r || r->length());
+	}
+	void add(const char* name, eRF_kind_t kind, ea_t ea)
+	{
+		rf_match_t &m = matches.push_back();
+		m.name = name;
+		m.kind = kind;
+		m.ea = ea;
+		m.deleted = false;
+
+#if IDA_SDK_VERSION >= 770
+		//mkdir if not exist
+		const char* dir = eRFkindName(kind);
+		//if(!dt.resolve_path(dir).valid())
+			dt.mkdir(dir);
+
+		qstring path;
+		path.sprnt("/%s/%s", dir, name);
+		//if(!dt.resolve_path(path.c_str()).valid())
+		dt.link(path.c_str());
+		//msg("[hrt] add match `%s` (%a)\n", path.c_str(), ea);
+#endif //IDA_SDK_VERSION >= 770
+	}
+
+	bool search()
+	{
+		clear();
+
+		if(searchFor.empty())
+			return false;
+		//msg("[hrt] search '%s', flags %d\n", searchFor.c_str(), flags);
+
+		if((flags & RFF_REGEXP) != 0) {
+			//check and cache regexp
+			qstring errmsg;
+      re = regex_ptr_t(refcnted_regex_t::create(searchFor, !(flags & RFF_CASESN), &errmsg));
+			if(re == NULL) {
+				warning("[hrt] regexp error '%s'", errmsg.c_str());
+				return false;
+			}
+
+		}
+
+		size_t nqty = get_nlist_size();
+		for(size_t i = 0; i < nqty; i++) {
+			ea_t ea = get_nlist_ea(i);
+			flags_t flg = get_flags(ea);
+			if(!is_func(flg) && !(is_data(flg) && has_any_name(flg)))
+				continue;
+			qstring eaname = get_name(ea);
+			//match name of functions an global vars
+			if(match(eaname))
+				add(eaname.c_str(), is_func(flg) ? eRF_funcName : eRF_glblVar, ea);
+
+			//match func args
+			tinfo_t tif;
+			if(/*is_userti(ea) &&*/ get_tinfo(&tif, ea)) {
+				tif.remove_ptr_or_array();
+				if(/*!tif.is_from_subtil() &&*/ tif.is_decl_func()) {
+					func_type_data_t fi;
+					if(tif.get_func_details(&fi, GTD_NO_ARGLOCS)) {
+						for(size_t i = 0; i < fi.size(); i++) {
+							if(match(fi[i].name)) {
+								qstring t;
+								if(!tif.print(&t, eaname.c_str()))
+									t = tif.dstr();
+								add(t.c_str(), eRF_funcArg, ea);
+								break;
+							}
+						}
+					}
+				}
+			}
+
+#if 1 // restore_user_lvar_settings may cause crash somewhere deep inside decompiler on access nullptr exception in some circumstances
+			//match func local vars
+			lvar_uservec_t lvinf;
+			if(is_func(flg) && restore_user_lvar_settings(&lvinf, ea)) {
+				qstring nn;
+				for(size_t i = 0; i < lvinf.lvvec.size(); i++) {
+					if(match(lvinf.lvvec[i].name)) {
+						if(!nn.empty())
+							nn.append(' ');
+						nn.append(lvinf.lvvec[i].name);
+					}
+				}
+				if(!nn.empty()) {
+					nn.append(" @ ");
+					nn.append(eaname);
+					add(nn.c_str(), eRF_loclVar, ea);
+				}
+			}
+#endif
+		}
+
+		//struct/union names amd members
+#if IDA_SDK_VERSION < 850
+		for(uval_t idx = get_first_struc_idx(); idx != BADNODE; idx = get_next_struc_idx(idx)) {
+			tid_t id = get_struc_by_idx(idx);
+			qstring strucname = get_struc_name(id);
+			if(match(strucname))
+				add(strucname.c_str(), eRF_typeName, id);
+
+			struc_t * struc = get_struc(id);
+			if(!struc)
+				continue;
+			for(uint32 i = 0; i < struc->memqty; i++) {
+				qstring membName;
+				get_member_name(&membName, struc->members[i].id);
+				if (match(membName)) {
+					qstring fullname(strucname);
+					fullname.append('.');
+					fullname.append(membName);
+					add(fullname.c_str(), eRF_udmName, struc->members[i].id);
+				}
+			}
+		}
+#else //IDA_SDK_VERSION < 850
+		//type and udm names
+		uint32 limit = get_ordinal_limit();
+		if (limit != uint32(-1)) {
+			for(uint32 ord = 1; ord < limit; ++ord) {
+				tinfo_t t;
+				if(t.get_numbered_type(nullptr, ord)) {
+					qstring tname;
+					if(t.get_type_name(&tname)) {
+						if(match(tname))
+							add(tname.c_str(), eRF_typeName, t.get_tid());
+					}
+					if(t.is_udt()) {
+						udt_type_data_t udt;
+						if (t.get_udt_details(&udt)) {
+							for (size_t i = 0; i < udt.size(); ++i) {
+								udm_t& member = udt.at(i);
+								if(match(member.name)) {
+									qstring fullname = tname;
+									fullname.append('.');
+									fullname.append(member.name);
+									add(fullname.c_str(), eRF_udmName, t.get_udm_tid(i));
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+#endif //IDA_SDK_VERSION < 850
+
+		msig_rename(msig_search, this);
+		return true;
+	}
+	void replace()
+	{
+		msg("[hrt] -------- Refactoring: replace %d matches --------\n", matches.size());
+		uint32 count = 0;
+		uint32 failc = 0;
+		for(size_t i = 0; i < matches.size(); i++) {
+			const rf_match_t &m = matches[i];
+			if(m.deleted) {
+				msg("[hrt] Refactoring %a: skip deleted %s - '%s'\n", m.ea, eRFkindName(m.kind), m.name.c_str());
+				continue;
+			}
+			switch(m.kind) {
+			case eRF_funcName:
+			case eRF_glblVar:
+			{
+				flags_t flg = get_flags(m.ea);
+				if(is_func(flg) || (is_data(flg) && has_any_name(flg))) {
+					qstring eaname = get_name(m.ea);
+					qstring newname;
+					if(match(eaname, &newname)) {
+						stripName(&newname, is_func(flg));
+						if(renameEa(m.ea, m.ea, &newname))
+							++count;
+						else
+							++failc;
+					}
+				}
+				break;
+			}
+			case eRF_funcArg:
+			{
+				tinfo_t tif;
+				if(/*is_userti(ea) &&*/ get_tinfo(&tif, m.ea)) {
+					tif.remove_ptr_or_array();
+					if(/*!tif.is_from_subtil() &&*/ tif.is_decl_func()) {
+						func_type_data_t fi;
+						if(tif.get_func_details(&fi)) {
+							bool changed = false;
+							for(size_t i = 0; i < fi.size(); i++) {
+								qstring newname;
+								if(match(fi[i].name, &newname)) {
+									stripName(&newname);
+									newname = unique_name(newname.c_str(), [&fi, i](const qstring &n)
+									{
+										for(size_t j = 0; j < fi.size(); j++){
+											if(fi[i].name == n) {
+												if(i == j)
+													return true;
+												else
+													return false;
+											}
+										}
+										return true;
+									});
+									changed = true;
+									fi[i].name = newname;
+									++count;
+								}
+							}
+							if(changed) {
+								tinfo_t newFType;
+								if(newFType.create_func(fi) && newFType.is_correct() && apply_tinfo(m.ea, newFType, is_userti(m.ea) ? TINFO_DEFINITE : TINFO_GUESSED)) {
+									msg("[hrt] Refactoring %a: function args type changed to \"%s\"\n", m.ea, newFType.dstr());
+									break;
+								}
+							}
+						}
+					}
+				}
+				++failc;
+				msg("[hrt] Refactoring %a: fail function args type change '%s'\n", m.ea, m.name.c_str());
+				break;
+			}
+			case eRF_loclVar:
+			{
+#if 1   // restore_user_lvar_settings may cause crash somewhere deep inside decompiler on access nullptr exception in some circumstances
+			  // save_user_lvar_settings cause internal error 1099 on the same sample
+				//match func local vars
+				lvar_uservec_t lvinf;
+				if(is_func(get_flags(m.ea)) && restore_user_lvar_settings(&lvinf, m.ea)) {
+					uint32 changed = 0;
+					for(size_t i = 0; i < lvinf.lvvec.size(); i++) {
+						qstring newname;
+						if(match(lvinf.lvvec[i].name, &newname)) {
+							stripName(&newname);
+							newname = unique_name(newname.c_str(), 	[&lvinf, i](const qstring &n)
+							{
+								for(size_t j = 0; j < lvinf.lvvec.size(); j++){
+									if(lvinf.lvvec[j].name == n) {
+										if(i == j)
+											return true;
+										else
+											return false;
+									}
+								}
+								return true;
+							});
+							lvinf.lvvec[i].name = newname;
+							++changed;
+						}
+					}
+					if(changed) {
+						save_user_lvar_settings(m.ea, lvinf);
+						count += changed;
+						msg("[hrt] Refactoring %a: %d local var%s renamed\n", m.ea, changed, changed > 1 ? "s" : "");
+						break;
+					}
+				}
+				++failc;
+				msg("[hrt] Refactoring %a: fail local vars renaming '%s'\n", m.ea, m.name.c_str());
+#endif
+				break;
+			}
+			case eRF_typeName:
+			{
+				qstring oldname;
+				qstring newname;
+#if IDA_SDK_VERSION < 850
+				oldname = get_struc_name(m.ea);
+				if(match(oldname, &newname)) {
+					 stripName(&newname);
+					 if(set_struc_name(m.ea, newname.c_str())) {
+#else //IDA_SDK_VERSION < 850
+				tinfo_t t;
+				if(t.get_type_by_tid(m.ea) && t.get_type_name(&oldname) && match(oldname, &newname)) {
+					stripName(&newname);
+					if(TERR_OK == t.rename_type(newname.c_str(), NTF_NO_NAMECHK)) {
+#endif //IDA_SDK_VERSION < 850
+						++count;
+						msg("[hrt] Refactoring %a: type '%s' renamed to '%s'\n", m.ea, oldname.c_str(), newname.c_str());
+						break;
+					}
+				}
+				++failc;
+				msg("[hrt] Refactoring %a: fail type renaming '%s'\n", m.ea, m.name.c_str());
+				break;
+			}
+			case eRF_udmName:
+			{
+				qstring newname;
+				qstring oldname;
+#if IDA_SDK_VERSION < 850
+				struc_t *struc;
+				member_t *memb = get_member_by_id(&oldname, m.ea, &struc);
+				qstring mname = get_member_name(m.ea);
+				if(memb && match(mname, &newname)) {
+					newname = good_smember_name(struc, memb->soff, newname.c_str());
+					if(set_member_name(struc, memb->soff, newname.c_str())) {
+#else //IDA_SDK_VERSION < 850
+				udm_t udm;
+				tinfo_t t;
+				ssize_t idx = t.get_udm_by_tid(&udm, m.ea);
+				if(idx != -1 && match(udm.name, &newname)) {
+					stripName(&newname);
+					newname = good_udm_name(t, udm.offset, newname.c_str());
+					t.get_type_name(&oldname); oldname.append('.'); oldname.append(udm.name);
+					if(TERR_OK == t.rename_udm(idx, newname.c_str())) {
+#endif //IDA_SDK_VERSION < 850
+						++count;
+						msg("[hrt] Refactoring %a: struct member '%s' renamed to '%s'\n", m.ea, oldname.c_str(), newname.c_str());
+						break;
+					}
+				}
+				++failc;
+				msg("[hrt] Refactoring %a: fail struct member renaming '%s'\n", m.ea, m.name.c_str());
+				break;
+			}
+			case eRF_msigName:
+			{
+				uint32 cnt = msig_rename(msig_replace, this);
+				msg("[hrt] Refactoring: %d msig renamed '%s'\n", cnt, m.name.c_str());
+				count += cnt;
+				if(!cnt)
+					++failc;
+				break;
+			}
+			default:
+				msg("[hrt] Refactoring %a: unk kind %d\n", m.ea, m.kind);
+			}
+		}
+		msg("[hrt] ======== Refactoring: %d changes, %d fails ========\n", count, failc);
+		if(count)
+			clear_cached_cfuncs();
+	}
+};
+
+//--------------------------------------------------------------------------
+
+const char* msig_search(void* ctx, const char* name)
+{
+	refac_t* rf = (refac_t*)ctx;
+	if(rf->match(qstring(name)))
+		rf->add(name, eRF_msigName, BADADDR);
+	return nullptr;
+}
+const char* msig_replace(void* ctx, const char* name)
+{
+	refac_t* rf = (refac_t*)ctx;
+	qstring newname;
+	if(rf->match(qstring(name), &newname))
+		return newname.c_str();
+	return nullptr;
+}
+
+//--------------------------------------------------------------------------
+static const int rcwidths[] = { 45 | CHCOL_PLAIN | CHCOL_INODENAME, 45  | CHCOL_PLAIN, 16 | CHCOL_EA | CHCOL_DEFHIDDEN, 4 | CHCOL_PLAIN
+#if IDA_SDK_VERSION >= 770
+																| CHCOL_DEFHIDDEN
+#endif //IDA_SDK_VERSION >= 770
+															};
+static const char *const rcheader[] = { "Found", "#The real result may vary#Replace to (*)", "Address/TypeID", "Kind"};
+
+struct ida_local rf_chooser_t : public chooser_t
+{
+	refac_t* rf;
+
+	rf_chooser_t(refac_t* rf_) : chooser_t(
+#if IDA_SDK_VERSION >= 770
+																 CH_HAS_DIRTREE | CH_TM_FULL_TREE | CH_NON_PERSISTED_TREE |
+#endif //IDA_SDK_VERSION >= 770
+																 CH_CAN_DEL /*| CH_CAN_EDIT*/,
+																 qnumber(rcwidths), rcwidths, rcheader, "[hrt] Refactoring"), rf(rf_) {}
+	virtual ~rf_chooser_t() {}
+#if IDA_SDK_VERSION >= 770
+	virtual dirtree_t *idaapi get_dirtree() newapi { return &rf->dt;}
+	virtual inode_t idaapi index_to_inode(size_t n) const newapi
+	{
+		if(n < rf->matches.size())
+			return inode_t(n);
+		return inode_t(BADADDR);
+	}
+#endif //IDA_SDK_VERSION >= 770
+	virtual size_t idaapi get_count() const 	{	return rf->matches.size();	}
+	virtual ea_t idaapi get_ea(size_t n) const { return rf->matches[n].ea;}
+	virtual void idaapi get_row(qstrvec_t* cols, int*, chooser_item_attrs_t* attrs, size_t n) const
+	{
+		const rf_match_t &m = rf->matches[n];
+		cols->at(0) = m.name;
+
+		qstring* repl = &cols->at(1);
+		rf->match(m.name, repl);
+
+		if(m.deleted) {
+			attrs->flags |= CHITEM_STRIKE;
+		} else {
+			if(repl->empty()) {
+				attrs->color = 255; //red
+			} else {
+				switch(m.kind) {
+				case eRF_funcName:
+				case eRF_glblVar:
+					if(!validate_name(repl, VNT_IDENT, SN_CHECK | SN_NOWARN))
+						attrs->flags |= CHITEM_GRAY;
+					break;
+					//case eRF_udmName:
+					//	if(!validate_name(repl, VNT_UDTMEM, SN_CHECK | SN_NOWARN))
+					//		attrs->flags |= CHITEM_GRAY;
+					//	break;
+				case eRF_typeName:
+				{
+					bool typeConflict = false;
+					tinfo_t t = getType4Name(repl->c_str(), true);
+					if(!t.empty() && !t.is_func()) {
+#if IDA_SDK_VERSION < 850
+						qstring tName;
+						tid_t tid = BADNODE;
+						if(t.get_type_name(&tName))
+							tid = get_struc_id(tName.c_str());
+#else //IDA_SDK_VERSION >= 850
+						tid_t tid = t.get_tid()	;
+#endif //IDA_SDK_VERSION < 850
+						if(/*tid == BADNODE ||*/ tid != m.ea) {
+							msg("[hrt] Refactoring: type conflict '%s' - '%s' (%a - %a)\n", t.dstr(), repl->c_str(), tid, m.ea);
+							typeConflict = true;
+						}
+					}
+					if(typeConflict || !validate_name(repl, VNT_TYPE, SN_CHECK | SN_NOWARN)) {
+						attrs->color = 255; //red
+					}
+					break;
+				}
+				}
+			}
+		}
+		cols->at(2).sprnt("%a", m.ea);
+		cols->at(3) = eRFkindName(m.kind);
+	}
+	virtual cbret_t idaapi enter(size_t n)
+	{
+		const rf_match_t &m = rf->matches[n];
+
+		switch (m.kind) {
+#if IDA_SDK_VERSION < 850
+		case eRF_typeName:
+			open_structs_window(m.ea);
+			return cbret_t();
+		case eRF_udmName:
+		{
+			struc_t *struc;
+			member_t *memb = get_member_by_id(m.ea, &struc);
+			if(memb && struc)
+				open_structs_window(struc->id, memb->soff);
+			return cbret_t();
+		}
+#else //IDA_SDK_VERSION >= 850
+		case eRF_udmName:
+		{
+			udm_t udm;
+			tinfo_t membStrucType;
+			ssize_t membIdx = membStrucType.get_udm_by_tid(&udm, m.ea);
+			uint32 ord = get_tid_ordinal(m.ea);
+			if(ord)
+				open_loctypes_window(ord, membIdx < 0 ? nullptr : (const tif_cursor_t *)&membIdx);
+			return cbret_t();
+		}
+#endif //IDA_SDK_VERSION < 850
+		case eRF_funcArg:
+		case eRF_loclVar:
+			COMPAT_open_pseudocode_REUSE(m.ea);
+			return cbret_t();
+		case eRF_msigName:
+			return cbret_t();
+		}
+		return chooser_t::enter(n);
+	}
+	virtual cbret_t idaapi del(size_t n)
+	{
+		// no real delete because `matches` vector indexes are inodes moving and dirtree became inadequate
+		rf->matches[n].deleted ^= true;
+		return cbret_t(n);
+	}
+};
+
+//--------------------------------------------------------------------------
+#if IDA_SDK_VERSION >= 770
+bool rf_dirspec_t::get_name(qstring* out, inode_t inode, uint32 name_flags)
+{
+	if(inode < rf->matches.size()) {
+		*out = rf->matches[inode].name;
+		return true;
+	}
+	return false;
+#if 0
+	segment_t *seg = getseg(inode);
+	if(seg) {
+		msg("get_name seg type: %d, >flags %d\n", seg->type, seg->flags);
+		 //inode is ea
+		if(name_flags == DTN_FULL_NAME)
+			*out = ::get_name((ea_t)inode);
+		else
+			*out = ::get_short_name((ea_t)inode);
+		return true;
+	} else if(is_mapped(inode)) {
+		// inode is tid
+		tinfo_t t;
+		if(t.get_type_by_tid(inode)) {
+			if(t.get_type_name(out))
+				return true;
+		} else {
+			udm_t udm;
+			ssize_t idx = t.get_udm_by_tid(&udm, inode);
+			if(idx != -1 && t.get_type_name(out)) {
+				out->append('.');
+				out->append(udm.name);
+				return true;
+			}
+		}
+	}
+	out->sprnt("inode #%d", inode);
+	return true;
+#endif
+}
+
+inode_t rf_dirspec_t::get_inode(const char* dirpath, const char* name)
+{
+	qstring dir(dirpath);
+	dir.trim2('/');
+	if(dir.empty()) // return diridx (the root has the index 0)
+		return eRFname2kind(name) + 1;
+
+	eRF_kind_t kind = eRFname2kind(dir.c_str());
+	if(kind < eRF_last) {
+		for(size_t i = 0; i < rf->matches.size(); i++)
+			if(rf->matches[i].kind == kind && !qstrcmp(name, rf->matches[i].name.c_str()))
+				return inode_t(i);
+	}
+	return direntry_t::BADIDX;
+}
+#endif //IDA_SDK_VERSION >= 770
+
+//--------------------------------------------------------------------------
+static int idaapi callback(int fid, form_actions_t &fa)
+{
+	refac_t *rf = (refac_t *)fa.get_ud();
+  //msg("CB_%d\n", fid);
+	switch ( fid )
+	{
+	case CB_INIT:
+		rf->search();
+#if IDA_SDK_VERSION < 770
+		fa.refresh_field(1);
+#endif //IDA_SDK_VERSION < 770
+		break;
+	case CB_YES:
+		if(rf->searchFor != rf->replaceWith)
+			rf->replace();
+		else
+			msg("[hrt] Refactoring: nothing to do, SearchFor is equal to ReplaceWith\n");
+		close_widget(rf->rfform, WCLS_DONT_SAVE_SIZE);
+		break;
+#if IDA_SDK_VERSION >= 800
+	case CB_CANCEL:
+		close_widget(rf->rfform, WCLS_DONT_SAVE_SIZE);
+		break;
+#endif //IDA_SDK_VERSION >= 800
+	case CB_CLOSE:
+		//rf->rfform = nullptr;
+		break;
+	case CB_DESTROYING:
+		//delete rf; // on cause crash in dirtree_t::~dirtree_t -> rf_dirspec_t::`scalar deleting destructor'(unsigned int)
+		break;
+	case 2: //"Search for" changes
+	{
+		qstring n;
+		fa.get_string_value(fid, &n);
+		if(n != rf->searchFor) {
+			rf->searchFor = n;
+#if 0
+			validate_name(&rf->searchFor, VNT_IDENT, SN_NOCHECK | SN_NOWARN);
+#else
+			rf->searchFor.trim2();
+#endif
+			//fa.set_string_value(fid, &rf->searchFor);
+			rf->search();
+			fa.refresh_field(1);
+		}
+		break;
+	}
+	case 3: //"Replace with" changes
+	{
+		qstring n;
+		fa.get_string_value(fid, &n);
+		if(n != rf->replaceWith) {
+			rf->replaceWith = n;
+#if 0
+			validate_name(&rf->replaceWith, VNT_IDENT, SN_NOCHECK | SN_NOWARN);
+#else
+			rf->replaceWith.trim2();
+#endif
+			//fa.set_string_value(fid, &rf->replaceWith);
+			fa.refresh_field(1);
+		}
+		break;
+	}
+	case 4: //check boxes changes
+	{
+		ushort f;
+		fa.get_checkbox_value(fid, &f);
+		if(f != rf->flags) {
+			rf->flags = f;
+			rf->search();
+			fa.refresh_field(1);
+		}
+		break;
+	}
+	}
+	return 1;
+}
+
+int do_refactoring(action_activation_ctx_t *ctx)
+{
+	qstring highlight;
+	uint32 hlflg;
+	get_highlight(&highlight, ctx->widget, &hlflg);
+
+	refac_t* refac = new refac_t(highlight.c_str());
+	rf_chooser_t* rfch = new rf_chooser_t(refac);
+  sizevec_t selected;
+  selected.push_back(0);  // first item by default
+	
+	static const char form[] =
+#if IDA_SDK_VERSION < 800
+    // has no action callback in early IDA versions
+	  "BUTTON CANCEL NONE\n"
+#endif //IDA_SDK_VERSION < 800
+		"[hrt] Refactoring\n"   // title
+		"\n"
+		"%/%*"                    // callback
+		"\n"
+		"<List:E1:0:100:::>\n"
+		"<Search for:q2:::><|><Replace with:q3:::>\n"
+		"<Case sensitive:c><|><Whole words only:c><|><Use regular expression:c>4>\n\n"; //!!! check RFF_ flags in case of changes in this line
+	refac->rfform = open_form(form, 0, callback, refac, rfch, &selected, &refac->searchFor, &refac->replaceWith, &refac->flags);
+	return 0;
+}

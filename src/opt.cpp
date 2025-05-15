@@ -917,7 +917,7 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 			return 0;
 
 		qstring funcname = get_name(call->l.g);
-		stripName(&funcname);
+		stripName(&funcname, true);
 		if(funcname.length() > 3)
 			return 0; //optimize away funcs with longer names
 
@@ -954,7 +954,7 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 		//FIXME: what about spoiled registers and stack balance in case of __stdcall
 
 		qstring funcname = get_name(ins->l.g);
-		stripName(&funcname);
+		stripName(&funcname, true);
 		if(funcname.length() <= 6 || strncmp(funcname.c_str() + 3, "_0x", 3))
 			return 0;
 
