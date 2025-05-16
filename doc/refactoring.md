@@ -9,6 +9,7 @@ The results are grouped to following folders:
  * **farg** - ... part of an argument name in the function prototype (whole function prototype is displayed);
  * **gvar** - ... part of a global variable name;
  * **lvar** - ... part of a local variable name (all matched variables are displayed in one line, then symbol `@` and the function name is appended to the line);
+ * **cmts** - ... part of a user defined comment (too long comment is displayed incomplete)
  * **type** - ... part of a type name (only structures and unions for IDA versions less 8.5);
  * **udm**  - ... part of a struct or union member's name (the full name of the member is displayed);
  * **msig** - ... part of [microcode signature](msig.md) name;

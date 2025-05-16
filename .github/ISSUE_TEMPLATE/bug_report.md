@@ -24,8 +24,8 @@ A clear and concise description of what you expected to happen.
 If applicable, add screenshots to help explain your problem.
 
 **Desktop (please complete the following information):**
- - OS: [e.g. iOS]
- - IDA version [e.g. 7.7, 9.0]
+ - OS: [e.g. Windows 12 Pro 27H1 33333.4444]
+ - IDA version [e.g. 9.1 Pro]
  - hrtng plugin version [e.g. 1.1.1]
  - installed 3rd party plugins details [e.g. bindiff, bincat]
 

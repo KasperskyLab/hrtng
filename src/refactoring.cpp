@@ -47,6 +47,7 @@ enum eRF_kind_t {
 	eRF_funcArg,
 	eRF_glblVar,
 	eRF_loclVar,
+	eRF_usrCmts,
 	eRF_typeName,
 	eRF_udmName,
 	eRF_msigName,
@@ -60,6 +61,7 @@ const char* eRFkindName(eRF_kind_t kind)
 	case eRF_funcArg:  return "farg";
 	case eRF_glblVar:  return "gvar";
 	case eRF_loclVar:  return "lvar";
+	case eRF_usrCmts:  return "cmts";
 	case eRF_typeName: return "type";
 	case eRF_udmName:  return "udm";
 	case eRF_msigName: return "msig";
@@ -73,6 +75,7 @@ eRF_kind_t eRFname2kind(const char* n)
 	if(!qstrcmp(n, "farg")) return eRF_funcArg;
 	if(!qstrcmp(n, "gvar")) return eRF_glblVar;
 	if(!qstrcmp(n, "lvar")) return eRF_loclVar;
+	if(!qstrcmp(n, "cmts")) return eRF_usrCmts;
 	if(!qstrcmp(n, "type")) return eRF_typeName;
 	if(!qstrcmp(n, "udm"))  return eRF_udmName;
 	if(!qstrcmp(n, "msig")) return eRF_msigName;
@@ -184,9 +187,11 @@ struct ida_local refac_t {
 
 		bool res = false;
 		size_t so = 0;
-		size_t prev;
+		size_t prev = 0;
 		while(1) {
 			prev = so;
+			if(prev >= s.length())
+				break;
 			size_t eo;
 			if(re != NULL && (flags & RFF_REGEXP)) {
 				regmatch_t m;
@@ -206,7 +211,10 @@ struct ida_local refac_t {
 				 ((so > 0 && isWord(s[so - 1])) ||
 					(eo < s.length() && isWord(s[eo])))) {
 				//msg("[hrt] unmatch `%s %d %d`\n", s.c_str(), so, eo);
-				break;
+				if(r && eo > prev)
+					r->append(s.c_str() + prev, eo - prev);
+				so = eo;
+				continue;
 			}
 			//qstring match(s.c_str() + so, eo - so);
 			//msg("[hrt] match `%s` in %s\n", match.c_str(), s.c_str());
@@ -261,13 +269,12 @@ struct ida_local refac_t {
 				warning("[hrt] regexp error '%s'", errmsg.c_str());
 				return false;
 			}
-
 		}
 
 		size_t nqty = get_nlist_size();
 		for(size_t i = 0; i < nqty; i++) {
 			ea_t ea = get_nlist_ea(i);
-			flags_t flg = get_flags(ea);
+			flags64_t flg = get_flags(ea);
 			if(!is_func(flg) && !(is_data(flg) && has_any_name(flg)))
 				continue;
 			qstring eaname = get_name(ea);
@@ -295,7 +302,7 @@ struct ida_local refac_t {
 				}
 			}
 
-#if 1 // restore_user_lvar_settings may cause crash somewhere deep inside decompiler on access nullptr exception in some circumstances
+#if 1 // restore_user_lvar_settings may cause crash somewhere deep inside decompiler on access nullptr exception on Windows in Debug mode (prbbl because of std::map)
 			//match func local vars
 			lvar_uservec_t lvinf;
 			if(is_func(flg) && restore_user_lvar_settings(&lvinf, ea)) {
@@ -314,7 +321,26 @@ struct ida_local refac_t {
 				}
 			}
 #endif
-		}
+
+			//match func local comments
+			if(is_func(flg)) {
+				user_cmts_t *cmts = restore_user_cmts(ea);
+				if(cmts) {
+					for(auto it = user_cmts_begin(cmts); it != user_cmts_end(cmts); it = user_cmts_next(it)) {
+						citem_cmt_t &c = user_cmts_second(it);
+						if(match(c)) {
+							qstring cc = c;
+							//TODO: implement it more smarter way
+							if(cc.length() > 100)
+								cc.remove_last(cc.length() - 100);
+							strrpl(cc.begin(), '\n', ' '); //clean cr in multi-line comment
+							add(cc.c_str(), eRF_usrCmts, user_cmts_first(it).ea);
+						}
+					}
+					user_cmts_free(cmts);
+				}
+			}
+		} // end of name list loop
 
 		//struct/union names amd members
 #if IDA_SDK_VERSION < 850
@@ -387,7 +413,7 @@ struct ida_local refac_t {
 			case eRF_funcName:
 			case eRF_glblVar:
 			{
-				flags_t flg = get_flags(m.ea);
+				flags64_t flg = get_flags(m.ea);
 				if(is_func(flg) || (is_data(flg) && has_any_name(flg))) {
 					qstring eaname = get_name(m.ea);
 					qstring newname;
@@ -447,9 +473,8 @@ struct ida_local refac_t {
 			}
 			case eRF_loclVar:
 			{
-#if 1   // restore_user_lvar_settings may cause crash somewhere deep inside decompiler on access nullptr exception in some circumstances
+#if 1   // restore_user_lvar_settings may cause crash somewhere deep inside decompiler on access nullptr exception on Windows in Debug mode
 			  // save_user_lvar_settings cause internal error 1099 on the same sample
-				//match func local vars
 				lvar_uservec_t lvinf;
 				if(is_func(get_flags(m.ea)) && restore_user_lvar_settings(&lvinf, m.ea)) {
 					uint32 changed = 0;
@@ -483,6 +508,35 @@ struct ida_local refac_t {
 				++failc;
 				msg("[hrt] Refactoring %a: fail local vars renaming '%s'\n", m.ea, m.name.c_str());
 #endif
+				break;
+			}
+			case eRF_usrCmts:
+			{
+				user_cmts_t *cmts = nullptr;
+				func_t *fn = get_func(m.ea);
+				if(fn && (cmts = restore_user_cmts(fn->start_ea)) != nullptr) {
+					uint32 changed = 0;
+					for(auto it = user_cmts_begin(cmts); it != user_cmts_end(cmts); it = user_cmts_next(it)) {
+						if(user_cmts_first(it).ea == m.ea) {
+							citem_cmt_t &c = user_cmts_second(it);
+							qstring newcmt;
+							if(match(c, &newcmt)) {
+								c.qclear(); c.append(newcmt);
+								++changed;
+							}
+						}
+					}
+					if(changed) {
+						save_user_cmts(fn->start_ea, cmts);
+						user_cmts_free(cmts);
+						count += changed;
+						msg("[hrt] Refactoring %a: %d local comments replaced\n", m.ea, changed);
+						break;
+					}
+					user_cmts_free(cmts);
+				}
+				++failc;
+				msg("[hrt] Refactoring %a: fail local comments replace '%s'\n", m.ea, m.name.c_str());
 				break;
 			}
 			case eRF_typeName:
@@ -592,8 +646,7 @@ struct ida_local rf_chooser_t : public chooser_t
 #if IDA_SDK_VERSION >= 770
 																 CH_HAS_DIRTREE | CH_TM_FULL_TREE | CH_NON_PERSISTED_TREE |
 #endif //IDA_SDK_VERSION >= 770
-																 CH_CAN_DEL /*| CH_CAN_EDIT*/,
-																 qnumber(rcwidths), rcwidths, rcheader, "[hrt] Refactoring"), rf(rf_) {}
+																 CH_CAN_DEL, qnumber(rcwidths), rcwidths, rcheader, "[hrt] Refactoring"), rf(rf_) {}
 	virtual ~rf_chooser_t() {}
 #if IDA_SDK_VERSION >= 770
 	virtual dirtree_t *idaapi get_dirtree() newapi { return &rf->dt;}
@@ -689,6 +742,7 @@ struct ida_local rf_chooser_t : public chooser_t
 		}
 #endif //IDA_SDK_VERSION < 850
 		case eRF_funcArg:
+		case eRF_usrCmts:
 		case eRF_loclVar:
 			COMPAT_open_pseudocode_REUSE(m.ea);
 			return cbret_t();
@@ -701,7 +755,7 @@ struct ida_local rf_chooser_t : public chooser_t
 	{
 		// no real delete because `matches` vector indexes are inodes moving and dirtree became inadequate
 		rf->matches[n].deleted ^= true;
-		return cbret_t(n);
+		return cbret_t(new_sel_after_del(n));
 	}
 };
 
@@ -771,11 +825,11 @@ static int idaapi callback(int fid, form_actions_t &fa)
 	{
 	case CB_INIT:
 		rf->search();
-#if IDA_SDK_VERSION < 770
 		fa.refresh_field(1);
-#endif //IDA_SDK_VERSION < 770
 		break;
 	case CB_YES:
+		rf->searchFor.trim2();
+		rf->replaceWith.trim2();
 		if(rf->searchFor != rf->replaceWith)
 			rf->replace();
 		else

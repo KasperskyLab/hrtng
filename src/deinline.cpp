@@ -86,7 +86,7 @@ typedef std::pair<bbs_t::iterator, bool> bbsIns_t;    // bbs_t insertion result
 typedef qvector<bbs_t>                   fmtch_t;     // groups of freq matched blocks
 typedef std::pair<sBB*, sBB*>            twoBB_t;     // head/exit pair or parts of two paths in pathsStk_t
 typedef std::stack<twoBB_t>              pathsStk_t;  // temporary stack for building paths
-typedef std::basic_string<uint32>        pathstr_t;   // group numbers in path
+typedef std::basic_string<char32_t>      pathstr_t;   // group numbers in path
 
 class ida_local lessPSLen {
 public:
