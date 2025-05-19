@@ -109,8 +109,8 @@ struct ida_local rf_dirspec_t : public dirspec_t
 #endif //IDA_SDK_VERSION >= 770
 
 //--------------------------------------------------------------------------
-const char* msig_search(void* ctx, const char* name);
-const char* msig_replace(void* ctx, const char* name);
+qstring msig_search(void* ctx, const char* name);
+qstring msig_replace(void* ctx, const char* name);
 
 // !!! these flags below depend on order of checkboxes in the open_form below
 //"<Case sensitive:c><|><Whole words only:c><|><Use regular expression:c>4>\n\n";
@@ -403,6 +403,7 @@ struct ida_local refac_t {
 		msg("[hrt] -------- Refactoring: replace %d matches --------\n", matches.size());
 		uint32 count = 0;
 		uint32 failc = 0;
+		uint32 msigcount = 0;
 		for(size_t i = 0; i < matches.size(); i++) {
 			const rf_match_t &m = matches[i];
 			if(m.deleted) {
@@ -460,7 +461,7 @@ struct ida_local refac_t {
 							if(changed) {
 								tinfo_t newFType;
 								if(newFType.create_func(fi) && newFType.is_correct() && apply_tinfo(m.ea, newFType, is_userti(m.ea) ? TINFO_DEFINITE : TINFO_GUESSED)) {
-									msg("[hrt] Refactoring %a: function args type changed to \"%s\"\n", m.ea, newFType.dstr());
+									//msg("[hrt] Refactoring %a: function args type changed to \"%s\"\n", m.ea, newFType.dstr());
 									break;
 								}
 							}
@@ -501,7 +502,7 @@ struct ida_local refac_t {
 					if(changed) {
 						save_user_lvar_settings(m.ea, lvinf);
 						count += changed;
-						msg("[hrt] Refactoring %a: %d local var%s renamed\n", m.ea, changed, changed > 1 ? "s" : "");
+						//msg("[hrt] Refactoring %a: %d local var%s renamed\n", m.ea, changed, changed > 1 ? "s" : "");
 						break;
 					}
 				}
@@ -530,7 +531,7 @@ struct ida_local refac_t {
 						save_user_cmts(fn->start_ea, cmts);
 						user_cmts_free(cmts);
 						count += changed;
-						msg("[hrt] Refactoring %a: %d local comments replaced\n", m.ea, changed);
+						//msg("[hrt] Refactoring %a: %d local comments replaced\n", m.ea, changed);
 						break;
 					}
 					user_cmts_free(cmts);
@@ -555,7 +556,7 @@ struct ida_local refac_t {
 					if(TERR_OK == t.rename_type(newname.c_str(), NTF_NO_NAMECHK)) {
 #endif //IDA_SDK_VERSION < 850
 						++count;
-						msg("[hrt] Refactoring %a: type '%s' renamed to '%s'\n", m.ea, oldname.c_str(), newname.c_str());
+						//msg("[hrt] Refactoring %a: type '%s' renamed to '%s'\n", m.ea, oldname.c_str(), newname.c_str());
 						break;
 					}
 				}
@@ -585,7 +586,7 @@ struct ida_local refac_t {
 					if(TERR_OK == t.rename_udm(idx, newname.c_str())) {
 #endif //IDA_SDK_VERSION < 850
 						++count;
-						msg("[hrt] Refactoring %a: struct member '%s' renamed to '%s'\n", m.ea, oldname.c_str(), newname.c_str());
+						//msg("[hrt] Refactoring %a: struct member '%s' renamed to '%s'\n", m.ea, oldname.c_str(), newname.c_str());
 						break;
 					}
 				}
@@ -594,18 +595,20 @@ struct ida_local refac_t {
 				break;
 			}
 			case eRF_msigName:
-			{
-				uint32 cnt = msig_rename(msig_replace, this);
-				msg("[hrt] Refactoring: %d msig renamed '%s'\n", cnt, m.name.c_str());
-				count += cnt;
-				if(!cnt)
-					++failc;
+				++msigcount;
 				break;
-			}
 			default:
 				msg("[hrt] Refactoring %a: unk kind %d\n", m.ea, m.kind);
 			}
 		}
+		if(msigcount) {
+			//all MSIGs are renamed at once
+			uint32 cnt = msig_rename(msig_replace, this);
+			//msg("[hrt] Refactoring: %d msigs renamed\n", cnt);
+			count += cnt;
+			failc += msigcount - cnt;
+		}
+
 		msg("[hrt] ======== Refactoring: %d changes, %d fails ========\n", count, failc);
 		if(count)
 			clear_cached_cfuncs();
@@ -614,20 +617,20 @@ struct ida_local refac_t {
 
 //--------------------------------------------------------------------------
 
-const char* msig_search(void* ctx, const char* name)
+qstring msig_search(void* ctx, const char* name)
 {
 	refac_t* rf = (refac_t*)ctx;
 	if(rf->match(qstring(name)))
 		rf->add(name, eRF_msigName, BADADDR);
-	return nullptr;
+	return qstring();
 }
-const char* msig_replace(void* ctx, const char* name)
+qstring msig_replace(void* ctx, const char* name)
 {
 	refac_t* rf = (refac_t*)ctx;
 	qstring newname;
 	if(rf->match(qstring(name), &newname))
-		return newname.c_str();
-	return nullptr;
+		return newname;
+	return qstring();
 }
 
 //--------------------------------------------------------------------------

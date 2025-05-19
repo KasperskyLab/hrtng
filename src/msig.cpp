@@ -336,8 +336,8 @@ public:
 	{
 		uint32 count = 0;
 		for(auto it = begin(); it != end(); it++) {
-			const char* newName = cb(ctx, (*it)->name.c_str());
-			if(newName) {
+			qstring newName = cb(ctx, (*it)->name.c_str());
+			if(!newName.empty()) {
 				(*it)->name = newName;
 				modified = true;
 				++count;

@@ -266,11 +266,11 @@ bool renameEa(ea_t refea, ea_t ea, const qstring* name)
 	if(!strncmp(newName.c_str(), "sub_", 4))
 			newName.insert('p');
 
-	if (!set_name(ea, newName.c_str(), SN_NOCHECK | SN_AUTO | SN_NOWARN | SN_FORCE)) {
+	if (!set_name(ea, newName.c_str(), SN_NOCHECK | /*SN_AUTO |*/ SN_NOWARN | SN_FORCE)) {
 		msg("[hrt] %a: fail to rename %a to \"%s\"\n", refea, ea, newName.c_str());
 		return false;
 	}
-	make_name_auto(ea);
+	//make_name_auto(ea);
 	msg("[hrt] %a: Global at %a was renamed to \"%s\"\n", refea, ea, newName.c_str());
 	return true;
 }
@@ -568,7 +568,7 @@ bool renameExp(ea_t refea, cfunc_t *func, cexpr_t* exp, qstring* name, vdui_t *v
 	if(exp->op == cot_var)
 		return renameVar(refea, func, exp->v.idx, name, vdui);
 	if(exp->op == cot_obj)
-		return renameEa(refea, exp->obj_ea, name);//, false);
+		return renameEa(refea, exp->obj_ea, name);
 	if(exp->op == cot_memptr || exp->op == cot_memref)
 		return renameUdtMemb(refea, exp->x->type, exp->m, name);
 	return false;

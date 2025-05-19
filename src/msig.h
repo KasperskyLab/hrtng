@@ -27,6 +27,6 @@ const char* msig_cached(ea_t ea);
 extern const char msigMessage[];
 bool isMsig(vdui_t *vu, qstring* name);
 
-// returns new name or nullptr to refuse renaming
-typedef const char* msig_rename_cb_t(void* ctx, const char* name);
+// returns new name; empty string to refuse renaming
+typedef qstring msig_rename_cb_t(void* ctx, const char* name);
 uint32 msig_rename(msig_rename_cb_t* cb, void* ctx);

@@ -114,7 +114,7 @@ static bool is_reincastable(cexpr_t *e)
 			return false;
 		break;
 	case cot_memptr:
-		if (e->x->type.is_union())
+		if (remove_pointer(e->x->type).is_union())
 			return false;
 		break;
 	default:
@@ -204,7 +204,7 @@ void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 			if (trace.size() <= 1) {
 				res->type = cast->type;//make_pointer(create_typedef(num->nf.type_name.c_str()));
 				res->m = (uint32_t)n;
-				//res->ptrsize = 8; //is it need?
+				res->ptrsize = res->type.get_size(); //is it need?
 			} else {
 				for (size_t i = 0; i < trace.size(); i++) {
 #if IDA_SDK_VERSION < 850
@@ -315,7 +315,7 @@ void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 				break;
 			case cot_memptr:
 				x = exp->x;
-				if (x->type.is_union())
+				if (remove_pointer(x->type).is_union())
 					return false;
 				n = exp->m;
 				ptr = true;
@@ -333,8 +333,8 @@ void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 				return false;
 			if (ptr) {
 				res = new cexpr_t(cot_ptr, res);
-				res->ptrsize = exp->ptrsize;
 				res->type = exp->type;
+				res->ptrsize = res->type.get_size();
 			}
 			replaceExp(func, exp, res);
 			return true;
