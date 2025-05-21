@@ -76,6 +76,11 @@
 	#define flags64_t flags_t
 #endif // IDA_SDK_VERSION < 830
 
+#if IDA_SDK_VERSION < 760
+	inline ssize_t idaapi get_ida_notepad_text(qstring *buf) { return root_node.supstr(buf, RIDX_NOTEPAD); }
+	inline void idaapi set_ida_notepad_text(const char *text, size_t size=0) { root_node.supset(RIDX_NOTEPAD, text); }
+#endif //IDA_SDK_VERSION < 760
+
 #if IDA_SDK_VERSION < 750
 	#define COMPAT_register_and_attach_to_menu(a,b,c,d,e,f,g) register_and_attach_to_menu(a,b,c,d,e,f,g)
 	#define COMPAT_open_pseudocode_REUSE(a) open_pseudocode(a, 0);

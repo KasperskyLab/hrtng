@@ -52,6 +52,7 @@ enum eRF_kind_t {
 	eRF_typeName,
 	eRF_udmName,
 	eRF_msigName,
+	eRF_notepad,
 	eRF_last
 };
 
@@ -66,6 +67,7 @@ const char* eRFkindName(eRF_kind_t kind)
 	case eRF_typeName: return "type";
 	case eRF_udmName:  return "udm";
 	case eRF_msigName: return "msig";
+	case eRF_notepad:  return "note";
 	default:           return "unk";
 	}
 }
@@ -80,6 +82,7 @@ eRF_kind_t eRFname2kind(const char* n)
 	if(!qstrcmp(n, "type")) return eRF_typeName;
 	if(!qstrcmp(n, "udm"))  return eRF_udmName;
 	if(!qstrcmp(n, "msig")) return eRF_msigName;
+	if(!qstrcmp(n, "note")) return eRF_notepad;
 	return eRF_last;
 }
 
@@ -397,6 +400,26 @@ struct ida_local refac_t {
 #endif //IDA_SDK_VERSION < 850
 
 		msig_rename(msig_search, this);
+
+		//notepad
+		qstring notes;
+		if(get_ida_notepad_text(&notes)) {
+			//split to lines (qstring::split is not exist in older ida)
+			qstrvec_t lines;
+			const char *from = notes.begin();
+			const char *end  = notes.end();
+			while(from < end) {
+				const char *to =  qstrchr(from, '\n');
+				if(!to)
+					to = end;
+				lines.push_back().append(from, to - from);
+				from = to + 1;
+			}
+			for(size_t i = 0; i < lines.size(); i++) {
+				if(match(lines[i]))
+					add(lines[i].c_str(), eRF_notepad, i);
+			}
+		}
 		return true;
 	}
 	void replace()
@@ -405,6 +428,7 @@ struct ida_local refac_t {
 		uint32 count = 0;
 		uint32 failc = 0;
 		uint32 msigcount = 0;
+		uint32 notecount = 0;
 		for(size_t i = 0; i < matches.size(); i++) {
 			const rf_match_t &m = matches[i];
 			if(m.deleted) {
@@ -604,6 +628,9 @@ struct ida_local refac_t {
 			case eRF_msigName:
 				++msigcount;
 				break;
+			case eRF_notepad:
+				++notecount;
+				break;
 			default:
 				msg("[hrt] Refactoring %a: unk kind %d\n", m.ea, m.kind);
 			}
@@ -614,6 +641,16 @@ struct ida_local refac_t {
 			//msg("[hrt] Refactoring: %d msigs renamed\n", cnt);
 			count += cnt;
 			failc += msigcount - cnt;
+		}
+		if(notecount) {
+			qstring notes;
+			if(get_ida_notepad_text(&notes)) {
+				qstring newnotes;
+				if(match(notes, &newnotes)) {
+					set_ida_notepad_text(newnotes.c_str());
+					count += notecount;
+				}
+			}
 		}
 
 		msg("[hrt] ======== Refactoring: %d changes, %d fails ========\n", count, failc);
@@ -763,14 +800,30 @@ struct ida_local rf_chooser_t : public chooser_t
 			return cbret_t();
 		case eRF_msigName:
 			return cbret_t();
+		case eRF_notepad:
+			//TWidget *w =
+			open_notepad_window();
+			//get_custom_viewer_place get_custom_viewer_location don't work with notepad
+			return cbret_t();
 		}
 		return chooser_t::enter(n);
 	}
 	virtual cbret_t idaapi del(size_t n)
 	{
 		// no real delete because `matches` vector indexes are inodes moving and dirtree became inadequate
-		rf->matches[n].deleted ^= true;
-		return cbret_t(new_sel_after_del(n));
+		const rf_match_t &m = rf->matches[n];
+		bool moveCursor = true;
+		if(m.kind == eRF_msigName || m.kind == eRF_notepad) {
+			//these processed all together, so mark all of them
+			for(size_t i = 0; i < rf->matches.size(); i++) {
+				if(rf->matches[i].kind == m.kind)
+					rf->matches[i].deleted ^= true;
+			}
+			moveCursor = false;
+		} else {
+			rf->matches[n].deleted ^= true;
+		}
+		return cbret_t(moveCursor? new_sel_after_del(n) : n);
 	}
 };
 
