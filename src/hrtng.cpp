@@ -442,7 +442,7 @@ ACT_DEF(jump_to_indirect_call)
 static const char create_dec_idc_args[] = { 0 };
 static error_t idaapi create_dec_idc(idc_value_t *argv, idc_value_t *res)
 {
-	msg("[hrt] create_dec is called \n");
+	//msg("[hrt] create_dec is called \n");
 	if(create_dec_file())
 		return eOk;
 	return eOS;
@@ -2966,9 +2966,23 @@ ACT_DEF(create_dummy_struct)
 			qstring callname;
 			if(getExpName(vu->cfunc, call->x, &callname)) {
 				cexpr_t* asgn = get_assign_or_helper(vu, call, false);
-				if(asgn && (stristr(callname.c_str(), "alloc") || callname == "??2@YAPAXI@Z"))
-					if(renameExp(asgn->ea, vu->cfunc, asgn->x, &name, vu))
-						return 1;//vu->refresh_view(true);
+				if(asgn && (stristr(callname.c_str(), "alloc") || callname == "??2@YAPAXI@Z")) { // "??2@YAPEAX_KAEBUnothrow_t@std@@@Z"  "??2@YAPEAX_K@Z"
+					if(vu->item.is_citem() && vu->item.it->op == cot_num /*&& !vu->item.e->n->nf.is_fixed()*/) {
+#if IDA_SDK_VERSION < 850
+						size = get_struc_size(s);
+#else //IDA_SDK_VERSION >= 850
+						size = ti.get_size();
+#endif //IDA_SDK_VERSION < 850
+						if(vu->item.e->numval() == size) {
+							//make size argument look like "sizeof(structName)"
+							number_format_t &nf = vu->item.e->n->nf;
+							nf.type_name = name;
+							nf.flags = stroff_flag();
+						}
+					}
+					renameExp(asgn->ea, vu->cfunc, asgn->x, &name, vu);
+					return 1;//vu->refresh_view(true);
+				}
 			}
 		}
 		qstring n;
@@ -5075,8 +5089,9 @@ static ssize_t idaapi ui_callback(void *user_data, int ncode, va_list va)
 	return 0;
 }
 
-static ea_t funcRenameEa;
-static qstring funcRename;
+static ea_t      funcRenameEa;
+static flags64_t funcRenameFlg;
+static qstring   funcRename;
 
 // Callback for IDP notifications
 static ssize_t idaapi idp_callback(void *user_data, int ncode, va_list va)
@@ -5098,11 +5113,14 @@ static ssize_t idaapi idp_callback(void *user_data, int ncode, va_list va)
 			ea_t ea = va_arg(va, ea_t);
 			//const char *new_name = va_arg(va, const char *);
 			//int flags = va_arg(va, int);
-			if(is_func(get_flags(ea))) {
+			 flags64_t f = get_flags(ea);
+			if(is_func(f)) {
 				get_ea_name(&funcRename, ea);
 				//stripName(&funcRename, true);
-				if(!funcRename.empty())
+				if(!funcRename.empty()) {
 					funcRenameEa = ea;
+					funcRenameFlg = f;
+				}
 			}
 		}
 	}
@@ -5212,10 +5230,8 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 				 strncmp(newname, "field_", 6)) {
 				ea_t dstEA = get_memb2proc_ref(sptr, mptr);
 				//avoid recursive renaming
-				if (dstEA != BADADDR &&	dstEA != funcRenameEa && set_name(dstEA, newname, SN_FORCE)) {
-					qstring newGblName = get_name(dstEA);
-					msg("[hrt] %a renamed to %s\n", dstEA, newGblName.c_str());
-				}
+				if(dstEA != BADADDR && dstEA != funcRenameEa && !set_name(dstEA, newname, SN_FORCE))
+					msg("[hrt] %a: rename to '%s' failed\n", dstEA, newname);
 			}
 		}
 		break;
@@ -5239,8 +5255,9 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 						//msg("[hrt] set_member_tinfo of '%s.%s' err %d\n", strucname.c_str(), membName.c_str(), code);
 					}
 				}
-				if(code == SMT_OK)
-					msg("[hrt] type of '%s.%s' refreshed\n", strucname.c_str(), membName.c_str());
+				if(code != SMT_OK)
+					msg("[hrt] set type \"%s\"  on rename of '%s.%s' error %d\n", t.dstr(), strucname.c_str(), membName.c_str(), code);
+				//else msg("[hrt] type of '%s.%s' updated\n", strucname.c_str(), membName.c_str());
 			}
 			//}
 		  break;
@@ -5251,7 +5268,7 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 	{
 		const char* udtname = va_arg(va, const char*);
 		const udm_t* udm    = va_arg(va, const udm_t*);
-		const char* oldname = va_arg(va, const char*);
+		//const char* oldname = va_arg(va, const char*);
 		if (udm->is_special_member())
 			break;
 
@@ -5265,10 +5282,8 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 
 		//rename VT method impl together with VT member
 		ea_t dstEA = get_memb2proc_ref(struc, (uint32)(udm->offset / 8));
-		if (dstEA != BADADDR && dstEA != funcRenameEa && set_name(dstEA, newname, SN_FORCE)) { //avoid recursive renaming
-			qstring newGblName = get_name(dstEA);
-			msg("[hrt] %a renamed to %s\n", dstEA, newGblName.c_str());
-		}
+		if (dstEA != BADADDR && dstEA != funcRenameEa && !set_name(dstEA, newname, SN_FORCE))  //avoid recursive renaming
+			msg("[hrt] %a: rename to '%s' failed\n", dstEA, newname);
 
 		// set type for new name if new member name is same as lib function or structure
 		tinfo_t t = getType4Name(newname);
@@ -5279,10 +5294,9 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 				tinfo_code_t code = struc.set_udm_type(index, t, ETF_COMPATIBLE);
 				if (code != TERR_OK && (!auto_is_ok() || ASKBTN_YES == ask_yn(ASKBTN_NO, "[hrt] Set member type '%s'\nof '%s.%s'\nmay destroy other members. Confirm?", t.dstr(), udtname, newname)))
 					code = struc.set_udm_type(index, t, ETF_MAY_DESTROY);
-				if (code == TERR_OK)
-					msg("[hrt] type of '%s.%s' updated\n", udtname, newname);
-				else
+				if (code != TERR_OK)
 					msg("[hrt] set type \"%s\" on rename of '%s.%s' error %d %s\n", t.dstr(), udtname, newname, code, tinfo_errstr(code));
+				//else msg("[hrt] type of '%s.%s' updated\n", udtname, newname);
 			}
 		}
 		break;
@@ -5334,8 +5348,8 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 				 (is_ea(ea_fl) && get_tinfo(&oldType, ea) && oldType.is_func())) // func-type instead pointer-to-func (TODO: it was very old IDA bug, probably already fixed. Check it!)
 			{
 				tinfo_t t = getType4Name(new_name, is_func(ea_fl));
-				if(!t.empty() && apply_tinfo(ea, t, TINFO_DEFINITE | TINFO_DELAYFUNC | TINFO_STRICT)) //set_tinfo(ea, &t) left unnecessary arguments in func type, even "t" has not such
-					msg("[hrt] %a: set glbl '%s' type '%s'\n", ea, new_name, t.dstr());
+				if(!t.empty() && !apply_tinfo(ea, t, TINFO_DEFINITE | TINFO_DELAYFUNC | TINFO_STRICT)) //set_tinfo(ea, &t) left unnecessary arguments in func type, even "t" has not such
+					msg("[hrt] %a: fail set glbl '%s' type '%s'\n", ea, new_name, t.dstr());
 			}
 
 #if 0 // disabled because it works now much faster
@@ -5346,8 +5360,6 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 #endif
 
 			if(is_func(ea_fl)) {
-				if (auto_is_ok())
-					progress(new_name);
 				const char* ctor = qstrstr(new_name, "::ctor");
 				if(ctor) {
 					tinfo_t tif;
@@ -5362,12 +5374,16 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 						fi.rettype = make_pointer(create_typedef(retTname.c_str()));
 						tinfo_t newFType;
 						newFType.create_func(fi);
-						if (newFType.is_correct() && apply_tinfo(ea, newFType, haveType)) {
-							msg("[hrt] Function %a %s ret type changed to \"%s*\"\n", ea, new_name, retTname.c_str());
+						if (newFType.is_correct() && !apply_tinfo(ea, newFType, haveType)) {
+							msg("[hrt] %a: '%s' fail ret type change to \"%s*\"\n", ea, new_name, retTname.c_str());
 						}
 					}
 				}
+
 				if(funcRenameEa == ea && !funcRename.empty()) {
+					if(!has_user_name(funcRenameFlg) && auto_is_ok())
+						progress(new_name);
+
 					//rename VT members and callbacks too
 					tidvec_t tids;
 #if 0			// enable the next line to compatibility with old IDBs without proc2memb_refs
@@ -5384,8 +5400,8 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 								member_t * memb = get_member_by_id(&fullname, tids[i], &struc);
 								if(memb) {
 									qstring nn = good_smember_name(struc, memb->soff, new_name);
-									if(set_member_name(struc, memb->soff, nn.c_str()))
-										msg("[hrt] struc member '%s' renamed to '%s'\n", fullname.c_str(), nn.c_str());
+									if(!set_member_name(struc, memb->soff, nn.c_str()))
+										msg("[hrt] struc member '%s' rename to '%s' error\n", fullname.c_str(), nn.c_str());
 								}
 #else //IDA_SDK_VERSION >= 850
 								udm_t udm;
@@ -5396,10 +5412,9 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 									fullname.append('.');
 									fullname.append(udm.name);
 									qstring nn = good_udm_name(struc, udm.offset, new_name);
-									if(struc.rename_udm(idx, nn.c_str()) == TERR_OK)
-										msg("[hrt] struc member '%s' renamed to '%s'\n", fullname.c_str(), nn.c_str());
-									else
-										warning("[hrt] fail rename struc member '%s' to '%s'\nit seems bad name, press 'Ctrl-Z' and try again", fullname.c_str(), nn.c_str());
+									if(struc.rename_udm(idx, nn.c_str()) != TERR_OK)
+										msg("[hrt] fail rename struc member '%s' to '%s'\n", fullname.c_str(), nn.c_str());
+									//else msg("[hrt] struc member '%s' renamed to '%s'\n", fullname.c_str(), nn.c_str());
 								}
 #endif //IDA_SDK_VERSION < 850
 							}
@@ -5471,8 +5486,8 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 						struc.get_type_name(&fullname); // get_numbered_type_name
 						fullname.append('.');
 						fullname.append(udm.name);
-						if(struc.set_udm_type(idx, tif) == TERR_OK)
-							msg("[hrt] struc member '%s' recasted to '%s'\n", fullname.c_str(), newType.c_str());
+						if(struc.set_udm_type(idx, tif) != TERR_OK)
+							msg("[hrt] struc member '%s' recast to '%s' error\n", fullname.c_str(), newType.c_str());
 					}
 #endif //IDA_SDK_VERSION < 850
 				}
@@ -5541,7 +5556,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.7.52";
+	addon.version = "2.7.53";
 	motd.sprnt("%s (%s) v%s for IDA%d ", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

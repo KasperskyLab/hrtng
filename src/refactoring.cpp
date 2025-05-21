@@ -40,6 +40,7 @@
 #include "helpers.h"
 #include "msig.h"
 #include "rename.h"
+#include "structures.h"
 #include "refactoring.h"
 
 enum eRF_kind_t {
@@ -400,14 +401,14 @@ struct ida_local refac_t {
 	}
 	void replace()
 	{
-		msg("[hrt] -------- Refactoring: replace %d matches --------\n", matches.size());
+		//msg("[hrt] -------- Refactoring: replace %d matches --------\n", matches.size());
 		uint32 count = 0;
 		uint32 failc = 0;
 		uint32 msigcount = 0;
 		for(size_t i = 0; i < matches.size(); i++) {
 			const rf_match_t &m = matches[i];
 			if(m.deleted) {
-				msg("[hrt] Refactoring %a: skip deleted %s - '%s'\n", m.ea, eRFkindName(m.kind), m.name.c_str());
+				//msg("[hrt] Refactoring %a: skip deleted %s - '%s'\n", m.ea, eRFkindName(m.kind), m.name.c_str());
 				continue;
 			}
 			switch(m.kind) {
@@ -567,8 +568,8 @@ struct ida_local refac_t {
 			case eRF_udmName:
 			{
 				qstring newname;
-				qstring oldname;
 #if IDA_SDK_VERSION < 850
+				qstring oldname;
 				struc_t *struc;
 				member_t *memb = get_member_by_id(&oldname, m.ea, &struc);
 				qstring mname = get_member_name(m.ea);
@@ -579,16 +580,22 @@ struct ida_local refac_t {
 				udm_t udm;
 				tinfo_t t;
 				ssize_t idx = t.get_udm_by_tid(&udm, m.ea);
-				if(idx != -1 && match(udm.name, &newname)) {
+				if(idx >= 0 && match(udm.name, &newname)) {
 					stripName(&newname);
 					newname = good_udm_name(t, udm.offset, newname.c_str());
-					t.get_type_name(&oldname); oldname.append('.'); oldname.append(udm.name);
+					// qstring oldname; t.get_type_name(&oldname); oldname.append('.'); oldname.append(udm.name);
 					if(TERR_OK == t.rename_udm(idx, newname.c_str())) {
 #endif //IDA_SDK_VERSION < 850
 						++count;
 						//msg("[hrt] Refactoring %a: struct member '%s' renamed to '%s'\n", m.ea, oldname.c_str(), newname.c_str());
 						break;
 					}
+				} else {
+					//vtbl member may already be renamed by idb_event::renamed callback
+					eavec_t eav;
+					get_memb2proc_refs(m.ea, &eav);
+					if(eav.size() && get_name(eav.front()).find(replaceWith) != qstring::npos)
+						break;
 				}
 				++failc;
 				msg("[hrt] Refactoring %a: fail struct member renaming '%s'\n", m.ea, m.name.c_str());
@@ -644,12 +651,16 @@ static const char *const rcheader[] = { "Found", "#The real result may vary#Repl
 struct ida_local rf_chooser_t : public chooser_t
 {
 	refac_t* rf;
+	int problemIcon = -1;
 
 	rf_chooser_t(refac_t* rf_) : chooser_t(
 #if IDA_SDK_VERSION >= 770
 																 CH_HAS_DIRTREE | CH_TM_FULL_TREE | CH_NON_PERSISTED_TREE |
 #endif //IDA_SDK_VERSION >= 770
-																 CH_CAN_DEL, qnumber(rcwidths), rcwidths, rcheader, "[hrt] Refactoring"), rf(rf_) {}
+																 CH_CAN_DEL, qnumber(rcwidths), rcwidths, rcheader, "[hrt] Refactoring"), rf(rf_)
+	{
+		get_action_icon("OpenProblems", &problemIcon);
+	}
 	virtual ~rf_chooser_t() {}
 #if IDA_SDK_VERSION >= 770
 	virtual dirtree_t *idaapi get_dirtree() newapi { return &rf->dt;}
@@ -662,7 +673,7 @@ struct ida_local rf_chooser_t : public chooser_t
 #endif //IDA_SDK_VERSION >= 770
 	virtual size_t idaapi get_count() const 	{	return rf->matches.size();	}
 	virtual ea_t idaapi get_ea(size_t n) const { return rf->matches[n].ea;}
-	virtual void idaapi get_row(qstrvec_t* cols, int*, chooser_item_attrs_t* attrs, size_t n) const
+	virtual void idaapi get_row(qstrvec_t* cols, int* icon, chooser_item_attrs_t* attrs, size_t n) const
 	{
 		const rf_match_t &m = rf->matches[n];
 		cols->at(0) = m.name;
@@ -699,13 +710,14 @@ struct ida_local rf_chooser_t : public chooser_t
 #else //IDA_SDK_VERSION >= 850
 						tid_t tid = t.get_tid()	;
 #endif //IDA_SDK_VERSION < 850
-						if(/*tid == BADNODE ||*/ tid != m.ea) {
+						if(tid != BADNODE && tid != m.ea) {
 							msg("[hrt] Refactoring: type conflict '%s' - '%s' (%a - %a)\n", t.dstr(), repl->c_str(), tid, m.ea);
 							typeConflict = true;
 						}
 					}
 					if(typeConflict || !validate_name(repl, VNT_TYPE, SN_CHECK | SN_NOWARN)) {
 						attrs->color = 255; //red
+						*icon = problemIcon;
 					}
 					break;
 				}
@@ -771,35 +783,6 @@ bool rf_dirspec_t::get_name(qstring* out, inode_t inode, uint32 name_flags)
 		return true;
 	}
 	return false;
-#if 0
-	segment_t *seg = getseg(inode);
-	if(seg) {
-		msg("get_name seg type: %d, >flags %d\n", seg->type, seg->flags);
-		 //inode is ea
-		if(name_flags == DTN_FULL_NAME)
-			*out = ::get_name((ea_t)inode);
-		else
-			*out = ::get_short_name((ea_t)inode);
-		return true;
-	} else if(is_mapped(inode)) {
-		// inode is tid
-		tinfo_t t;
-		if(t.get_type_by_tid(inode)) {
-			if(t.get_type_name(out))
-				return true;
-		} else {
-			udm_t udm;
-			ssize_t idx = t.get_udm_by_tid(&udm, inode);
-			if(idx != -1 && t.get_type_name(out)) {
-				out->append('.');
-				out->append(udm.name);
-				return true;
-			}
-		}
-	}
-	out->sprnt("inode #%d", inode);
-	return true;
-#endif
 }
 
 inode_t rf_dirspec_t::get_inode(const char* dirpath, const char* name)
@@ -823,7 +806,6 @@ inode_t rf_dirspec_t::get_inode(const char* dirpath, const char* name)
 static int idaapi callback(int fid, form_actions_t &fa)
 {
 	refac_t *rf = (refac_t *)fa.get_ud();
-  //msg("CB_%d\n", fid);
 	switch ( fid )
 	{
 	case CB_INIT:
@@ -837,11 +819,11 @@ static int idaapi callback(int fid, form_actions_t &fa)
 			rf->replace();
 		else
 			msg("[hrt] Refactoring: nothing to do, SearchFor is equal to ReplaceWith\n");
-		close_widget(rf->rfform, WCLS_DONT_SAVE_SIZE);
+		close_widget(rf->rfform, 0);
 		break;
 #if IDA_SDK_VERSION >= 800
 	case CB_CANCEL:
-		close_widget(rf->rfform, WCLS_DONT_SAVE_SIZE);
+		close_widget(rf->rfform, 0);
 		break;
 #endif //IDA_SDK_VERSION >= 800
 	case CB_CLOSE:

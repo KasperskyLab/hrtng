@@ -392,8 +392,7 @@ const char* msig_match(mbl_array_t* mba)
 	if (!mba || !msigs.size())
 		return NULL;
 	const char* name = msigs.match(mba);
-	if (name)
-		msg("[hrt] %a: msig '%s' found\n", mba->entry_ea, name);
+	//if(name) msg("[hrt] %a: msig '%s' found\n", mba->entry_ea, name);
 	return name;
 }
 
