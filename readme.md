@@ -55,6 +55,7 @@ Messages, menu items, popup windows and dialog boxes belong to this plugin are m
   * [Finds structures with same "shape" as is used](doc/struct-shape.md)
   * [Import user named functions prototypes into the local type library](doc/import_unf_types.md)
   * [~~New functionality in Structures view~~](doc/ex-unp-struc.md)
+  * [IDC script for interactive merging types across multiple IDBs](bin/idc/merge_types.idc)
 
 ### Virtual/indirect calls assistance
   * [Virtual calls assistance](doc/virtual-calls.md)
@@ -72,6 +73,7 @@ Messages, menu items, popup windows and dialog boxes belong to this plugin are m
   * [Extended xrefs](doc/xrefs_ex.md)
   * [Matching brace highlight](doc/brace.md)
   * [Auto turn on 'Functions' window content synchronisation](doc/func-sync.md)
+  * [Render markdown content of "IDA notepad" in a docked viewer](bin/plugins/notepad-md.py)
 
 ### Misk features
   * [Get API help](doc/zeal-api-help.md)

@@ -13,6 +13,7 @@ The results are grouped to following folders:
  * **type** - ... part of a type name (only structures and unions for IDA versions less 8.5);
  * **udm**  - ... part of a struct or union member's name (the full name of the member is displayed);
  * **msig** - ... part of [microcode signature](msig.md) name;
+ * **note** - ... part of IDA notepad text
 
 In the results list:
  * Double click or press "Enter" to see the function/type body.
@@ -25,4 +26,4 @@ You may alter *"Search for"* and *"Replace with"* fields. Spaces on the both end
 >📝 **Note:** "Whole words only" mode suddenly means underline symbol ('_') as the word divider. The only ISO basic Latin alphabet letters and numbers belong to word characters set.
 
 Press *"OK"* button to apply changes. Check "Output window" to see if something went wrong.  
-All renaming may be undone with "Ctrl-Z" hotkey since IDA 7.7
+All renaming (except MSIGs) may be undone with "Ctrl-Z" hotkey since IDA 7.7
