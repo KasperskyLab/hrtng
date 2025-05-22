@@ -86,16 +86,18 @@ eRF_kind_t eRFname2kind(const char* n)
 	return eRF_last;
 }
 
+struct refac_t;
+
 struct ida_local rf_match_t {
 	qstring name;
 	ea_t ea;
 	eRF_kind_t kind;
 	bool deleted;
+	bool validateReplace(const refac_t* rf, qstring* repl) const;
 };
 DECLARE_TYPE_AS_MOVABLE(rf_match_t);
 typedef qvector<rf_match_t> rf_matches_t;
 
-struct refac_t;
 //--------------------------------------------------------------------------
 
 #if IDA_SDK_VERSION >= 770
@@ -182,7 +184,7 @@ struct ida_local refac_t {
     return qstring::npos;
   }
 
-	bool match(const qstring &s, qstring *r = nullptr)
+	bool match(const qstring &s, qstring *r = nullptr) const
 	{
 		if(s.empty())
 			return false;
@@ -422,6 +424,18 @@ struct ida_local refac_t {
 		}
 		return true;
 	}
+
+	bool validateReplace() const
+	{
+		qstring repl;
+		for(size_t i = 0; i < matches.size(); i++) {
+			repl.qclear();
+			if(!matches[i].validateReplace(this, &repl))
+				 return false;
+		}
+		return true;
+	}
+
 	void replace()
 	{
 		//msg("[hrt] -------- Refactoring: replace %d matches --------\n", matches.size());
@@ -660,7 +674,37 @@ struct ida_local refac_t {
 };
 
 //--------------------------------------------------------------------------
+bool rf_match_t::validateReplace(const refac_t* rf, qstring* repl) const
+{
+	if(deleted)
+		return true;
 
+	if(!rf->match(name, repl) || repl->empty())
+		return false;
+
+	if(kind == eRF_typeName) {
+		tinfo_t t = getType4Name(repl->c_str(), true);
+		if(!t.empty() && !t.is_func()) {
+#if IDA_SDK_VERSION < 850
+			qstring tName;
+			tid_t tid = BADNODE;
+			if(t.get_type_name(&tName))
+				tid = get_struc_id(tName.c_str());
+#else //IDA_SDK_VERSION >= 850
+			tid_t tid = t.get_tid()	;
+#endif //IDA_SDK_VERSION < 850
+			if(tid != BADNODE && tid != ea) {
+				msg("[hrt] Refactoring: type conflict '%s' - '%s' (%a - %a)\n", t.dstr(), repl->c_str(), tid, ea);
+				return false;
+			}
+		}
+		if(!validate_name(repl, VNT_TYPE, SN_CHECK | SN_NOWARN))
+			return false;
+	}
+	return true;
+}
+
+//--------------------------------------------------------------------------
 qstring msig_search(void* ctx, const char* name)
 {
 	refac_t* rf = (refac_t*)ctx;
@@ -714,55 +758,22 @@ struct ida_local rf_chooser_t : public chooser_t
 	{
 		const rf_match_t &m = rf->matches[n];
 		cols->at(0) = m.name;
-
-		qstring* repl = &cols->at(1);
-		rf->match(m.name, repl);
-
-		if(m.deleted) {
-			attrs->flags |= CHITEM_STRIKE;
-		} else {
-			if(repl->empty()) {
-				attrs->color = 255; //red
-			} else {
-				switch(m.kind) {
-				case eRF_funcName:
-				case eRF_glblVar:
-					if(!validate_name(repl, VNT_IDENT, SN_CHECK | SN_NOWARN))
-						attrs->flags |= CHITEM_GRAY;
-					break;
-					//case eRF_udmName:
-					//	if(!validate_name(repl, VNT_UDTMEM, SN_CHECK | SN_NOWARN))
-					//		attrs->flags |= CHITEM_GRAY;
-					//	break;
-				case eRF_typeName:
-				{
-					bool typeConflict = false;
-					tinfo_t t = getType4Name(repl->c_str(), true);
-					if(!t.empty() && !t.is_func()) {
-#if IDA_SDK_VERSION < 850
-						qstring tName;
-						tid_t tid = BADNODE;
-						if(t.get_type_name(&tName))
-							tid = get_struc_id(tName.c_str());
-#else //IDA_SDK_VERSION >= 850
-						tid_t tid = t.get_tid()	;
-#endif //IDA_SDK_VERSION < 850
-						if(tid != BADNODE && tid != m.ea) {
-							msg("[hrt] Refactoring: type conflict '%s' - '%s' (%a - %a)\n", t.dstr(), repl->c_str(), tid, m.ea);
-							typeConflict = true;
-						}
-					}
-					if(typeConflict || !validate_name(repl, VNT_TYPE, SN_CHECK | SN_NOWARN)) {
-						attrs->color = 255; //red
-						*icon = problemIcon;
-					}
-					break;
-				}
-				}
-			}
-		}
 		cols->at(2).sprnt("%a", m.ea);
 		cols->at(3) = eRFkindName(m.kind);
+
+		if(m.deleted)
+			attrs->flags |= CHITEM_STRIKE;
+
+		//no checks on search only mode
+		if(rf->searchFor == rf->replaceWith) {
+			cols->at(1) = m.name;
+			return;
+		}
+
+		if(!m.validateReplace(rf, &cols->at(1))) {
+			attrs->color = 255; //red
+			*icon = problemIcon;
+		}
 	}
 	virtual cbret_t idaapi enter(size_t n)
 	{
@@ -868,10 +879,14 @@ static int idaapi callback(int fid, form_actions_t &fa)
 	case CB_YES:
 		rf->searchFor.trim2();
 		rf->replaceWith.trim2();
-		if(rf->searchFor != rf->replaceWith)
-			rf->replace();
-		else
+		if(rf->searchFor == rf->replaceWith) {
 			msg("[hrt] Refactoring: nothing to do, SearchFor is equal to ReplaceWith\n");
+		} else if(!rf->validateReplace()) {
+			warning("[hrt] bad replace: '%s'", rf->replaceWith.c_str());
+			break;
+		} else {
+			rf->replace();
+		}
 		close_widget(rf->rfform, 0);
 		break;
 #if IDA_SDK_VERSION >= 800
@@ -890,12 +905,15 @@ static int idaapi callback(int fid, form_actions_t &fa)
 		qstring n;
 		fa.get_string_value(fid, &n);
 		if(n != rf->searchFor) {
+			if(rf->searchFor == rf->replaceWith) {
+				//the refactoring may be used for search only
+				//keep searchFor and replaceWith in sync to avoid accidental renaming
+				rf->replaceWith = n;
+				rf->replaceWith.trim2();
+				fa.set_string_value(3, &rf->replaceWith);
+			}
 			rf->searchFor = n;
-#if 0
-			validate_name(&rf->searchFor, VNT_IDENT, SN_NOCHECK | SN_NOWARN);
-#else
 			rf->searchFor.trim2();
-#endif
 			//fa.set_string_value(fid, &rf->searchFor);
 			rf->search();
 			fa.refresh_field(1);
@@ -908,11 +926,7 @@ static int idaapi callback(int fid, form_actions_t &fa)
 		fa.get_string_value(fid, &n);
 		if(n != rf->replaceWith) {
 			rf->replaceWith = n;
-#if 0
-			validate_name(&rf->replaceWith, VNT_IDENT, SN_NOCHECK | SN_NOWARN);
-#else
 			rf->replaceWith.trim2();
-#endif
 			//fa.set_string_value(fid, &rf->replaceWith);
 			fa.refresh_field(1);
 		}
