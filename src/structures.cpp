@@ -862,13 +862,14 @@ int create_VT(tid_t parent, ea_t VT_ea, bool autoScan/*= false*/)
 			size_t total_size = 0;
 			for(int i = 0; i < 2; ++i) {
 				udm_t& udm = utd.push_back();
-				if (i == 0) {
-					udm.name.cat_sprnt("VT_%a", eav.front());
+				if (i == 0)
 					udm.type = vtblType;
-				}	else {
-					udm.name.cat_sprnt("VT_%a", VT_ea);
+				else
 					udm.type = type_by_tid(vt_struc_id);
-				}
+				if(udm.type.get_type_name(&udm.name))
+					udm.name.append('_');
+				else
+					udm.name.cat_sprnt("VT_%a", i == 0 ? eav.front(): VT_ea);
 				size_t sz = udm.type.get_size();
 				udm.size = sz * 8;
 				if (sz > total_size)
@@ -907,24 +908,28 @@ int create_VT(tid_t parent, ea_t VT_ea, bool autoScan/*= false*/)
 	default:
 		// add one more VTBL to union
 		tinfo_code_t err = TERR_BAD_TYPE;
-		qstring fname; fname.sprnt("VT_%a", VT_ea);
 		if(vtblType.is_union()) {
 #if IDA_SDK_VERSION < 850
 			qstring utname;
 			if(!vtblType.get_type_name(&utname)) {
-				msg("[hrt] adding %s to union VTBLs type error on get_type_name\n", fname.c_str());
+				msg("[hrt] adding %a to union VTBLs type error on get_type_name\n", VT_ea);
 				return 0;
 			}
 			tid_t utid = get_struc_id(utname.c_str());
 			if(utid == BADNODE) {
-				msg("[hrt] adding %s to union VTBLs type error on get_struc_id(%s)\n", fname.c_str(), utname.c_str());
+				msg("[hrt] adding %a to union VTBLs type error on get_struc_id(%s)\n", VT_ea, utname.c_str());
 				return 0;
 			}
 			struc_t* uts = get_struc(utid);
 			if(!uts) {
-				msg("[hrt] adding %s to union VTBLs type error on get_struc(%a)\n", fname.c_str(), utid);
+				msg("[hrt] adding %a to union VTBLs type error on get_struc(%a)\n", VT_ea, utid);
 				return 0;
 			}
+			qstring fname;
+			if(get_struc_name(&fname, vt_struc_id))
+				fname.append('_');
+			else
+				fname.sprnt("VT_%a", VT_ea);
 			opinfo_t oi; oi.tid = vt_struc_id;
 			struc_error_t e = add_struc_member(uts, fname.c_str(), 0, stru_flag(), &oi, get_struc_size(vt_struc_id));
 			if (e != STRUC_ERROR_MEMBER_OK) {
@@ -933,8 +938,11 @@ int create_VT(tid_t parent, ea_t VT_ea, bool autoScan/*= false*/)
 			} else {
 #else //IDA_SDK_VERSION >= 850
 			udm_t udm;
-			udm.name = fname.c_str();
 			udm.type = type_by_tid(vt_struc_id);
+			if(udm.type.get_type_name(&udm.name))
+				udm.name.append('_');
+			else
+				udm.name.cat_sprnt("VT_%a", VT_ea);
 			udm.size = udm.type.get_size() * 8;
 			err = vtblType.add_udm(udm, ETF_AUTONAME);
 			if (err == TERR_OK) {
@@ -943,7 +951,7 @@ int create_VT(tid_t parent, ea_t VT_ea, bool autoScan/*= false*/)
 				return 1;
 			}
 		}
-		msg("[hrt] adding %s to union VTBLs type error %d %s\n", fname.c_str(), err, tinfo_errstr(err));
+		msg("[hrt] adding to union VTBLs type error %d %s\n", err, tinfo_errstr(err));
 		return 0;
 	}
 	

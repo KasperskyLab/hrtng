@@ -335,12 +335,27 @@ struct ida_local refac_t {
 					for(auto it = user_cmts_begin(cmts); it != user_cmts_end(cmts); it = user_cmts_next(it)) {
 						citem_cmt_t &c = user_cmts_second(it);
 						if(match(c)) {
-							qstring cc = c;
-							//TODO: implement it more smarter way
-							if(cc.length() > 100)
-								cc.remove_last(cc.length() - 100);
-							strrpl(cc.begin(), '\n', ' '); //clean cr in multi-line comment
-							add(cc.c_str(), eRF_usrCmts, user_cmts_first(it).ea);
+							if(c.find('\n') == qstring::npos) {
+								add(c.c_str(), eRF_usrCmts, user_cmts_first(it).ea);
+							} else {
+								//split multiline comment to lines (qstring::split is not exist in older ida)
+								qstrvec_t lines;
+								const char *from = c.begin();
+								const char *end  = c.end();
+								while(from < end) {
+									const char *to =  qstrchr(from, '\n');
+									if(!to)
+										to = end;
+									lines.push_back().append(from, to - from);
+									from = to + 1;
+								}
+								for(size_t i = 0; i < lines.size(); i++) {
+									if(match(lines[i])) {
+										add(lines[i].c_str(), eRF_usrCmts, user_cmts_first(it).ea);
+										break; // one is enough
+									}
+								}
+							}
 						}
 					}
 					user_cmts_free(cmts);
@@ -949,6 +964,12 @@ static int idaapi callback(int fid, form_actions_t &fa)
 
 int do_refactoring(action_activation_ctx_t *ctx)
 {
+	TWidget *widget = find_widget("[hrt] Refactoring");
+  if(widget) {
+		activate_widget(widget, true);
+    return 0;
+  }
+
 	qstring highlight;
 	uint32 hlflg;
 	get_highlight(&highlight, ctx->widget, &hlflg);
