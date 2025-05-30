@@ -277,18 +277,20 @@ struct ida_local refac_t {
 			}
 		}
 
-		size_t nqty = get_nlist_size();
-		for(size_t i = 0; i < nqty; i++) {
-			ea_t ea = get_nlist_ea(i);
-			flags64_t flg = get_flags(ea);
-			if(!is_func(flg) && !(is_data(flg) && has_any_name(flg)))
+		// func name, type, local vars and comments
+		size_t funcqty = get_func_qty();
+		for (size_t i = 0; i < funcqty; i++) {
+			func_t* func = getn_func(i);
+			if(!func || (func->flags & FUNC_LIB))
 				continue;
+			ea_t ea = func->start_ea;
 			qstring eaname = get_name(ea);
+
 			//match name of functions an global vars
 			if(match(eaname))
-				add(eaname.c_str(), is_func(flg) ? eRF_funcName : eRF_glblVar, ea);
+				add(eaname.c_str(), eRF_funcName, ea);
 
-			//match func args
+			//match func type args
 			tinfo_t tif;
 			if(/*is_userti(ea) &&*/ get_tinfo(&tif, ea)) {
 				tif.remove_ptr_or_array();
@@ -311,7 +313,7 @@ struct ida_local refac_t {
 #if 1 // restore_user_lvar_settings may cause crash somewhere deep inside decompiler on access nullptr exception on Windows in Debug mode (prbbl because of std::map)
 			//match func local vars
 			lvar_uservec_t lvinf;
-			if(is_func(flg) && restore_user_lvar_settings(&lvinf, ea)) {
+			if(restore_user_lvar_settings(&lvinf, ea)) {
 				qstring nn;
 				for(size_t i = 0; i < lvinf.lvvec.size(); i++) {
 					if(match(lvinf.lvvec[i].name)) {
@@ -329,39 +331,49 @@ struct ida_local refac_t {
 #endif
 
 			//match func local comments
-			if(is_func(flg)) {
-				user_cmts_t *cmts = restore_user_cmts(ea);
-				if(cmts) {
-					for(auto it = user_cmts_begin(cmts); it != user_cmts_end(cmts); it = user_cmts_next(it)) {
-						citem_cmt_t &c = user_cmts_second(it);
-						if(match(c)) {
-							if(c.find('\n') == qstring::npos) {
-								add(c.c_str(), eRF_usrCmts, user_cmts_first(it).ea);
-							} else {
-								//split multiline comment to lines (qstring::split is not exist in older ida)
-								qstrvec_t lines;
-								const char *from = c.begin();
-								const char *end  = c.end();
-								while(from < end) {
-									const char *to =  qstrchr(from, '\n');
-									if(!to)
-										to = end;
-									lines.push_back().append(from, to - from);
-									from = to + 1;
-								}
-								for(size_t i = 0; i < lines.size(); i++) {
-									if(match(lines[i])) {
-										add(lines[i].c_str(), eRF_usrCmts, user_cmts_first(it).ea);
-										break; // one is enough
-									}
+			user_cmts_t *cmts = restore_user_cmts(ea);
+			if(cmts) {
+				for(auto it = user_cmts_begin(cmts); it != user_cmts_end(cmts); it = user_cmts_next(it)) {
+					citem_cmt_t &c = user_cmts_second(it);
+					if(match(c)) {
+						if(c.find('\n') == qstring::npos) {
+							add(c.c_str(), eRF_usrCmts, user_cmts_first(it).ea);
+						} else {
+							//split multiline comment to lines (qstring::split is not exist in older ida)
+							qstrvec_t lines;
+							const char *from = c.begin();
+							const char *end  = c.end();
+							while(from < end) {
+								const char *to =  qstrchr(from, '\n');
+								if(!to)
+									to = end;
+								lines.push_back().append(from, to - from);
+								from = to + 1;
+							}
+							for(size_t i = 0; i < lines.size(); i++) {
+								if(match(lines[i])) {
+									add(lines[i].c_str(), eRF_usrCmts, user_cmts_first(it).ea);
+									break; // one is enough
 								}
 							}
 						}
 					}
-					user_cmts_free(cmts);
 				}
+				user_cmts_free(cmts);
 			}
-		} // end of name list loop
+		} // end of proc list loop
+
+		//match name of global var
+		size_t nqty = get_nlist_size();
+		for(size_t i = 0; i < nqty; i++) {
+			ea_t ea = get_nlist_ea(i);
+			flags64_t flg = get_flags(ea);
+			if(is_data(flg) && has_any_name(flg)) {
+				qstring eaname = get_name(ea);
+				if(match(eaname))
+					add(eaname.c_str(), eRF_glblVar, ea);
+			}
+		}
 
 		//struct/union names amd members
 #if IDA_SDK_VERSION < 850
@@ -453,7 +465,7 @@ struct ida_local refac_t {
 
 	void replace()
 	{
-		//msg("[hrt] -------- Refactoring: replace %d matches --------\n", matches.size());
+		//msg("[hrt] Refactoring '%s' -> '%s': replace %d matches \n", searchFor.c_str(), replaceWith.c_str(), matches.size());
 		uint32 count = 0;
 		uint32 failc = 0;
 		uint32 msigcount = 0;
@@ -682,7 +694,7 @@ struct ida_local refac_t {
 			}
 		}
 
-		msg("[hrt] ======== Refactoring: %d changes, %d fails ========\n", count, failc);
+		msg("[hrt] Refactoring '%s' -> '%s': %d changes, %d fails\n", searchFor.c_str(), replaceWith.c_str(), count, failc);
 		if(count)
 			clear_cached_cfuncs();
 	}
@@ -889,7 +901,7 @@ static int idaapi callback(int fid, form_actions_t &fa)
 	{
 	case CB_INIT:
 		rf->search();
-		fa.refresh_field(1);
+		fa.refresh_field(0);
 		break;
 	case CB_YES:
 		rf->searchFor.trim2();
@@ -915,7 +927,7 @@ static int idaapi callback(int fid, form_actions_t &fa)
 	case CB_DESTROYING:
 		//delete rf; // on cause crash in dirtree_t::~dirtree_t -> rf_dirspec_t::`scalar deleting destructor'(unsigned int)
 		break;
-	case 2: //"Search for" changes
+	case 1: //"Search for" changes
 	{
 		qstring n;
 		fa.get_string_value(fid, &n);
@@ -925,17 +937,17 @@ static int idaapi callback(int fid, form_actions_t &fa)
 				//keep searchFor and replaceWith in sync to avoid accidental renaming
 				rf->replaceWith = n;
 				rf->replaceWith.trim2();
-				fa.set_string_value(3, &rf->replaceWith);
+				fa.set_string_value(2, &rf->replaceWith);
 			}
 			rf->searchFor = n;
 			rf->searchFor.trim2();
 			//fa.set_string_value(fid, &rf->searchFor);
 			rf->search();
-			fa.refresh_field(1);
+			fa.refresh_field(0);
 		}
 		break;
 	}
-	case 3: //"Replace with" changes
+	case 2: //"Replace with" changes
 	{
 		qstring n;
 		fa.get_string_value(fid, &n);
@@ -943,18 +955,18 @@ static int idaapi callback(int fid, form_actions_t &fa)
 			rf->replaceWith = n;
 			rf->replaceWith.trim2();
 			//fa.set_string_value(fid, &rf->replaceWith);
-			fa.refresh_field(1);
+			fa.refresh_field(0);
 		}
 		break;
 	}
-	case 4: //check boxes changes
+	case 3: //check boxes changes
 	{
 		ushort f;
 		fa.get_checkbox_value(fid, &f);
 		if(f != rf->flags) {
 			rf->flags = f;
 			rf->search();
-			fa.refresh_field(1);
+			fa.refresh_field(0);
 		}
 		break;
 	}
@@ -980,6 +992,8 @@ int do_refactoring(action_activation_ctx_t *ctx)
   selected.push_back(0);  // first item by default
 	
 	static const char form[] =
+//		"STARTITEM 2\n" // to put the cursor on replaceWith field
+		"BUTTON YES* ~R~eplace\n"
 #if IDA_SDK_VERSION < 800
     // has no action callback in early IDA versions
 	  "BUTTON CANCEL NONE\n"
@@ -988,9 +1002,9 @@ int do_refactoring(action_activation_ctx_t *ctx)
 		"\n"
 		"%/%*"                    // callback
 		"\n"
-		"<List:E1:0:100:::>\n"
-		"<Search for:q2:::><|><Replace with:q3:::>\n"
-		"<Case sensitive:c><|><Whole words only:c><|><Use regular expression:c>4>\n\n"; //!!! check RFF_ flags in case of changes in this line
+		"<~L~ist:E0:0:100:::>\n"
+		"<~S~earch for:q1:::><|><Re~p~lace with:q2:::>\n"
+		"<~C~ase sensitive:c><|><Whole words onl~y~:c><|><Use re~g~ular expression:c>3>\n\n"; //!!! check RFF_ flags in case of changes in this line
 	refac->rfform = open_form(form, 0, callback, refac, rfch, &selected, &refac->searchFor, &refac->replaceWith, &refac->flags);
 	return 0;
 }

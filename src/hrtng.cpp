@@ -197,7 +197,7 @@ static const action_desc_t actions[] =
 	ACT_DESC("[hrt] Convert to __usercall golang",   "Shift-G", convert_to_golang_call),
 #endif //IDA_SDK_VERSION < 850
 	ACT_DESC("[hrt] Import user-named func types",    NULL, import_unf_types),
-	ACT_DESC("[hrt] Refactoring...",                  NULL, refactoring),
+	ACT_DESC("[hrt] Refactoring...",             "Shift-R", refactoring),
 };
 
 //-------------------------------------------------------------------------
@@ -5556,7 +5556,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.7.55";
+	addon.version = "2.7.56";
 	motd.sprnt("%s (%s) v%s for IDA%d ", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

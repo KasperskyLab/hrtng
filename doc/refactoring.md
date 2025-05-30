@@ -1,5 +1,5 @@
 ## Refactoring (global Find and Replace)
-Context menu *"Refactoring..."*
+Context menu *"Refactoring... (Shift-R)"*
 
 Right click and select *"Refactoring..."* on any highlighted word in Disassembly, Decompiler, Types or Structures view.
 Non-modal dialog with results of searching the highlighted word is appeared.

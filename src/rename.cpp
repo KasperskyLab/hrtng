@@ -346,7 +346,14 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 			ssize_t argIdx = func->argidx.index(vIdx);
 			if(argIdx != -1) {
 				tinfo_t funcType;
+#if 1
+				if(get_tinfo(&funcType, func->entry_ea)) {
+#else
+				//get_func_type may returns wrong (cached?) type, where already unamed arg is still named.
+				//Reproduce: "N"->"Del"->"Enter" on arg then "F5" to rename arg by autorenamer
+				//Also seen strange side effect of incorrect "name" param on lxe_lvar_name_changed callback then get_func_type is used. Why???
 				if(func->get_func_type(&funcType)) {
+#endif
 					func_type_data_t fi;
 					if(funcType.get_func_details(&fi) && fi.size() > (size_t)argIdx) {
 						//msg("[hrt] %a: Rename arg%d \"%s\" to \"%s\"\n", refea, argIdx + 1, fi[argIdx].name.c_str(), newName.c_str());
@@ -373,6 +380,15 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 	//else msg("[hrt] %a: Var \"%s\" was renamed to \"%s\"\n", refea, oldname.c_str(), newName.c_str());
 
 	return res;
+}
+
+static bool isStructOffOver(cexpr_t* memref, const cfunc_t *func)
+{
+	if(memref->op == cot_memref && memref->x->op == cot_idx && memref->x->y->op == cot_num && memref->x->y->numval() > 0 /*&& memref->x->type.is_struct()*/) {//is it possible case for union?
+		printExp2Msg(func, memref, "probably invalid struct member access");
+		return true;
+	}
+	return false;
 }
 
 bool getUdtMembName(tinfo_t udt, uint32 offset, qstring* name)
@@ -461,7 +477,7 @@ bool getExpName(cfunc_t *func, cexpr_t* exp, qstring* name, bool derefPtr /* =fa
 		return getEaName(exp->obj_ea, name);
 	case cot_memptr:
 	case cot_memref:
-		return getUdtMembName(exp->x->type, exp->m, name);
+		return !isStructOffOver(exp, func) && getUdtMembName(exp->x->type, exp->m, name);
 	case cot_call:
 		return getCallName(func, exp, name);
 	//case cot_fnum:
@@ -571,7 +587,7 @@ bool renameExp(ea_t refea, cfunc_t *func, cexpr_t* exp, qstring* name, vdui_t *v
 	if(exp->op == cot_obj)
 		return renameEa(refea, exp->obj_ea, name);
 	if(exp->op == cot_memptr || exp->op == cot_memref)
-		return renameUdtMemb(refea, exp->x->type, exp->m, name);
+		return !isStructOffOver(exp, func) && renameUdtMemb(refea, exp->x->type, exp->m, name);
 	return false;
 }
 
