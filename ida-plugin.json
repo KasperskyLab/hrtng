@@ -4,7 +4,7 @@
     "name": "hrtng",
     "entryPoint": "hrtng",
     "categories": ["decompilation", "deobfuscation", "malware-analysis", "ui-ux-and-visualization"],
-    "logoPath": "",
+    "logoPath": "doc/logo.jpg",
     "idaVersions": ">=7.3",
     "description" : "IDA Pro plugin with a rich set of features: decryption, deobfuscation, patching, lib code recognition and various pseudocode transformations",
     "version": "2.7.56"
