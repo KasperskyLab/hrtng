@@ -1,4 +1,5 @@
 # hrtng IDA plugin
+![hrtng-logo](doc/logo.jpg)
 hrtng IDA plugin is a collection of tools, ideas and experiments I've found interesting and useful in my reversing work.
 
 Special thanks to following peoples for their great plugins were used as base for my work:
