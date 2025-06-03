@@ -656,6 +656,7 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 	udt_type_data_t s;
 	tinfo_code_t err = TERR_BAD_TYPE;
 	s.taudt_bits |= TAUDT_UNALIGNED;
+	s.effalign = 1;
 	s.set_vftable(true);
 	if (!newstruc.create_udt(s)) {
 		msg("[hrt] error %d (%s) on create vtbl stuct\n", err, tinfo_errstr(err));

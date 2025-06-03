@@ -81,7 +81,7 @@ bool is_stack_var_assign(vdui_t *vu, int* varIdx, ea_t *ea, sval_t* size);
 bool is_array_char_assign(vdui_t *vu, int* varIdx, ea_t *ea);
 bool is_decryptable_obj(vdui_t *vu, ea_t *ea);
 bool is_number(vdui_t *vu);
-bool is_gap_field(vdui_t *vu, tinfo_t *ts, udm_t* memb);
+bool is_gap_field(vdui_t *vu, tinfo_t *ts = nullptr, ea_t *gapMembOff  = nullptr, 	ea_t* accessOff = nullptr, tinfo_t *accessType = nullptr);
 bool is_patched();
 bool create_dec_file();
 bool is_VT_assign(vdui_t *vu, tid_t *struc_id, ea_t *vt_ea);
@@ -129,7 +129,7 @@ ACT_DECL(decrypt_string_obj      , AST_ENABLE_FOR(is_decryptable_obj(vu, NULL)))
 ACT_DECL(decrypt_const           , AST_ENABLE_FOR(is_number(vu)))
 ACT_DECL(decrypt_data, flags64_t flg; return ((ctx->widget_type != BWN_DISASM) ? AST_DISABLE_FOR_WIDGET : ((flg = get_flags(ctx->cur_ea), /*has_value(flg) &&*/ (is_data(flg) || is_unknown(flg))) ? AST_ENABLE : AST_DISABLE)))
 ACT_DECL(do_appcall              , AST_ENABLE_FOR(is_appcallable(vu, NULL, NULL)))
-ACT_DECL(convert_gap             , AST_ENABLE_FOR(is_gap_field(vu, NULL, NULL)))
+ACT_DECL(convert_gap             , AST_ENABLE_FOR(is_gap_field(vu)))
 ACT_DECL(disable_inlines         , AST_ENABLE_FOR(hasInlines(vu, NULL)))
 ACT_DECL(enable_inlines          , AST_ENABLE_FOR(hasInlines(vu, NULL)))
 ACT_DECL(rename_inline           , AST_ENABLE_FOR(is_nlib_inline(vu)))
@@ -263,7 +263,7 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 		attach_action_to_popup(view, p, ACT_NAME(structs_with_this_size));
 		attach_action_to_popup(view, p, ACT_NAME(decrypt_const));
 	}
-	else if (is_gap_field(vu, NULL, NULL))
+	else if (is_gap_field(vu))
 		attach_action_to_popup(view, p, ACT_NAME(convert_gap));
 	bool bEnabled;
 	if (hasInlines(vu, &bEnabled)) {
@@ -2266,66 +2266,89 @@ ACT_DEF(recast_item)
 	return 0;
 }
 
-bool is_gap_field(vdui_t *vu, tinfo_t *ts, udm_t* memb)
+bool is_gap_field(vdui_t *vu, tinfo_t *ts/*= nullptr*/, ea_t *gapMembOff/*= nullptr*/, 	ea_t* accessOff/*= nullptr*/, tinfo_t *accessType/*= nullptr*/)
 {
-	if (!vu->item.is_citem())
+	if(!vu->item.is_citem())
 		return false;
 
-	cexpr_t * membacc = vu->item.e;
-	if (membacc->op != cot_memptr && membacc->op != cot_memref)
+	cexpr_t *membacc = vu->item.e;
+	if(membacc->op != cot_memptr && membacc->op != cot_memref)
 		return false;
 
-	tinfo_t type = membacc->x->type;
-	type.remove_ptr_or_array();
-	if(!type.is_struct()) //t->is_decl_struct()
+	tinfo_t st = membacc->x->type;
+	st.remove_ptr_or_array();
+	if(!st.is_struct())
 		return false;
 
-	udm_t tmemb;
-	if(!memb)
-		memb = &tmemb;
-	memb->offset = membacc->m;
-	if(-1 == type.find_udm(memb, STRMEM_AUTO))
+	udm_t memb;
+	memb.offset = membacc->m;
+	if(st.find_udm(&memb, STRMEM_AUTO) < 0)
 		return false;
 
-	if(strncmp(memb->name.c_str(), "fld_gap",7) && strncmp(memb->name.c_str(), "gap",3))
-		return false;
-
-	if(ts)
-		*ts = type;
-	return true;
+	if(!strncmp(memb.name.c_str(), "fld_gap",7) || !strncmp(memb.name.c_str(), "gap",3)) {
+		if(ts && gapMembOff && accessOff && accessType) {
+			*ts = st;
+			*gapMembOff = membacc->m;
+			*accessOff = membacc->m;
+			*accessType = memb.type;
+			citem_t *parent = vu->cfunc->body.find_parent_of(membacc);
+			if(parent->op == cot_idx) {
+				cexpr_t *idx = ((cexpr_t *)parent)->y;
+				if(idx->op != cot_num)
+					return false;
+				if(accessType->is_array())
+					accessType->remove_ptr_or_array();
+				*accessOff += (ea_t)(idx->numval() * accessType->get_size());
+				parent = vu->cfunc->body.find_parent_of(parent);
+			}
+			if(parent->op == cot_ref)
+				parent = vu->cfunc->body.find_parent_of(parent);
+			if(parent->op == cot_cast && ((cexpr_t *)parent)->type.is_ptr() &&
+				 vu->cfunc->body.find_parent_of(parent)->op == cot_ptr)
+			{
+				*accessType = ((cexpr_t *)parent)->type;
+				accessType->remove_ptr_or_array();
+			}
+		}
+		return true;
+	}
+#if IDA_SDK_VERSION >= 850
+	//ida9 doesn't provide fake "gap" field for "fixed" struct
+	citem_t *ref = vu->cfunc->body.find_parent_of(membacc);
+	if(ref && ref->op == cot_ref) {
+		citem_t *cast_or_add = vu->cfunc->body.find_parent_of(ref);
+		cexpr_t* cast = nullptr;
+		if(cast_or_add && cast_or_add->op == cot_cast) {
+			cast = (cexpr_t*)cast_or_add;
+			cast_or_add = vu->cfunc->body.find_parent_of(cast_or_add);
+		}
+		if(cast_or_add && cast_or_add->op == cot_add && ((cexpr_t*)cast_or_add)->y->op == cot_num) {
+			cexpr_t* add = (cexpr_t*)cast_or_add;
+			if(ts && gapMembOff && accessOff && accessType) {
+				*ts = st;
+				*gapMembOff = BADADDR;
+				*accessType = cast ? cast->type : make_pointer(memb.type);
+				citem_t *ptr = vu->cfunc->body.find_parent_of(add);
+				if(ptr && ptr->op == cot_ptr)
+					accessType->remove_ptr_or_array();
+				*accessOff = membacc->m + (ea_t)(add->y->numval() * accessType->get_size());
+			}
+			return true;
+		}
+	}
+#endif
+	return false;
 }
 
 ACT_DEF(convert_gap)
 {
 	vdui_t *vu = get_widget_vdui(ctx->widget);
 	tinfo_t ts;
-	udm_t memb;
-	if(!is_gap_field(vu, &ts, &memb))
+	ea_t gapOff;
+	ea_t fldOff;
+	tinfo_t fldType;
+	if(!is_gap_field(vu, &ts, &gapOff, &fldOff, &fldType))
 		return 0;
-
-	cexpr_t * exp = vu->item.e;
-	ea_t fldOff = exp->m;
-	ea_t gapOff = exp->m;
-	tinfo_t fldType = memb.type;
-
-	citem_t * ci = vu->cfunc->body.find_parent_of(exp);
-	if(ci->op == cot_idx) {
-		cexpr_t * idx = ((cexpr_t *)ci)->y;
-		if(idx->op != cot_num)
-			return 0;
-		if(fldType.is_array())
-			fldType.remove_ptr_or_array();
-		fldOff += (ea_t)(idx->numval() * fldType.get_size());
-		ci = vu->cfunc->body.find_parent_of(ci);
-	}
-	if(ci->op == cot_ref)
-		ci = vu->cfunc->body.find_parent_of(ci);
-	if(ci->op == cot_cast && ((cexpr_t *)ci)->type.is_ptr() &&
-		 vu->cfunc->body.find_parent_of(ci)->op == cot_ptr)
-	{
-		fldType = ((cexpr_t *)ci)->type;
-		fldType.remove_ptr_or_array();
-	}
 
 	if(fldType.empty())
 		fldType.create_simple_type(BT_INT8);
@@ -2366,7 +2389,11 @@ ACT_DEF(convert_gap)
 		set_membr_type(struc, fldM, &fldType, true);
 	}
 #else //IDA_SDK_VERSION >= 850
-	{
+	if(gapOff != BADADDR) {
+		udm_t memb;
+		memb.offset = gapOff;
+		if(ts.find_udm(&memb, STRMEM_AUTO) < 0)
+			return 0;
 		//??? gap member may not exists, but ida provides fake one
 		asize_t gapSz = memb.size / 8;
 		if (ts.del_udm(ts.find_udm(memb.offset)) == TERR_OK) {
@@ -2396,6 +2423,7 @@ ACT_DEF(convert_gap)
 	udm.size = fldType.get_size() * 8;
 	udm.name = good_udm_name(ts, udm.offset, "field_%X", fldOff);
 	udm.type = fldType;
+	//may cause INTERR 821 for "fixed" struct with zero align (zero effalign returned by type.get_size(&effalign))
 	tinfo_code_t c = ts.add_udm(udm, ETF_MAY_DESTROY);
 	if(c != TERR_OK)
 		msg("[hrt] convert_gap %s err %d\n", udm.name.c_str(), c);
@@ -2893,7 +2921,10 @@ ACT_DEF(create_dummy_struct)
 	udt_type_data_t s;
 	s.taudt_bits |= TAUDT_UNALIGNED;
 	s.total_size = s.unpadded_size = size;
+	s.effalign = 1;
 	//s.pack = 1;
+	//not sure is need to set_fixed for a dummy_struct that will be modified many times during further reversing
+	//s.set_fixed(true);
 #endif //IDA_SDK_VERSION < 850
 
 	if (empty || size > 10240) {
@@ -2952,8 +2983,6 @@ ACT_DEF(create_dummy_struct)
 	}
 #if IDA_SDK_VERSION < 850
 #else //IDA_SDK_VERSION >= 850
-	//not sure is need to set_fixed for a dummy_struct that will be modified many times during further reversing
-	//s.set_fixed(true);
 	tinfo_t ti;
 	if (!ti.create_udt(s) || ti.set_named_type(NULL, name.c_str()) != TERR_OK)
 		return 0;
@@ -5556,7 +5585,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.7.56";
+	addon.version = "2.7.57";
 	motd.sprnt("%s (%s) v%s for IDA%d ", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {
