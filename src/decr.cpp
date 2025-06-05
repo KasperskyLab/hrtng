@@ -67,7 +67,7 @@ static void addComment(vdui_t *vu, const char *comment)
 template <class charType>
 charType decrypt_char(charType v, eAlg algo, void *k, int32 idx)
 {
-  //msg("[hrt] decrypt_char(%x, %x, %x)\n", (uint)v, (uint)algo, (uint)*(charType*)k);
+  Log(llFlood, "decrypt_char(%x, %x, %x)\n", (uint)v, (uint)algo, (uint)*(charType*)k);
   switch(algo) {
   case eAlg_Rol:
     return qrotl(v, *(uint8*)k);

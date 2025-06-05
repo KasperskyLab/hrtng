@@ -177,21 +177,21 @@ static bool com_find_guid_type(ea_t ea, flags64_t flags, qstring* tname = NULL)
 				eaname += it->name;
 				set_name(ea, eaname.c_str(), SN_NOCHECK | SN_NON_AUTO | SN_NOWARN | SN_FORCE );
 				set_cmt(ea, eaname.c_str(), true);
-				msg("[hrt] %a: '%s' was found\n", ea, eaname.c_str());
+				Log(llInfo, "%a: '%s' was found\n", ea, eaname.c_str());
 			}
 #if IDA_SDK_VERSION < 850
 			qstring vtname = it->name;
 			vtname += "Vtbl";
 			if (BADADDR == get_struc_id(vtname.c_str())) {
 				const char* verb = (BADNODE != import_type(get_idati(), -1, vtname.c_str(), 0)) ? "imported" : "not found";
-				msg("[hrt] %a: type '%s' was %s\n", ea, vtname.c_str(), verb);
+				Log(llNotice, "%a: type '%s' was %s\n", ea, vtname.c_str(), verb);
 			}
 
 			tid_t res = get_struc_id(it->name.c_str());
 			if (BADNODE == res) {
 				res = import_type(get_idati(), -1, it->name.c_str(), 0);
 				const char* verb = (BADNODE != res) ? "imported" : "not found";
-				msg("[hrt] %a: type %s was %s\n", ea, it->name.c_str(), verb);
+				Log(llNotice, "%a: type %s was %s\n", ea, it->name.c_str(), verb);
 
 			}
 #endif // IDA_SDK_VERSION < 850
@@ -203,7 +203,7 @@ static bool com_find_guid_type(ea_t ea, flags64_t flags, qstring* tname = NULL)
 	if (tname)
 		*tname = cmt;
 	set_cmt(ea, cmt.c_str(), true);
-	msg("[hrt] %a: clsid '%s' was not found \n", ea, cmt.c_str());
+	Log(llWarning, "%a: clsid '%s' was not found \n", ea, cmt.c_str());
 	return false;
 }
 
@@ -311,7 +311,7 @@ bool chkCall(cexpr_t *call, qstring &comment)
 							tinfo_t t = make_pointer(create_typedef(tname.c_str()));
 							if (var.set_lvar_type(t)) {
 								(&args[ipObj])->calc_type(false); //recalc arg type
-								msg("[hrt] %a %s: Var %s was recast to \"%s\"\n", call->ea, funcname.c_str(), var.name.c_str(), t.dstr());
+								Log(llInfo, "%a %s: Var %s was recast to \"%s\"\n", call->ea, funcname.c_str(), var.name.c_str(), t.dstr());
 								return true;
 							}
 						}

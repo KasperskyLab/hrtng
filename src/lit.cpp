@@ -103,7 +103,7 @@ public:
 
 	void ll_error(uint32 line, const char* s)
 	{
-		msg("[hrt] literal loading error on line %d: %s\n", line, s);
+		Log(llError, "literal loading error on line %d: %s\n", line, s);
 	}
 
 	bool load(linput_t* file)
@@ -297,13 +297,11 @@ static const char* importEnumFromTil(til_t *til, const char* name, uint64 val)
 							if (typeName) {
 #if IDA_SDK_VERSION < 850
 								import_type(til, -1, typeName);
-#else //IDA_SDK_VERSION >= 850
-								//is it need??? if(til != get_idati()) copy_named_type
+								Log(llInfo, "import enum \"%s\" from til \"%s\"\n", typeName, til->name);
 #endif //IDA_SDK_VERSION < 850
-								msg("[hrt] import enum \"%s\" from til \"%s\"\n", typeName, til->name);
 								return typeName;
 							}
-							msg("[hrt] not named enum for \"%s\" 0x%x \n", name, val);
+							Log(llWarning, "not named enum for \"%s\" 0x%x \n", name, val);
 							return NULL;
 						}
 					}
@@ -316,7 +314,7 @@ static const char* importEnumFromTil(til_t *til, const char* name, uint64 val)
 
 static const char* importEnumFromTils(const char* name, uint64 val)
 {
-	msg("[hrt] find enum memb %s (0x%x) in tils\n", name, val);
+	Log(llDebug, "find enum memb %s (0x%x) in tils\n", name, val);
 	til_t *til = (til_t *)get_idati();
 	const char* typeName = importEnumFromTil(til, name, val);
 	if(typeName)
@@ -643,7 +641,7 @@ bool lit_overrideTypes()
 				if (apply_tinfo(ea, newFType, TINFO_DEFINITE | TINFO_STRICT)) {
 					qstring typeStr;
 					newFType.print(&typeStr);
-					msg("[hrt] Function %a %s was recast to \"%s\"\n", ea, funcnames[i], typeStr.c_str());
+					Log(llInfo, "Function %a %s was recast to \"%s\"\n", ea, funcnames[i], typeStr.c_str());
 				}
 			}
 		}
@@ -666,7 +664,7 @@ void lit_init()
 			lit = NULL;
 		}
 	}
-	msg("[hrt] Error loading '%s', enum autoresolve is turned off\n", litfname);
+	Log(llWarning, "Error loading '%s', enum autoresolve is turned off\n", litfname);
 }
 
 void lit_done()

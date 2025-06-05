@@ -332,7 +332,7 @@ void deob_preprocess(mbl_array_t *mba)
 		return;
 
 	if (!isX86()) {
-		msg("[hrt] FIXME: deob_preprocess is x86 specific\n");
+		Log(llWarning, "FIXME: deob_preprocess is x86 specific\n");
 		return ;
 	}
 
@@ -385,7 +385,7 @@ void deob_preprocess(mbl_array_t *mba)
 			for (mreg_t i = 0; i < 0x100; i += 4) {
 				mop_t op;
 				op._make_reg(i);
-				//msg("[hrt] reg_%x  %s\n", i, op.dstr());
+				Log(llFlood, "reg_%x  %s\n", i, op.dstr());
 				if (!qstrcmp("eip", op.dstr())) {
 					eip = i;
 #if 1
@@ -432,7 +432,7 @@ void deob_preprocess(mbl_array_t *mba)
 static bool patch_jmp(ea_t from, ea_t to, asize_t maxLen)
 {
 	if (!isX86()) {
-		msg("[hrt] FIXME: patch_jmp is x86 specific\n");
+		Log(llWarning, "FIXME: patch_jmp is x86 specific\n");
 		return false;
 	}
 	qstring cmt(";patched: ");//';' in first position prevents comment be copyed to pseudocode
@@ -449,7 +449,7 @@ static bool patch_jmp(ea_t from, ea_t to, asize_t maxLen)
 	adiff_t dist = to - from - 2;
 	if (dist >= -128 && dist <= 127) {
 		if (maxLen < 2) {
-			msg("[hrt] %a: no space for patch\n", from);
+			Log(llWarning, "%a: no space for patch\n", from);
 			return false;
 		}
 		patch_byte(from, 0xeb);
@@ -457,7 +457,7 @@ static bool patch_jmp(ea_t from, ea_t to, asize_t maxLen)
 		patch_byte(from + 1, uint64(dist));
 	} else {
 		if (maxLen < 6) {
-			msg("[hrt] %a: no space for patch\n", from);
+			Log(llWarning, "%a: no space for patch\n", from);
 			return false;
 		}
 		patch_word(from, 0xe990); //prepend with 'nop' to be same size as 'jc'
@@ -465,7 +465,7 @@ static bool patch_jmp(ea_t from, ea_t to, asize_t maxLen)
 	}
 	create_insn(from);
 	set_cmt(from, cmt.c_str(), false);//FIXME: doesnt work, why????
-	msg("[hrt] %a: %s\n", from, cmt.c_str());
+	Log(llInfo, "%a: %s\n", from, cmt.c_str());
 	return true;
 }
 
@@ -774,7 +774,7 @@ void remove_funcs_tails(ea_t ea)
 		MSG_DO(("[hrt] func tail at %a deleted\n", ea));
 	} while (++i > 100);
 
-	if (i > 100 ) msg("[hrt] %a FIXME: remove_funcs_tails loops\n", ea);
+	if (i > 100 ) Log(llWarning, "%a FIXME: remove_funcs_tails loops\n", ea);
 }
 
 enum Add_BB_Stop_Reason {
@@ -871,7 +871,7 @@ static bool add_bb(ea_t eaBgn, rangeset_t &ranges)
 	default:
 		m = "none";
 	}
-	msg("[hrt] add_bb fail at %a with %s\n", ea, m);
+	Log(llDebug, "add_bb fail at %a with %s\n", ea, m);
 #endif
 	return false;
 }
@@ -883,7 +883,7 @@ static ea_t get_nullsub_1()
 		return ea;
 
 	if (!isX86()) {
-		msg("[hrt] FIXME: get_nullsub_1 is x86 specific\n");
+		Log(llWarning, "FIXME: get_nullsub_1 is x86 specific\n");
 		return BADADDR;
 	}
 
@@ -1049,7 +1049,7 @@ int decompile_obfuscated(ea_t eaBgn)
 		if (!mba || hf.code != MERR_OK) {
 			hide_wait_box();
 			deob_done();
-			msg("[hrt] %a: gen_microcode err %d (%s)\n", hf.errea, hf.code, hf.desc().c_str());
+			Log(llError, "%a: gen_microcode err %d (%s)\n", hf.errea, hf.code, hf.desc().c_str());
 			return 0;
 		}
 		
@@ -1105,7 +1105,7 @@ int decompile_obfuscated(ea_t eaBgn)
 		cfuncptr_t cf = decompile_snippet(ranges.as_rangevec(), &hf, DECOMP_NO_CACHE | DECOMP_NO_FRAME | DECOMP_WARNINGS | DECOMP_ALL_BLKS);
 		deob_done();
 		if (hf.code != MERR_OK) {
-			msg("[hrt] decompile_snippet error %d: %s\n", hf.code, hf.desc().c_str());
+			Log(llError, "decompile_snippet error %d: %s\n", hf.code, hf.desc().c_str());
 			return 0;
 		}
 		cf->mba->dump();
@@ -1118,7 +1118,7 @@ int decompile_obfuscated(ea_t eaBgn)
 	}
 
 	if (stuck_ea != BADADDR) {
-		msg("[hrt] stuck at %a\n", stuck_ea);
+		Log(llWarning, "stuck at %a\n", stuck_ea);
 		no_code_warning(stuck_ea);
 	}
 	return 1;

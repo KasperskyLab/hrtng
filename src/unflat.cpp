@@ -509,7 +509,7 @@ struct ida_local KeyMapper : public minsn_visitor_t
 	}
 	void doMap(mbl_array_t* mba)
 	{
-		msg("[I] %d key compare/assign\n", (int)keys.size());
+		MSG_UF4(("[I] %d key compare/assign\n", (int)keys.size()));
 		int prev = 0;
 		int idx = 0;
 		for (auto& k : keys) {
@@ -528,7 +528,7 @@ struct ida_local KeyMapper : public minsn_visitor_t
 			prev = cur;
 
 			qstring s; k.second->print(&s); tag_remove(&s);
-			msg("[I] %a: key %d (%d) : %s\n", k.second->ea, k.first, idx, s.c_str());
+			MSG_UF4(("[I] %a: key %d (%d) : %s\n", k.second->ea, k.first, idx, s.c_str()));
 #if 0
 			mop_t* num = &k.second->r;
 			if (k.second->opcode == m_mov)
@@ -1867,7 +1867,7 @@ struct ida_local CFUnflattener
 			qstring tmpc; cfi.opCompared.print(&tmpc); tag_remove(&tmpc);
 			qstring tmpa; cfi.opAssigned.print(&tmpa); tag_remove(&tmpa);
 			mblock_t *dispBlk = mba->get_mblock(cfi.iDispatch);
-			msg("[hrt] %a: unflat '%s': '%s' cmp, '%s' asgn; disp at %a ; %d jc, %d targets; %d dispatch predecessors: %d resolved + %d skipped + %d failed\n",
+			Log(llNotice, "%a: unflat '%s': '%s' cmp, '%s' asgn; disp at %a ; %d jc, %d targets; %d dispatch predecessors: %d resolved + %d skipped + %d failed\n",
 			    mba->entry_ea, get_short_name(mba->entry_ea).c_str(),
 			    tmpc.c_str(), tmpa.c_str(),
 			    dispBlk->start,
@@ -1875,7 +1875,7 @@ struct ida_local CFUnflattener
 			    (int)(cfi.jcm->JTargetBlocks.size()),
 			    (int)dispBlk->predset.size(), iFixed, skippedPreds, iFail);
 			if (iFail) {
-				msg("[hrt] unflat: not all predecessors were resolved, pseudocode may be incorrect\n");
+				Log(llNotice, "unflat: not all predecessors were resolved, pseudocode may be incorrect\n");
 			}
 		}
 
@@ -1912,7 +1912,7 @@ bool unflattening(mbl_array_t *mba)
 
 	//unflattening may be called few times during decompilation
 	//do not check graylist on secondary calls
-	//msg("[hrt] %a: unflattening ufCurr: %a\n", mba->entry_ea, ufCurr);
+	Log(llDebug, "%a: unflattening ufCurr: %a\n", mba->entry_ea, ufCurr);
 static uint32 reentryCnt;
 	if(ufCurr == mba->entry_ea) {
 		if(++reentryCnt % 100 == 0) {

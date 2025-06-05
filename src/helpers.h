@@ -199,6 +199,18 @@ struct qstr_printer_t : public vd_printer_t
 	}
 };
 
+enum LogLevel {
+	llError,
+	llWarning,
+	llNotice,
+	llInfo,
+	llDebug,
+	llFlood
+};
+void LogLevelNames(qstrvec_t *v);
+int Log(LogLevel level, const char *fmt, ...);
+int LogTail(LogLevel level, const char *fmt, ...);
+
 template< class IsUniqueFunc >
 qstring unique_name(const char* name, IsUniqueFunc isUnique)
 {
@@ -209,7 +221,7 @@ qstring unique_name(const char* name, IsUniqueFunc isUnique)
 		uName = name;
 		uName.cat_sprnt("_%d", i);
 	}
-	msg("[hrt] FIXME! unique_name '%s' in not unique\n", uName.c_str());
+	Log(llError, "FIXME! unique_name '%s' in not unique\n", uName.c_str());
 	return uName;
 }
 

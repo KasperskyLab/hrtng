@@ -34,6 +34,8 @@ struct config_t {
 	// !!! here must be only simple scalar types inside because it saved/restored as a binary blob
 	// !!! types of members must be compatible with types used by `ask_form` API
 	ushort disable_autorename = 0;
+	ushort unused = 0; //next checkboxes group may be inserted here
+	int logLevel = llNotice;
 	// !!! add new fields to the end of the struct to keep backward compatibility
 	// !!! search "add new config_t fields" comment in `config.cpp`
 } ATTR_PACKED(16);

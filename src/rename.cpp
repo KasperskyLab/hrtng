@@ -216,7 +216,7 @@ static bool getEaName(ea_t ea, qstring* name)
 				if (name->size() > MAX_NAME_LEN)
 					name->resize(MAX_NAME_LEN);
 				if(!validate_name(name, VNT_IDENT)) {
-					msg("[hrt] FIXME: getEaName(%a, \"%s\")\n", ea, name->c_str());
+					Log(llWarning, "FIXME: getEaName(%a, \"%s\")\n", ea, name->c_str());
 					return false;
 				}
 			}
@@ -257,7 +257,7 @@ bool renameEa(ea_t refea, ea_t ea, const qstring* name)
 	if (newName.size() > MAX_NAME_LEN)
 		newName.resize(MAX_NAME_LEN);
 	if(!validate_name(&newName, VNT_IDENT)) {
-		msg("[hrt] bad name for renameEa(%a, \"%s\")\n", refea, newName.c_str());
+		Log(llWarning, "bad name for renameEa(%a, \"%s\")\n", refea, newName.c_str());
 		return false;
 	}
 	if (!has_cmt(get_flags(ea)) && newName != *name)
@@ -267,11 +267,11 @@ bool renameEa(ea_t refea, ea_t ea, const qstring* name)
 			newName.insert('p');
 
 	if (!set_name(ea, newName.c_str(), SN_NOCHECK | /*SN_AUTO |*/ SN_NOWARN | SN_FORCE)) {
-		msg("[hrt] %a: fail to rename %a to \"%s\"\n", refea, ea, newName.c_str());
+		Log(llWarning, "%a: fail to rename %a to \"%s\"\n", refea, ea, newName.c_str());
 		return false;
 	}
 	//make_name_auto(ea);
-	//msg("[hrt] %a: Global at %a was renamed to \"%s\"\n", refea, ea, newName.c_str());
+	Log(llInfo, "%a: Global at %a was renamed to \"%s\"\n", refea, ea, newName.c_str());
 	return true;
 }
 
@@ -296,18 +296,18 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 	if (newName.size() > MAX_NAME_LEN)
 		newName.resize(MAX_NAME_LEN);
 	if(!validate_name(&newName, VNT_IDENT)) {
-		//msg("[hrt] FIXME: renameVar(%a, \"%s\")\n", refea, newName.c_str());
+		Log(llDebug, "FIXME: renameVar(%a, \"%s\")\n", refea, newName.c_str());
 		return false;
 	}
 
 	//check if proc doesnt already has such name
 	newName = unique_name(newName.c_str(),
-												[&vars, &var](const qstring &n)
+												[&refea, &vars, &var](const qstring &n)
 	{
 		for(auto it = vars->begin(); it != vars->end(); it++) {
 			if(it->name == n) {
 				if(it == var) {//old name is equal to new, why?
-					//msg("[hrt] FIXME: renameVar(%a, \"%s\") dup\n", refea, newName.c_str());
+					Log(llDebug, "FIXME: renameVar(%a, \"%s\") dup\n", refea, n.c_str());
 					return true;
 				}
 				return false;
@@ -317,7 +317,7 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 		ea_t nnea = get_name_ea(BADADDR, n.c_str());
 		if(nnea == BADADDR || !is_func(get_flags(nnea)))
 			return true;
-		//msg("[hrt] FIXME: renameVar(%a, \"%s\") not accepted\n", refea, newName.c_str());
+		Log(llDebug, "FIXME: renameVar(%a, \"%s\") not accepted\n", refea, n.c_str());
 		return false;
 	});
 
@@ -335,7 +335,7 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 			tinfo_t t = getType4Name(newName.c_str());
 			if(!t.empty() && var->accepts_type(t))
 				if(var->set_lvar_type(t, true)) {
-					//msg("[hrt] %a: type of var '%s' refreshed\n", refea, newName.c_str());
+					Log(llInfo, "%a: type of var '%s' refreshed\n", refea, newName.c_str());
 					newType = t;
 				}
 		}
@@ -356,7 +356,7 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 #endif
 					func_type_data_t fi;
 					if(funcType.get_func_details(&fi) && fi.size() > (size_t)argIdx) {
-						//msg("[hrt] %a: Rename arg%d \"%s\" to \"%s\"\n", refea, argIdx + 1, fi[argIdx].name.c_str(), newName.c_str());
+						Log(llDebug, "%a: Rename arg%d \"%s\" to \"%s\"\n", refea, argIdx + 1, fi[argIdx].name.c_str(), newName.c_str());
 						if(!isVarNameGood(fi[argIdx].name.c_str())) {
 							fi[argIdx].name = newName;
 							stripName(&fi[argIdx].name);
@@ -367,7 +367,7 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 							if(newFType.is_correct() && apply_tinfo(func->entry_ea, newFType, is_userti(func->entry_ea) ? TINFO_DEFINITE : TINFO_GUESSED)) {
 								qstring typeStr;
 								newFType.print(&typeStr);
-								//msg("[hrt] %a: Function type was recasted for change arg%d into \"%s\"\n", refea, argIdx, typeStr.c_str());
+								Log(llInfo, "%a: Function type was recasted for change arg%d into \"%s\"\n", refea, argIdx, typeStr.c_str());
 							}
 						}
 					}
@@ -376,8 +376,8 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 		}
 	}
 	if(!res)
-		msg("[hrt] %a: Var \"%s\" rename to \"%s\" failed\n", refea, oldname.c_str(), newName.c_str());
-	//else msg("[hrt] %a: Var \"%s\" was renamed to \"%s\"\n", refea, oldname.c_str(), newName.c_str());
+		Log(llWarning, "%a: Var \"%s\" rename to \"%s\" failed\n", refea, oldname.c_str(), newName.c_str());
+	else Log(llInfo, "%a: Var \"%s\" was renamed to \"%s\"\n", refea, oldname.c_str(), newName.c_str());
 
 	return res;
 }
@@ -423,7 +423,7 @@ static bool renameUdtMemb(ea_t refea, tinfo_t udt, uint32 offset, qstring* name)
 	memb.offset = offset;
 	int midx = udt.find_udm(&memb, STRMEM_AUTO);
 	if(-1 == midx) {
-		msg("[hrt] renameUdtMemb no %x offset inside \"%s\"\n", offset, udt.dstr());
+		Log(llDebug, "renameUdtMemb no %x offset inside \"%s\"\n", offset, udt.dstr());
 		return false;
 	}
 
@@ -433,7 +433,7 @@ static bool renameUdtMemb(ea_t refea, tinfo_t udt, uint32 offset, qstring* name)
 
 #ifdef _DEBUG
 	if (memb.name == *name) {
-		msg("[hrt] %a: renameUdtMemb %s to self\n", refea, name->c_str());
+		Log(llDebug, "%a: renameUdtMemb %s to self\n", refea, name->c_str());
 		return false;
 	}
 #endif
@@ -449,10 +449,10 @@ static bool renameUdtMemb(ea_t refea, tinfo_t udt, uint32 offset, qstring* name)
 	struc_t* st = get_member_struc(oldName.c_str());
 	if(st && set_member_name(st, offset, newName.c_str())) {
 #endif //IDA_SDK_VERSION >= 850
-		//msg("[hrt] %a: struct \"%s\" member at 0x%x was renamed to %s\n", refea, oldName.c_str(), offset, newName.c_str());
+		Log(llInfo, "%a: struct \"%s\" member at 0x%x was renamed to %s\n", refea, oldName.c_str(), offset, newName.c_str());
 		return true;
 	}
-	msg("[hrt] %a: fail rename struct member \"%s\" at 0x%x to %s\n", refea, oldName.c_str(), offset, newName.c_str());
+	Log(llWarning, "%a: fail rename struct member \"%s\" at 0x%x to %s\n", refea, oldName.c_str(), offset, newName.c_str());
 	return false;
 }
 
@@ -490,7 +490,7 @@ bool getExpName(cfunc_t *func, cexpr_t* exp, qstring* name, bool derefPtr /* =fa
 				qstring &tn = exp->n->nf.type_name;
 				if(tn != "MACRO_ERROR" && tn != "MACRO_STRSAFE") {
 					en = true;
-					//msg("[hrt] %a: enum name '%s'\n", exp->ea, tn.c_str());
+					Log(llFlood, "%a: enum name '%s'\n", exp->ea, tn.c_str());
 				}
 			} else if (/*val != 0*/ val > 1 && val < (uint64)0x80000000) {
 				ok = true;
@@ -654,17 +654,17 @@ void dumpUserComments(ea_t entry_ea)
 	user_cmts_t *cmts = restore_user_cmts(entry_ea);
 	if ( cmts != NULL )
 	{
-		msg("[hrt] ------- %" FMT_Z " user defined comments\n", user_cmts_size(cmts));
+		Log(llFlood, "------- %" FMT_Z " user defined comments\n", user_cmts_size(cmts));
 		user_cmts_iterator_t p;
 		for ( p=user_cmts_begin(cmts); p != user_cmts_end(cmts); p=user_cmts_next(p) )
 		{
 			const treeloc_t &tl = user_cmts_first(p);
 			citem_cmt_t &cmt = user_cmts_second(p);
-			msg("[hrt] Comment at %a, preciser %x:\n%s\n\n", tl.ea, tl.itp, cmt.c_str());
+			Log(llFlood, "Comment at %a, preciser %x:\n%s\n\n", tl.ea, tl.itp, cmt.c_str());
 		}
 		user_cmts_free(cmts);
 	} else {
-		msg("[hrt] ------- no user defined comments\n");
+		Log(llFlood, "------- no user defined comments\n");
 	}
 }
 #endif
@@ -858,7 +858,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 					if(nref <= 4)
 #endif
 						bAllowTypeChange = true;
-					//else msg("[hrt] %a %s: too many crefs to %a %s, do not change proto\n", call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str());
+					else Log(llDebug, "%a %s: too many crefs to %a %s, do not change proto\n", call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str());
 				}
 			}
 
@@ -916,7 +916,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 						if(!argNamed && isArgNameGood(fiIname.c_str())) {
 								varRenamed |= renameExp(call->ea, func, arg, &fiIname, nullptr, true);
 						} else if(argNamed && bAllowTypeChange && !isVarNameGood(fiIname.c_str())) {
-								//msg("[hrt] %a %s: In function %a %s rename arg%d \"%s\" to \"%s\"\n", call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str(), i + 1, fi[i].name.c_str(), argVarName.c_str());
+								Log(llDebug, "%a %s: In function %a %s rename arg%d \"%s\" to \"%s\"\n", call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str(), i + 1, fi[i].name.c_str(), argVarName.c_str());
 								fi[i].name = argVarName;
 								fiChanged = true;
 								if(isDummyType(fi[i].type.get_decltype())) {
@@ -924,10 +924,10 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 									if(argType.empty())
 										argType = getExpType(func, skipCast(arg));
 									if(!isDummyType(argType.get_decltype()) && argType.is_scalar()) {
-										//msg("[hrt] %a %s: In function %a %s recasted arg%d `%s` from \"%s\" to \"%s\"\n", 	call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str(), i + 1, fi[i].name.c_str(), fi[i].type.dstr(), argType.dstr());
+										Log(llDebug, "%a %s: In function %a %s recasted arg%d `%s` from \"%s\" to \"%s\"\n", 	call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str(), i + 1, fi[i].name.c_str(), fi[i].type.dstr(), argType.dstr());
 										fi[i].type = argType;
 									}
-								} //else msg("[hrt] arg%d `%s` (%d - %s) of %s", i + 1, fi[i].name.c_str(), fi[i].type.get_decltype(), fi[i].type.dstr(), get_short_name(dstea).c_str());
+								} else Log(llDebug, "arg%d `%s` (%d - %s) of %s", i + 1, fi[i].name.c_str(), fi[i].type.get_decltype(), fi[i].type.dstr(), get_short_name(dstea).c_str());
 						}
 					}
 					if(bCallAssign) {
@@ -941,13 +941,13 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 						tinfo_t newFType;
 						newFType.create_func(fi);
 						if(newFType.is_correct() && apply_tinfo(dstea, newFType, TINFO_DELAYFUNC | (is_userti(dstea) ? TINFO_DEFINITE : TINFO_GUESSED))) // apply_callee_tinfo
-							msg("[hrt] %a %s: Function %a %s recasted to \"%s\"\n", call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str(), newFType.dstr());
+							Log(llInfo, "%a %s: Function %a %s recasted to \"%s\"\n", call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str(), newFType.dstr());
 					}
 				}
 			} else if(!tif.empty()){
 				qstring typeStr;
 				tif.print(&typeStr);
-				msg("[hrt] %a: type \"%s\" is not function\n", call->ea, typeStr.c_str());
+				Log(llDebug, "%a: type \"%s\" is not function\n", call->ea, typeStr.c_str());
 			}
 			return 0;
 		}
@@ -1043,7 +1043,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 				scanCmts = false;
 			}
 			if(i >= 10) {
-				msg("[hrt] %a %s WARNING: rename looping...\n", func->entry_ea, funcname.c_str());
+				Log(llWarning, "%a %s WARNING: rename looping...\n", func->entry_ea, funcname.c_str());
 			}
 			
 			//rename func itself if it has dummy name and only one statement inside
@@ -1068,9 +1068,9 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 							newName.append("_w");
 						if(set_name(func->entry_ea, newName.c_str(), SN_AUTO | SN_NOWARN | SN_FORCE)) {
 							make_name_auto(func->entry_ea);
-							//msg("[hrt] '%s' was renamed to '%s'\n", funcname.c_str(), newName.c_str());
+							Log(llInfo, "'%s' was renamed to '%s'\n", funcname.c_str(), newName.c_str());
 						} else {
-							msg("[hrt] %a: rename '%s' to '%s' error\n", func->entry_ea, funcname.c_str(), newName.c_str());
+							Log(llWarning, "%a: rename '%s' to '%s' error\n", func->entry_ea, funcname.c_str(), newName.c_str());
 						}
 					}
 				}

@@ -276,7 +276,7 @@ static ssize_t idaapi make_code_callback(va_list va)
 		hash_t opValue = cmdP->ops[idx].value;
 		auto it = hashes.find(opValue);
 		if(it != hashes.end()) {
-			msg("[hrt] %a: Found API hash for %s\n", ea, it->second.c_str());
+			Log(llInfo, "%a: Found API hash for %s\n", ea, it->second.c_str());
 			set_cmt(ea, it->second.c_str(), false);
 			break;
 		}
@@ -310,7 +310,7 @@ static ssize_t idaapi make_data_callback(va_list va)
 
 	auto it = hashes.find(opValue);
 	if(it != hashes.end()) {
-		msg("[hrt] %a: Found API hash for %s\n", ea, it->second.c_str());
+		Log(llInfo, "%a: Found API hash for %s\n", ea, it->second.c_str());
 		if (!set_name(ea, it->second.c_str(), SN_NOCHECK | SN_NOWARN | SN_FORCE)) {
 			set_cmt(ea, it->second.c_str(), true);
 		}
@@ -359,7 +359,7 @@ struct ida_local ah_visitor_t : public ctree_visitor_t
 		if(val) {
 			auto it = hashes.find(val);
 			if(it != hashes.end()) {
-				msg("[hrt] %a: Found API hash %" FMT_64 "x for %s\n", expr->ea, it->first, it->second.c_str());
+				Log(llInfo, "%a: Found API hash %" FMT_64 "x for %s\n", expr->ea, it->first, it->second.c_str());
 				cmtModified |= setComment4Exp(func, cmts, expr, it->second.c_str());
 			}
 		}
@@ -479,11 +479,11 @@ void apihashes_init()
 			bNextIsDll = false;
 		}
 		hash_t hash = hashers[alg].HashFunctionPtr(dllName.c_str(), buf, basis, prime);
-		//msg("[hrt] %" FMT_64 "x %s\n", (int64)hash, buf);
+		Log(llFlood, "hash %" FMT_64 "x %s\n", (int64)hash, buf);
 
 		auto it = hashes.find(hash);
 		if(it != hashes.end() && strcmp(it->second.c_str(), buf)) {
-			msg("[hrt] hash collision %" FMT_64 "x '%s' and '%s'\n", (int64)hash, it->second.c_str(), buf);
+			Log(llWarning, "hash collision %" FMT_64 "x '%s' and '%s'\n", (int64)hash, it->second.c_str(), buf);
 			++collisions;
 		} else {
 			hashes[hash] = buf;
@@ -494,7 +494,7 @@ void apihashes_init()
 		}
 	}
 	hide_wait_box();
-	msg("[hrt] %d lines, %d hashes, %d collisions\n", lines, (int)hashes.size(), collisions);
+	Log(llNotice, "%d lines, %d hashes, %d collisions\n", lines, (int)hashes.size(), collisions);
 
 	if(!bApihashesInited) {
 		hook_to_notification_point(HT_IDB, make_callback);

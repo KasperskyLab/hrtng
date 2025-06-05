@@ -171,24 +171,24 @@ bool Appcaller::init(bool dbg, uint32 keyArg, uint32 keyLenArg, ea_t callea, uin
 	multilineCmt = false;
 	resArgNum = resArgNum_;
 	if(!get_tinfo(&tif, funcea)) {
-		msg("[hrt] no typeinfo for %a\n", funcea);
+		Log(llError, "no typeinfo for %a\n", funcea);
 		return false;
 	}
 	qstring typeStr;
 	tif.print(&typeStr);
 	if(!tif.is_decl_func()) {
-		msg("[hrt] %a not function type %s\n", funcea, typeStr.c_str());
+		Log(llError, "%a not function type %s\n", funcea, typeStr.c_str());
 		return false;
 	}
 
 	if(!tif.get_func_details(&fi)) {
-		msg("[hrt] get_func_details failed for %a\n", funcea);
+		Log(llError, "get_func_details failed for %a\n", funcea);
 		return false;
 	}
 
 	size_t nargs = fi.size();
 	if(resArgNum > nargs || keyArgNum > nargs || keyLenArgNum > nargs) {
-		msg("[hrt] Wrong arg selected (%u, %u, %u), this function has only %u (pls check func type 'Y')\n", (uint32_t)resArgNum, (uint32_t)keyArgNum, (uint32_t)keyLenArgNum, (uint32_t)fi.size());
+		Log(llError, "Wrong arg selected (%u, %u, %u), this function has only %u (pls check func type 'Y')\n", (uint32_t)resArgNum, (uint32_t)keyArgNum, (uint32_t)keyLenArgNum, (uint32_t)fi.size());
 		return false;
 	}
 
@@ -213,7 +213,7 @@ bool Appcaller::initDbg()
 
 	if(DSTATE_NOTASK != isDbgRunning) {
 		if(initStart)
-			msg("[hrt] Warning: debugger is already running so initializer call has been skipped\n");
+			Log(llWarning, "Warning: debugger is already running so initializer call has been skipped\n");
 		return true;
 	}
 
@@ -228,7 +228,7 @@ bool Appcaller::initDbg()
 					//wait_for_next_event(WFNE_SUSP /*WFNE_ANY*/, -1);
 					const debug_event_t* ev = get_debug_event();
 					if(!ev || ev->eid() == PROCESS_EXITED || ev->eid() == PROCESS_DETACHED) {
-						msg("[hrt] Debugger exit while within Init\n");
+						Log(llError, "Debugger exit while within Init\n");
 						set_debugger_options(oldDebuggerOptions);
 						return false;
 					}
@@ -241,19 +241,19 @@ bool Appcaller::initDbg()
 						run_to(initStop);
 					}
 					if(ev->eid() == EXCEPTION /*&& !ev->exc.can_cont*/) {
-						msg("[hrt] Debugger catch exception %x at %a while Init, if the exception should be handled by app try \"Debugger->Debugger Options->Edit Exceptions->Edit->Pass to application\"\n", ev->exc().code, ev->exc().ea);
+						Log(llError, "Debugger catch exception %x at %a while Init, if the exception should be handled by app try \"Debugger->Debugger Options->Edit Exceptions->Edit->Pass to application\"\n", ev->exc().code, ev->exc().ea);
 						doneDbg();
 						return false;
 					}
 					if(ev->eid() == BREAKPOINT)
 						return true;
 				} while (wait_for_next_event(WFNE_CONT | WFNE_SUSP /*WFNE_ANY*/, -1) >= 0); // WFNE_CONT need for remote debugger
-				msg("[hrt] Debugger exit1 while within Init\n");
+				Log(llWarning, "Debugger exit1 while within Init\n");
 			}
 			return true;
 		}
 	}
-	msg("[hrt] Failed to launch debugger\n");
+	Log(llError, "Failed to launch debugger\n");
 	set_debugger_options(oldDebuggerOptions);
 	return false;
 }
@@ -366,7 +366,7 @@ bool Appcaller::getArgv(cexpr_t *call, qvector<idc_value_t> &argv, ea_t* patchea
 			argsStr.append(", ");
 	}
 	qstring funcname = get_short_name(funcea);
-	msg("[hrt] %a: prep dbg_appcall %s(%s)\n", call->ea, funcname.c_str(), argsStr.c_str());
+	Log(llFlood, "%a: prep dbg_appcall %s(%s)\n", call->ea, funcname.c_str(), argsStr.c_str());
 #else //DEBUG_AC
 	}
 #endif //DEBUG_AC
@@ -381,7 +381,7 @@ bool Appcaller::getString(idc_value_t &r, qstring *decodedStr, qstring &error)
 		{
 		ea_t ea = r.vtype == VT_LONG ? r.num : (ea_t)r.i64;
 #if DEBUG_AC
-		msg("[hrt] getString VT_LONG/VT_INT64 %a\n", ea);
+		Log(llFlood, "getString VT_LONG/VT_INT64 %a\n", ea);
 #endif //DEBUG_AC
 		if(is_mapped(ea)) {
 			if(resDisp != acsdArray) { //acsdAuto || acsdPointer
@@ -402,7 +402,7 @@ bool Appcaller::getString(idc_value_t &r, qstring *decodedStr, qstring &error)
 	case VT_STR:
 		{
 #if DEBUG_AC
-			msg("[hrt] getString VT_STR %d '%s'\n", r.qstr().length(),  r.c_str());
+			Log(llFlood, "getString VT_STR %d '%s'\n", r.qstr().length(),  r.c_str());
 #endif //DEBUG_AC
 			if(resDisp != acsdArray && r.qstr().size() >= ea_size) { //acsdAuto || acsdPointer
 				ea_t ea2 = *(ea_t*)r.qstr().begin();
@@ -424,7 +424,7 @@ bool Appcaller::getString(idc_value_t &r, qstring *decodedStr, qstring &error)
 	case VT_REF: 
 		{
 #if DEBUG_AC
-		msg("[hrt] getString VT_REF \n");
+		Log(llFlood, "getString VT_REF \n");
 #endif //DEBUG_AC
 			idc_value_t *v  = deref_idcv(&r, VREF_ONCE);
 			bool ret = getString(*v, decodedStr, error);
@@ -433,7 +433,7 @@ bool Appcaller::getString(idc_value_t &r, qstring *decodedStr, qstring &error)
 			if(ret && !strlen(decodedStr->c_str()) && resArgNum > 0 /*&& resArgNum < fi.size()*/) {
 					tinfo_t argt = fi[resArgNum - 1].type;
 					if(!argt.is_pvoid())
-						msg("[hrt] advice: Ida's dbg_appcall so capricious, pls try void* type for argument %d '%s'\n", resArgNum, fi[resArgNum - 1].name.c_str());
+						Log(llWarning, "advice: Ida's dbg_appcall so capricious, pls try void* type for argument %d '%s'\n", resArgNum, fi[resArgNum - 1].name.c_str());
 			}
 
 			//clear global buf for future use
@@ -519,7 +519,7 @@ bool Appcaller::execAppcall(ea_t callea, ea_t patchea, idc_value_t *argv, qstrin
 bool Appcaller::execAppcalls(bool bMultiLineComment)
 {
 	if(!calls.size()) {
-		msg("[hrt] No any 'good' calls to %a was found\n", funcea);
+		Log(llError, "No any 'good' calls to %a was found\n", funcea);
 		return false;
 	}
 	if(!initDbg())
@@ -550,7 +550,7 @@ static bool idcVal2str(const idc_value_t &val, qstring &str)
 		str.cat_sprnt("0x%a", (ea_t)val.i64);
 		break;
 	default:
-		msg("[hrt] idcVal2str wrong vtype - %d\n", val.vtype);
+		Log(llError, "idcVal2str wrong vtype - %d\n", val.vtype);
 		return false;
 	}
 	return true;
@@ -570,7 +570,7 @@ static bool str2idcVal(qstring str, idc_value_t &val, bool &derefPtr, char idx)
 		str = str.substr(1);
 	}
 	if(!atoea(&x, str.c_str())) {
-		msg("[hrt] validateArgs wrong arguments '%s'\n", str.c_str());
+		Log(llError, "validateArgs wrong arguments '%s'\n", str.c_str());
 		return false;
 	}
 	val.set_int64(x);
@@ -622,7 +622,7 @@ static bool validateArgs(qvector<idc_value_t> &argv, ea_t* patchea, uint32 keyAr
 			break;
 	}
 	if(i != argnum) {
-		msg("[hrt] validateArgs wrong arguments number\n");
+		Log(llError, "validateArgs wrong arguments number\n");
 		return false;
 	}
 	return true;
@@ -634,7 +634,7 @@ bool Appcaller::runOne(cexpr_t *call)
 	qvector<idc_value_t> argv;
 	ea_t patchea = BADADDR;
 	if(!getArgv(call, argv, &patchea, error)) {
-		msg("[hrt] %a: appcall error - %s\n", call->ea, error.c_str());
+		Log(llError, "%a: appcall error - %s\n", call->ea, error.c_str());
 		return false;
 	}
 	
@@ -661,7 +661,7 @@ bool Appcaller::runOne(cexpr_t *call)
 					patch_wstr(patchea, resStr.c_str(), -1);
 				else
 					patch_str(patchea, resStr.c_str(), -1);
-				msg("[hrt] %a was patched to %s\n", patchea, resStr.c_str());
+				Log(llInfo, "%a was patched to %s\n", patchea, resStr.c_str());
 			}
 		} else if(ASKBTN_NO == answ) {
 			append_cmt(callEa, resStr.c_str(), true);
@@ -670,7 +670,7 @@ bool Appcaller::runOne(cexpr_t *call)
 			e = false;
 		}
 	} else {
-		msg("[hrt] %a: appcall error - %s\n", call->ea, error.c_str());
+		Log(llError, "%a: appcall error - %s\n", call->ea, error.c_str());
 	}
 	return e;
 }
@@ -691,7 +691,7 @@ bool Appcaller::runAll()
 	for(std::multimap<func_t*, ea_t>::iterator it = xreffuncs.begin(); it != xreffuncs.end(); it++) {
 		if(user_cancelled()) {
 			hide_wait_box();
-			msg("[hrt] appcall is canceled\n");
+			Log(llNotice, "appcall is canceled\n");
 			return false;
 		}
 		appcall_t ac;
@@ -706,14 +706,14 @@ bool Appcaller::runAll()
 			cf = decompile(it->first, &hf, DECOMP_NO_WAIT);
 			if(!cf) {
 				ac.error.sprnt("decompile func %a failed at %a with err %d %s (%s)", it->first->start_ea, hf.errea, hf.code, hf.str.c_str(), hf.desc().c_str());
-				msg("[hrt] %s\n", ac.error.c_str());
+				Log(llWarning, "%s\n", ac.error.c_str());
 			}
 		}
 		if(cf) {
 			cexpr_t *call = findCall(cf, it->second, funcea);
 			if(!call) {
 				ac.error.sprnt("smth wrong in finding call at %a", it->second);
-				msg("[hrt] %s\n", ac.error.c_str());
+				Log(llWarning, "%s\n", ac.error.c_str());
 			} else {
 				qstring callstr;
 				call->print1(&callstr, cf);
@@ -942,7 +942,7 @@ bool Appcaller::re_run(const qvector<reappcall_t> &patchlist)
 			return false;
 		if(patchlist.size() == 1 || argsStr.find("patchaddr") != qstring::npos)
 			break;
-		msg("[hrt] no 'patchaddr' argument was specified\n");
+		Log(llError, "no 'patchaddr' argument was specified\n");
 	}
 
 
@@ -964,7 +964,7 @@ bool Appcaller::re_run(const qvector<reappcall_t> &patchlist)
 		bool derefPtr;
 		if(!qstrcmp(oneArg.c_str(), "patchaddr")) {
 			if(patchArgNum != -1) {
-				msg("[hrt] too many 'patchaddr' arguments was specified\n");
+				Log(llError, "too many 'patchaddr' arguments was specified\n");
 				return false;
 			}
 			patchArgNum = i;
@@ -984,11 +984,11 @@ bool Appcaller::re_run(const qvector<reappcall_t> &patchlist)
 			break;
 	}
 	if(i != fi.size()) {
-		msg("[hrt] wrong arguments number\n");
+		Log(llError, "wrong arguments number\n");
 		return false;
 	}
 	if(patchlist.size() > 1 && patchArgNum == -1) {
-		msg("[hrt] no 'patchaddr' argument was specified\n");
+		Log(llError, "no 'patchaddr' argument was specified\n");
 		return false;
 	}
 

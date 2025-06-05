@@ -216,14 +216,14 @@ struct ida_local refac_t {
 			if((flags & RFF_WWORDS) != 0 &&
 				 ((so > 0 && isWord(s[so - 1])) ||
 					(eo < s.length() && isWord(s[eo])))) {
-				//msg("[hrt] unmatch `%s %d %d`\n", s.c_str(), so, eo);
+				Log(llFlood, "unmatch `%s %d %d`\n", s.c_str(), so, eo);
 				if(r && eo > prev)
 					r->append(s.c_str() + prev, eo - prev);
 				so = eo;
 				continue;
 			}
 			//qstring match(s.c_str() + so, eo - so);
-			//msg("[hrt] match `%s` in %s\n", match.c_str(), s.c_str());
+			//Log(llFlood, "match `%s` in %s\n", match.c_str(), s.c_str());
 
 			res = true;
 			if(!r) // find once if not replace
@@ -255,7 +255,7 @@ struct ida_local refac_t {
 		path.sprnt("/%s/%s", dir, name);
 		//if(!dt.resolve_path(path.c_str()).valid())
 		dt.link(path.c_str());
-		//msg("[hrt] add match `%s` (%a)\n", path.c_str(), ea);
+		Log(llDebug, "add match `%s` (%a)\n", path.c_str(), ea);
 #endif //IDA_SDK_VERSION >= 770
 	}
 
@@ -265,7 +265,7 @@ struct ida_local refac_t {
 
 		if(searchFor.empty())
 			return false;
-		//msg("[hrt] search '%s', flags %d\n", searchFor.c_str(), flags);
+		Log(llDebug, "search '%s', flags %d\n", searchFor.c_str(), flags);
 
 		if((flags & RFF_REGEXP) != 0) {
 			//check and cache regexp
@@ -465,7 +465,7 @@ struct ida_local refac_t {
 
 	void replace()
 	{
-		//msg("[hrt] Refactoring '%s' -> '%s': replace %d matches \n", searchFor.c_str(), replaceWith.c_str(), matches.size());
+		Log(llDebug, "Refactoring '%s' -> '%s': replace %d matches \n", searchFor.c_str(), replaceWith.c_str(), matches.size());
 		uint32 count = 0;
 		uint32 failc = 0;
 		uint32 msigcount = 0;
@@ -473,7 +473,7 @@ struct ida_local refac_t {
 		for(size_t i = 0; i < matches.size(); i++) {
 			const rf_match_t &m = matches[i];
 			if(m.deleted) {
-				//msg("[hrt] Refactoring %a: skip deleted %s - '%s'\n", m.ea, eRFkindName(m.kind), m.name.c_str());
+				Log(llDebug, "Refactoring %a: skip deleted %s - '%s'\n", m.ea, eRFkindName(m.kind), m.name.c_str());
 				continue;
 			}
 			switch(m.kind) {
@@ -527,7 +527,7 @@ struct ida_local refac_t {
 							if(changed) {
 								tinfo_t newFType;
 								if(newFType.create_func(fi) && newFType.is_correct() && apply_tinfo(m.ea, newFType, is_userti(m.ea) ? TINFO_DEFINITE : TINFO_GUESSED)) {
-									//msg("[hrt] Refactoring %a: function args type changed to \"%s\"\n", m.ea, newFType.dstr());
+									Log(llInfo, "Refactoring %a: function args type changed to \"%s\"\n", m.ea, newFType.dstr());
 									break;
 								}
 							}
@@ -535,7 +535,7 @@ struct ida_local refac_t {
 					}
 				}
 				++failc;
-				msg("[hrt] Refactoring %a: fail function args type change '%s'\n", m.ea, m.name.c_str());
+				Log(llWarning, "Refactoring %a: fail function args type change '%s'\n", m.ea, m.name.c_str());
 				break;
 			}
 			case eRF_loclVar:
@@ -568,12 +568,12 @@ struct ida_local refac_t {
 					if(changed) {
 						save_user_lvar_settings(m.ea, lvinf);
 						count += changed;
-						//msg("[hrt] Refactoring %a: %d local var%s renamed\n", m.ea, changed, changed > 1 ? "s" : "");
+						Log(llInfo, "Refactoring %a: %d local var%s renamed\n", m.ea, changed, changed > 1 ? "s" : "");
 						break;
 					}
 				}
 				++failc;
-				msg("[hrt] Refactoring %a: fail local vars renaming '%s'\n", m.ea, m.name.c_str());
+				Log(llWarning, "Refactoring %a: fail local vars renaming '%s'\n", m.ea, m.name.c_str());
 #endif
 				break;
 			}
@@ -597,13 +597,13 @@ struct ida_local refac_t {
 						save_user_cmts(fn->start_ea, cmts);
 						user_cmts_free(cmts);
 						count += changed;
-						//msg("[hrt] Refactoring %a: %d local comments replaced\n", m.ea, changed);
+						Log(llInfo, "Refactoring %a: %d local comments replaced\n", m.ea, changed);
 						break;
 					}
 					user_cmts_free(cmts);
 				}
 				++failc;
-				msg("[hrt] Refactoring %a: fail local comments replace '%s'\n", m.ea, m.name.c_str());
+				Log(llWarning, "Refactoring %a: fail local comments replace '%s'\n", m.ea, m.name.c_str());
 				break;
 			}
 			case eRF_typeName:
@@ -622,12 +622,12 @@ struct ida_local refac_t {
 					if(TERR_OK == t.rename_type(newname.c_str(), NTF_NO_NAMECHK)) {
 #endif //IDA_SDK_VERSION < 850
 						++count;
-						//msg("[hrt] Refactoring %a: type '%s' renamed to '%s'\n", m.ea, oldname.c_str(), newname.c_str());
+						Log(llInfo, "Refactoring %a: type '%s' renamed to '%s'\n", m.ea, oldname.c_str(), newname.c_str());
 						break;
 					}
 				}
 				++failc;
-				msg("[hrt] Refactoring %a: fail type renaming '%s'\n", m.ea, m.name.c_str());
+				Log(llWarning, "Refactoring %a: fail type renaming '%s'\n", m.ea, m.name.c_str());
 				break;
 			}
 			case eRF_udmName:
@@ -648,11 +648,11 @@ struct ida_local refac_t {
 				if(idx >= 0 && match(udm.name, &newname)) {
 					stripName(&newname);
 					newname = good_udm_name(t, udm.offset, newname.c_str());
-					// qstring oldname; t.get_type_name(&oldname); oldname.append('.'); oldname.append(udm.name);
+					qstring oldname; t.get_type_name(&oldname); oldname.append('.'); oldname.append(udm.name);
 					if(TERR_OK == t.rename_udm(idx, newname.c_str())) {
 #endif //IDA_SDK_VERSION < 850
 						++count;
-						//msg("[hrt] Refactoring %a: struct member '%s' renamed to '%s'\n", m.ea, oldname.c_str(), newname.c_str());
+						Log(llInfo, "Refactoring %a: struct member '%s' renamed to '%s'\n", m.ea, oldname.c_str(), newname.c_str());
 						break;
 					}
 				} else {
@@ -663,7 +663,7 @@ struct ida_local refac_t {
 						break;
 				}
 				++failc;
-				msg("[hrt] Refactoring %a: fail struct member renaming '%s'\n", m.ea, m.name.c_str());
+				Log(llWarning, "Refactoring %a: fail struct member renaming '%s'\n", m.ea, m.name.c_str());
 				break;
 			}
 			case eRF_msigName:
@@ -673,13 +673,13 @@ struct ida_local refac_t {
 				++notecount;
 				break;
 			default:
-				msg("[hrt] Refactoring %a: unk kind %d\n", m.ea, m.kind);
+				Log(llError, "Refactoring %a: unk kind %d\n", m.ea, m.kind);
 			}
 		}
 		if(msigcount) {
 			//all MSIGs are renamed at once
 			uint32 cnt = msig_rename(msig_replace, this);
-			//msg("[hrt] Refactoring: %d msigs renamed\n", cnt);
+			Log(llInfo, "Refactoring: %d msigs renamed\n", cnt);
 			count += cnt;
 			failc += msigcount - cnt;
 		}
@@ -694,7 +694,7 @@ struct ida_local refac_t {
 			}
 		}
 
-		msg("[hrt] Refactoring '%s' -> '%s': %d changes, %d fails\n", searchFor.c_str(), replaceWith.c_str(), count, failc);
+		Log(llNotice, "Refactoring '%s' -> '%s': %d changes, %d fails\n", searchFor.c_str(), replaceWith.c_str(), count, failc);
 		if(count)
 			clear_cached_cfuncs();
 	}
@@ -721,7 +721,7 @@ bool rf_match_t::validateReplace(const refac_t* rf, qstring* repl) const
 			tid_t tid = t.get_tid()	;
 #endif //IDA_SDK_VERSION < 850
 			if(tid != BADNODE && tid != ea) {
-				msg("[hrt] Refactoring: type conflict '%s' - '%s' (%a - %a)\n", t.dstr(), repl->c_str(), tid, ea);
+				Log(llWarning, "Refactoring: type conflict '%s' - '%s' (%a - %a)\n", t.dstr(), repl->c_str(), tid, ea);
 				return false;
 			}
 		}
@@ -907,7 +907,7 @@ static int idaapi callback(int fid, form_actions_t &fa)
 		rf->searchFor.trim2();
 		rf->replaceWith.trim2();
 		if(rf->searchFor == rf->replaceWith) {
-			msg("[hrt] Refactoring: nothing to do, SearchFor is equal to ReplaceWith\n");
+			Log(llNotice, "Refactoring: nothing to do, SearchFor is equal to ReplaceWith\n");
 		} else if(!rf->validateReplace()) {
 			warning("[hrt] bad replace: '%s'", rf->replaceWith.c_str());
 			break;

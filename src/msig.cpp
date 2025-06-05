@@ -194,7 +194,7 @@ struct ida_local msig_t {
 		if (name.empty())
 			return false;
 		if(tooShort) {
-			//msg("[hrt] too short msig: %s!\n", name.c_str());
+			Log(llFlood, "too short msig: %s!\n", name.c_str());
 			return false;
 		}
 		for (uint32 i = 0; i < MSIGHASHLEN; i++)
@@ -231,7 +231,7 @@ public:
 	bool add(msig_t* s)
 	{
 		if (!s->chk()) {
-			msg("[hrt] Bad or too short msig: %s\n", s->name.c_str());
+			Log(llFlood, "Bad or too short msig: %s\n", s->name.c_str());
 			delete s;
 			return false;
 		}
@@ -246,13 +246,13 @@ public:
 				 && (pos == 0 || (*it)->name[pos-1] == ' ')
 				 && (pos + sname.length() == (*it)->name.length() || (*it)->name[pos + sname.length()] == ' '))
 			{
-				msg("[hrt] Duplicate msig `%s` skipped\n", s->name.c_str());
+				Log(llDebug, "Duplicate msig `%s` skipped\n", s->name.c_str());
 			} else if((*it)->name.length() > 300) {
 				if((*it)->name.last() != '.')          // ATTN !!!
 					(*it)->name.append(" and more ..."); // ATTN !!! this line must be ended by the same letter as above
-				msg("[hrt] Duplicate msig `%s` not merged\n", s->name.c_str());
+				Log(llDebug, "Duplicate msig `%s` not merged\n", s->name.c_str());
 			} else {
-				msg("[hrt] Duplicate msig `%s` merged with '%s'\n", s->name.c_str(), (*it)->name.c_str());
+				Log(llDebug, "Duplicate msig `%s` merged with '%s'\n", s->name.c_str(), (*it)->name.c_str());
 				(*it)->name.append(' ');
 				(*it)->name.append(sname);
 			}
@@ -267,7 +267,7 @@ public:
 			return false;
 		}
 		insert(s);
-		//msg("[hrt] msig '%s' has been added!\n", s->name.c_str());
+		Log(llFlood, "msig '%s' has been added\n", s->name.c_str());
 		return true;
 	}
 	bool add(mbl_array_t* mba)
@@ -279,7 +279,7 @@ public:
 		if(res && s->reqRelaxed) {
 			msig_t* r = new msig_t(mba, false);
 			if(*r == *s) {
-				msg("[hrt] FIXME! Strict msig '%s' is equal to relaxed!\n", s->name.c_str());
+				Log(llWarning, "FIXME! Strict msig '%s' is equal to relaxed!\n", s->name.c_str());
 				delete r;
 			} else {
 				add(r);
@@ -360,14 +360,14 @@ public:
 				cnt++;
 		}
 		qfclose(f);
-		msg("[hrt] %d msigs are saved to %s\n", cnt, filename);
+		Log(llNotice, "%d msigs are saved to %s\n", cnt, filename);
 		modified = false;
 	}
 	void load(const char* filename)
 	{
 		FILE* f = qfopen(filename, "r");
 		if (!f) {
-			msg("[hrt] Could not open %s for reading!\n", filename);
+			Log(llError, "Could not open %s for reading!\n", filename);
 			return;
 		}
 		uint32 cnt = 0;
@@ -377,7 +377,7 @@ public:
 				cnt++;
 		}
 		qfclose(f);
-		msg("[hrt] %d msigs are loaded from %s\n", cnt, filename);
+		Log(llNotice, "%d msigs are loaded from %s\n", cnt, filename);
 	}
 };
 msigs_t msigs;
@@ -392,7 +392,7 @@ const char* msig_match(mbl_array_t* mba)
 	if (!mba || !msigs.size())
 		return NULL;
 	const char* name = msigs.match(mba);
-	//if(name) msg("[hrt] %a: msig '%s' found\n", mba->entry_ea, name);
+	if(name) Log(llFlood, "%a: msig '%s' found\n", mba->entry_ea, name);
 	return name;
 }
 
@@ -536,7 +536,7 @@ ACT_DEF(msigSave)
 		for (size_t i = 0; i < funcqty; i++) {
 			if (user_cancelled()) {
 				hide_wait_box();
-				msg("[hrt] msig save is canceled\n");
+				Log(llWarning, "msig save is canceled\n");
 				return 0;
 			}
 
@@ -570,16 +570,16 @@ ACT_DEF(msigSave)
 			}
 #endif
 			else {
-				msg("[hrt] %a: decompile_func(\"%s\") failed with '%s'\n", funcstru->start_ea, funcName.c_str(), hf.desc().c_str());
+				Log(llWarning, "%a: decompile_func(\"%s\") failed with '%s'\n", funcstru->start_ea, funcName.c_str(), hf.desc().c_str());
 			}
 		}
 		hide_wait_box();
 		if(skipCnt)
-			msg("[hrt] %d lib func or bad msigs skipped\n", skipCnt);
+			Log(llNotice, "%d lib func or bad msigs skipped\n", skipCnt);
 	}
 
 	if (!msigs.size()) {
-		msg("[hrt] No any msigs are defined\n");
+		Log(llNotice, "No any msigs are defined\n");
 		return 0;
 	}
 	msigs.save(filename.c_str());
@@ -639,7 +639,7 @@ ACT_DEF(msigAccept)
 	else
 		name = qstring(bgn);
 	if(set_name(vu->cfunc->entry_ea, name.c_str(), SN_FORCE)) {
-		msg("[hrt] %a: msig name accepted '%s'\n",vu->cfunc->entry_ea, name.c_str());
+		Log(llDebug, "%a: msig name accepted '%s'\n",vu->cfunc->entry_ea, name.c_str());
 		vu->refresh_view(true);
 	}
 	return 0;

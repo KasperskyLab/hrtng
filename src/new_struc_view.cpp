@@ -305,13 +305,13 @@ ACT_DEF(jump_to_next_function_cb)
 		if(ui->cfunc->get_func_type(&type)) {
 			if(type.get_func_details(&fti, GTD_NO_ARGLOCS)) {
 				argcnt = (uval_t)fti.size();
-				msg("[hrt] %s\n", fti[(size_t)argnum->second.arg_num].name.c_str());
+				Log(llDebug, "%s\n", fti[(size_t)argnum->second.arg_num].name.c_str());
 			}
 		}
 		if(argnum->second.arg_cnt == argcnt)
-			msg("[hrt] function @ %08a argument nr %d\n", argnum->first, argnum->second.arg_num);
+			Log(llDebug, "function @ %08a argument nr %d\n", argnum->first, argnum->second.arg_num);
 		else
-			msg("[hrt] function @ %08a has different arguments count\n", argnum->first);
+			Log(llDebug, "function @ %08a has different arguments count\n", argnum->first);
 	}
 	
 	//jump to global variable

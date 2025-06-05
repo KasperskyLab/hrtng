@@ -111,7 +111,7 @@ struct ida_local ptr_checker_t : public ctree_parentee_t
 				if(swaped || (!left && right)) {
 					 idxs.insert(lft_var_idx);
 					 offsets[lft_var_idx] = offset_for_var_idx(rgt_var_idx);
-					 msg("[hrt] scanning also var '%s'\n", (*lvars)[(size_t)lft_var_idx].name.c_str());
+					 Log(llDebug, "scanning also var '%s'\n", (*lvars)[(size_t)lft_var_idx].name.c_str());
 				}
 			}
 			return 0;
@@ -186,7 +186,7 @@ struct ida_local ptr_checker_t : public ctree_parentee_t
 					if(!is_our(new_var_idx)) {
 						idxs.insert(new_var_idx);
 						offsets[new_var_idx] = cur_var_offset + uval_t(delta);
-						msg("[hrt] scanning also var '%s' + %a\n", (*lvars)[(size_t)ex->x->v.idx].name.c_str(), uval_t(delta) );
+						Log(llDebug, "scanning also var '%s' + %a\n", (*lvars)[(size_t)ex->x->v.idx].name.c_str(), uval_t(delta) );
 					}
 				}
 			} else if (parents[i]->op == cot_call) {
@@ -204,7 +204,7 @@ struct ida_local ptr_checker_t : public ctree_parentee_t
 						a.arg_num  = (uval_t)idx;
 						a.arg_cnt = (uval_t)call->a->size();
 						fi.argument_numbers[fncea] = a;
-						msg("[hrt] scanning also func %a '%s'\n", fncea, get_name(fncea).c_str());
+						Log(llDebug, "scanning also func %a '%s'\n", fncea, get_name(fncea).c_str());
 					}
 				}
 			}
@@ -293,9 +293,9 @@ bool can_be_converted_to_ptr(vdui_t &vu, bool bVarTesting)
 
 	if (!is_global) {
 		lvar_t & lv = (*lvars)[(size_t)varidx];
-		msg("[hrt] scanning var '%s'\n", lv.name.c_str());
+		Log(llDebug, "scanning var '%s'\n", lv.name.c_str());
 	} else {
-		msg("[hrt] scanning glbl '%s'\n", get_short_name(varidx).c_str());
+		Log(llDebug, "scanning glbl '%s'\n", get_short_name(varidx).c_str());
 	}
 
 	ptr_checker_t pc(varidx, lvars);
@@ -303,7 +303,7 @@ bool can_be_converted_to_ptr(vdui_t &vu, bool bVarTesting)
 	pc.collect_scanned_vars(cfunc);
 	for(scanned_variables_t::iterator p = fi.scanned_variables.begin(); p != fi.scanned_variables.end(); p++) {
 		for(qvector<scanned_variable_t>::iterator x = p->second.begin(); x != p->second.end(); x++) {
-			msg("[hrt] %a: scanned var at defea: %a offset: %a\n", p->first, x->second.defea, x->first);
+			Log(llDebug, "%a: scanned var at defea: %a offset: %a\n", p->first, x->second.defea, x->first);
 		}
 	}
 	if (fi.empty())

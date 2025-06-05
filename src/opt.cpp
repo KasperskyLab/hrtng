@@ -335,7 +335,7 @@ bool FindInsWithTheOp(mblock_t* blk, mop_t* op, minsn_t* start, minsn_t*& ins, m
 				qstring qs;
 				mDef->print(&qs);
 				tag_remove(&qs);
-				msg("[E] %a: FindInsWithTheOp found '%s'\n", mDef->ea, qs.c_str());
+				MSG_DO(("[E] %a: FindInsWithTheOp found '%s'\n", mDef->ea, qs.c_str()));
 #endif
 				return false;
 			}
@@ -590,7 +590,7 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 			if (blk == NULL)
 				return 0;
 			// data flow tracking #2: both of the operands are not extracted due to lack of nested sub instruction
-			//msg("pat_MulSub2: tracking #2 OR ins %#a at %#a\n", orIns->ea, blk->mba->entry_ea);
+			MSG_DO(("[I] pat_MulSub2: tracking #2 OR ins %#a at %#a\n", orIns->ea, blk->mba->entry_ea));
 			if (!TraceAndExtractOpsMovAndSubBy1(blk, opMulNonSub, subNonNum, insMul))
 				return 0;
 		}
@@ -601,7 +601,7 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 			if (blk == NULL)
 				return 0;
 			// data flow tracking #3: both of the operands are extracted but different due to assignment to registers
-			//msg("pat_MulSub2: tracking #3 OR ins %#a at %#a\n", orIns->ea, blk->mba->entry_ea);
+			MSG_DO(("[I] pat_MulSub2: tracking #3 OR ins %#a at %#a\n", orIns->ea, blk->mba->entry_ea));
 			minsn_t* insMov;
 			if (opMulNonSub->t != mop_v && FindInsWithTheOp(blk, opMulNonSub, insMul, insMov, m_mov))
 				opMulNonSub = &insMov->l;
@@ -652,8 +652,7 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 				return 0;
 			if (!IsReadOnlyInitedVar(&insOut->l))
 				return 0;
-			//else
-				//msg("pat_InitedVarCondImm: tracked ins %a at %a\n", ins->ea, blk->mba->entry_ea);
+			//else { MSG_DO(("[I] pat_InitedVarCondImm: tracked ins %a at %a\n", ins->ea, blk->mba->entry_ea));}
 		}
 
 		// Replace the global variable with 0

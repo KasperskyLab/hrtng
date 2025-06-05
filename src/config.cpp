@@ -25,12 +25,14 @@
 #include <config.hpp>
 #include "warn_on.h"
 
+#include "helpers.h"
 #include "config.h"
 
 config_t cfg;
 static const char cfgNodeName[] = "$ hrt options";
 
 static const cfgopt_t opts[] = {
+	cfgopt_t("LOGGING_LEVEL", &cfg.logLevel),
 	cfgopt_t("DISABLE_AUTORENAME", &cfg.disable_autorename, 1)
 // !!! add new config_t fields here in arbitrary order
 };
@@ -39,12 +41,16 @@ void configLoad()
 {
 	//load from IDB last used settings made by configDlg
 	netnode nn(cfgNodeName);
-	if(exist(nn) && nn.valobj(&cfg, sizeof(config_t)) > 0)
+	if(exist(nn) && nn.valobj(&cfg, sizeof(config_t)) > 0) {
+		Log(llDebug, "config loaded from IDB\n");
 		return;
+	}
 
 	//load user defined defaults from hrtng.cfg file
 	if(!read_config_file("hrtng", opts, qnumber(opts), nullptr))
-		msg("[hrt] error on reading config file, use defaults\n");
+		Log(llWarning, "error on reading config file, use defaults\n");
+	else
+		Log(llDebug, "config file loaded, logging level %d\n", cfg.logLevel);
 }
 
 void configSave()
@@ -52,17 +58,21 @@ void configSave()
 	QASSERT(100111, sizeof(config_t) < MAXSPECSIZE);
 	netnode nn(cfgNodeName, 0, true);
 	nn.set(&cfg, sizeof(config_t));
+	Log(llDebug, "config saved in IDB\n");
 }
 
 void configDlg()
 {
+	qstrvec_t llNames;
+	LogLevelNames(&llNames);
 	const char format[] =
 			//title
 			"[hrt] Options\n\n"
+			"<Logging level:b:0:>\n"
 			"<#NOT RECOMMENDED#Disable auto~r~ename:C>>\n"
 // !!! add new config_t fields here in arbitrary order
 			"\n\n";
-	if (1 != ask_form(format, &cfg.disable_autorename))
+	if (1 != ask_form(format, &llNames, &cfg.logLevel, &cfg.disable_autorename))
 		return;
 	configSave();
 }

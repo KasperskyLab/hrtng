@@ -28,6 +28,7 @@
 #include "warn_on.h"
 
 #include "helpers.h"
+#include "config.h"
 
 bool at_atoea(const char * str, ea_t * pea )
 {
@@ -386,7 +387,7 @@ bool setComment4Exp(cfunc_t* func, user_cmts_t *cmts, citem_t *expr, const char*
 		func->set_user_cmt(loc, s.c_str());
 		return true;
 	}
-	//msg("[hrt] %a not join comments '%s' and '%s'\n", expr->ea, existCmt, comment);
+	Log(llDebug, "%a not join comments '%s' and '%s'\n", expr->ea, existCmt, comment);
 	return false;
 }
 
@@ -433,7 +434,7 @@ void printExp2Msg(const cfunc_t *func, cexpr_t *expr, const char* mesg)
 	qstring SExp = printExp(func, expr);
 	qstring funcname;
 	get_short_name(&funcname, func->entry_ea);
-	msg("[hrt] %a %s: %s '%s'\n", expr->ea, funcname.c_str(), mesg, SExp.c_str());
+	Log(llInfo, "%a %s: %s '%s'\n", expr->ea, funcname.c_str(), mesg, SExp.c_str());
 }
 
 void replaceExp(const cfunc_t *func, cexpr_t *expr, cexpr_t *newExp, bool clean)
@@ -442,7 +443,7 @@ void replaceExp(const cfunc_t *func, cexpr_t *expr, cexpr_t *newExp, bool clean)
 	qstring SnewExp = printExp(func, newExp);;
 	qstring funcname;
 	get_short_name(&funcname, func->entry_ea);
-	msg("[hrt] %a %s: '%s' was replaced to '%s'\n", expr->ea, funcname.c_str(), SoldExp.c_str(), SnewExp.c_str());
+	Log(llInfo, "%a %s: '%s' was replaced to '%s'\n", expr->ea, funcname.c_str(), SoldExp.c_str(), SnewExp.c_str());
 
 	if (clean)
 		expr->cleanup();
@@ -476,4 +477,54 @@ bool jump_custom_viewer(TWidget* custom_viewer, int line, int x, int y)
 	simpleline_place_t* newplace = (simpleline_place_t*)place->clone();
 	newplace->n = line;
 	return jumpto(custom_viewer, newplace, x, y);
+}
+
+//------------------------------------------------
+
+void LogLevelNames(qstrvec_t *v)
+{
+	v->clear();
+	v->push_back("Error");
+	v->push_back("Warning");
+	v->push_back("Notice");
+	v->push_back("Info");
+	v->push_back("Debug");
+	v->push_back("Flood");
+}
+
+static char LogLevelName(LogLevel level)
+{
+	switch(level) {
+	case llError: return 'e';
+	case llWarning: return 'w';
+	case llNotice: return 'n';
+	case llInfo: return 'i';
+	case llDebug: return 'd';
+	case llFlood: return 'f';
+	default: return 'u';
+	}
+}
+
+int Log(LogLevel level, const char *fmt, ...)
+{
+	if(level > cfg.logLevel)
+		return 0;
+	qstring s;
+	s.sprnt("[hrt %c] ", LogLevelName(level));
+	va_list va;
+  va_start(va, fmt);
+	s.cat_vsprnt(fmt, va);
+	va_end(va);
+  return msg(s.c_str());
+}
+
+int LogTail(LogLevel level, const char *fmt, ...)
+{
+	if(level > cfg.logLevel)
+		return 0;
+	va_list va;
+  va_start(va, fmt);
+	int res = vmsg(fmt, va);
+	va_end(va);
+  return res;
 }
