@@ -10,6 +10,7 @@ The results are grouped to following folders:
  * **gvar** - ... part of a global variable name;
  * **lvar** - ... part of a local variable name (all matched variables are displayed in one line, then symbol `@` and the function name is appended to the line);
  * **cmts** - ... part of a user defined comment (too long comment is displayed incomplete)
+ * **nfmt** - ... part of a typename of user defined number format (structure for `offsetof`/`sizeof` or enum name)
  * **type** - ... part of a type name (only structures and unions for IDA versions less 8.5);
  * **udm**  - ... part of a struct or union member's name (the full name of the member is displayed);
  * **msig** - ... part of [microcode signature](msig.md) name;

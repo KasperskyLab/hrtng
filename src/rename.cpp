@@ -557,8 +557,12 @@ bool getExpName(cfunc_t *func, cexpr_t* exp, qstring* name, bool derefPtr /* =fa
 bool renameExp(ea_t refea, cfunc_t *func, cexpr_t* exp, qstring* name, vdui_t *vdui, bool derefPtr /*= false*/)
 {
 	exp = skipCast(exp);
+	if(derefPtr && exp->op == cot_ptr && isRenameble(exp->x->op) && exp->x->type.is_scalar()) {
+		name->insert(0,"p_");
+		return renameExp(refea, func, exp->x, name);
+	}
 	if(derefPtr && exp->op == cot_ref && isRenameble(exp->x->op)) {
-		if (name->length() > 2 && name->at(0) == 'p' && name->at(1) == '_') {
+		if(name->length() > 2 && name->at(0) == 'p' && name->at(1) == '_') {
 			name->remove(0, 2);
 		} else {
 			name->append('_');

@@ -49,6 +49,7 @@ enum eRF_kind_t {
 	eRF_glblVar,
 	eRF_loclVar,
 	eRF_usrCmts,
+	eRF_numFmt,
 	eRF_typeName,
 	eRF_udmName,
 	eRF_msigName,
@@ -64,6 +65,7 @@ const char* eRFkindName(eRF_kind_t kind)
 	case eRF_glblVar:  return "gvar";
 	case eRF_loclVar:  return "lvar";
 	case eRF_usrCmts:  return "cmts";
+	case eRF_numFmt:   return "nfmt";
 	case eRF_typeName: return "type";
 	case eRF_udmName:  return "udm";
 	case eRF_msigName: return "msig";
@@ -79,6 +81,7 @@ eRF_kind_t eRFname2kind(const char* n)
 	if(!qstrcmp(n, "gvar")) return eRF_glblVar;
 	if(!qstrcmp(n, "lvar")) return eRF_loclVar;
 	if(!qstrcmp(n, "cmts")) return eRF_usrCmts;
+	if(!qstrcmp(n, "nfmt")) return eRF_numFmt;
 	if(!qstrcmp(n, "type")) return eRF_typeName;
 	if(!qstrcmp(n, "udm"))  return eRF_udmName;
 	if(!qstrcmp(n, "msig")) return eRF_msigName;
@@ -361,6 +364,17 @@ struct ida_local refac_t {
 				}
 				user_cmts_free(cmts);
 			}
+
+			//match number formats
+			user_numforms_t *nfs = restore_user_numforms(ea);
+			if(nfs) {
+				for(auto it = user_numforms_begin(nfs); it != user_numforms_end(nfs); it = user_numforms_next(it)) {
+					number_format_t &nf = user_numforms_second(it);
+					if(match(nf.type_name))
+						add(nf.type_name.c_str(), eRF_numFmt, user_numforms_first(it).ea);
+				}
+				user_numforms_free(nfs);
+			}
 		} // end of proc list loop
 
 		//match name of global var
@@ -606,6 +620,35 @@ struct ida_local refac_t {
 				Log(llWarning, "Refactoring %a: fail local comments replace '%s'\n", m.ea, m.name.c_str());
 				break;
 			}
+			case eRF_numFmt:
+			{
+				user_numforms_t *nfs = nullptr;
+				func_t *fn = get_func(m.ea);
+				if(fn && (nfs = restore_user_numforms(fn->start_ea)) != nullptr) {
+					uint32 changed = 0;
+					for(auto it = user_numforms_begin(nfs); it != user_numforms_end(nfs); it = user_numforms_next(it)) {
+						if(user_numforms_first(it).ea == m.ea) {
+							number_format_t &nf = user_numforms_second(it);
+							qstring newtn;
+							if(match(nf.type_name, &newtn)) {
+								nf.type_name = newtn;
+								++changed;
+							}
+						}
+					}
+					if(changed) {
+						save_user_numforms(fn->start_ea, nfs);
+						user_numforms_free(nfs);
+						count += changed;
+						Log(llInfo, "Refactoring %a: %d user defined number formats replaced\n", m.ea, changed);
+						break;
+					}
+					user_numforms_free(nfs);
+				}
+				++failc;
+				Log(llWarning, "Refactoring %a: fail user defined number format replace '%s'\n", m.ea, m.name.c_str());
+				break;
+			}
 			case eRF_typeName:
 			{
 				qstring oldname;
@@ -788,8 +831,10 @@ struct ida_local rf_chooser_t : public chooser_t
 		cols->at(2).sprnt("%a", m.ea);
 		cols->at(3) = eRFkindName(m.kind);
 
-		if(m.deleted)
+		if(m.deleted) {
 			attrs->flags |= CHITEM_STRIKE;
+			return;
+		}
 
 		//no checks on search only mode
 		if(rf->searchFor == rf->replaceWith) {
@@ -833,6 +878,7 @@ struct ida_local rf_chooser_t : public chooser_t
 #endif //IDA_SDK_VERSION < 850
 		case eRF_funcArg:
 		case eRF_usrCmts:
+		case eRF_numFmt:
 		case eRF_loclVar:
 			COMPAT_open_pseudocode_REUSE(m.ea);
 			return cbret_t();
