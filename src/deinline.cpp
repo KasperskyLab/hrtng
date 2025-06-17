@@ -738,12 +738,13 @@ struct ida_local sInlinesLib : std::set<sInline*, lessInline>
 		qstring	basePath = get_user_idadir();
 		basePath.append("/inlines");
 		if (bCreate) {
-			if (!qfileexist(basePath.c_str())) {
+			if(!qisdir(basePath.c_str())) {
 #ifdef _WIN32
-				qmkdir(basePath.c_str(), 0);
+				if(qmkdir(basePath.c_str(), 0) < 0)
 #else
-				qmkdir(basePath.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-#endif			
+				if(qmkdir(basePath.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0)
+#endif
+					Log(llError, "Error %d on mkdir(\"%s\")\n", get_qerrno(), basePath.c_str());
 			}
 		}
 		return basePath;
@@ -752,6 +753,7 @@ struct ida_local sInlinesLib : std::set<sInline*, lessInline>
 	{
 		qstring	basePath = getBasePath(true);
 		basePath.append('/');
+		uint32 cnt = 0;
 		for (auto it = begin(); it != end(); it++) {
 			sInline *inl = *it;
 			if (inl->bLib || inl->bTmp)
@@ -785,27 +787,35 @@ struct ida_local sInlinesLib : std::set<sInline*, lessInline>
 					//	path[i] = qtolower(path[i]);
 					qstring dir = basePath + path.substr(0, p);
 #ifdef _WIN32
-					qmkdir(dir.c_str(), 0);
+					if(qmkdir(dir.c_str(), 0) < 0)
 #else
-					qmkdir(dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+					if(qmkdir(dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0)
 #endif
+						Log(llError, "Error %d on mkdir(\"%s\")\n", get_qerrno(), basePath.c_str());
 					path[p] = '/';
 					pdir = p + 1;
 					break;
 				}
 				}
 			}
-			qstring fullpath;
-			fullpath = unique_name(path.c_str(), [&basePath](const qstring &n){qstring fullpath = basePath + n + ".inl"; return !qfileexist(fullpath.c_str());});
+			qstring fullpath(basePath); fullpath.append(path);
+			fullpath = unique_name(fullpath.c_str(), [](const qstring &n){qstring p(n); p.append(".inl"); return !qfileexist(p.c_str());});
+			fullpath.append(".inl");
 			FILE *fd = qfopen(fullpath.c_str(), "wb");
-			if(fd) {
+			if(!fd) {
+				Log(llError, "Could not open '%s' for writing!\n", fullpath.c_str());
+			} else {
 				bytevec_t buf;
 				inl->serialize(buf);
 				qfwrite(fd, &buf[0], buf.size());
 				qfclose(fd);
 				inl->bLib = true;
+				Log(llFlood, "inline '%s' saved in file:'%s'\n", inl->name.c_str(), fullpath.c_str());
+				++cnt;
 			}
 		}
+		if(cnt)
+			Log(llNotice, "%d inlines saved\n", cnt);
 	}
 	static void loadInlines(const char *dir, sInlinesLib* il)
 	{
@@ -820,7 +830,10 @@ struct ida_local sInlinesLib : std::set<sInline*, lessInline>
 			if (0 != (blk.ff_attrib & FA_DIREC)) {
 				if(blk.ff_name[0] != '.')
 					loadInlines(fname.c_str(), il);
-			} else if (!qstrcmp(get_file_ext(fname.c_str()), "inl")) {
+			} else {
+				const char *ext = get_file_ext(fname.c_str());
+				if(!ext || qstrcmp(ext, "inl"))
+					continue;
 				FILE* fd = qfopen(fname.c_str(), "rb");
 				if (fd) {
 					bytevec_t buf;
@@ -839,6 +852,7 @@ struct ida_local sInlinesLib : std::set<sInline*, lessInline>
 					const uchar* ptr = &buf[0];
 					if (buf.size() > 10 && inlin->deserialize(&ptr, &buf[buf.size()])) {
 						il->insert(inlin);
+						Log(llFlood, "inline '%s' loaded\n", inlin->name.c_str());
 					} else {
 						Log(llError, "broken inline '%s' in file:'%s'\n", inlin->name.c_str(), fname.c_str());
 						delete inlin;
@@ -1883,7 +1897,8 @@ void selection2inline(ea_t bgn, ea_t end)
 //----------------------------------------------
 void save_inlines()
 {
-	inlinesLib.save();
+	if(inlinesLib.size())
+		inlinesLib.save();
 }
 
 void deinline_init()

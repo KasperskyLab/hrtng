@@ -349,7 +349,7 @@ public:
 	{
 		FILE* f = qfopen(filename, "w");
 		if (!f) {
-			warning("[hrt] Could not open '%s' for writing!\n", filename);
+			Log(llError, "Could not open '%s' for writing!\n", filename);
 			return;
 		}
 		uint32 cnt = 0;

@@ -4928,6 +4928,8 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 			lvar_t *v = va_arg(va, lvar_t *);
 			const char *name = va_arg(va, const char *);
 			int is_user_name = va_arg(va, int);
+			if(!is_user_name)
+				break;
 			if (qstrcmp(name, v->name.c_str())) {
 				Log(llWarning, "IDA bug: lxe_lvar_name_changed is sent for wrong variable ('%s' instead of '%s')\n", v->name.c_str(), name);
 				lvars_t *vars = vu->cfunc->get_lvars();
@@ -4935,11 +4937,13 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 				for(; it != vars->end(); it++)
 					if(it->name == name)
 						break;
-				if(it == vars->end())
+				if(it == vars->end()) {
+					Log(llWarning, "var '%s' not found\n", v->name.c_str(), name);
 					break;
+				}
 				v = it;
 			}
-			if (is_user_name && !v->has_user_type()) {
+			if (!v->has_user_type()) {
 			  tinfo_t t = getType4Name(name);
 				if(!t.empty() && set_var_type(vu, v, &t))
 					Log(llInfo, "%a: type of var '%s' refreshed\n", vu->cfunc->entry_ea, name);
@@ -5612,7 +5616,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.7.59";
+	addon.version = "2.7.60";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {
