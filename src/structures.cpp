@@ -1088,8 +1088,10 @@ ea_t get_memb2proc_ref(tinfo_t& s, uint32 offInBytes)
 	udm_t memb;
 	memb.offset = offInBytes;
 	int index = s.find_udm(&memb, STRMEM_AUTO);
-	if(index < 0 || (mtid = s.get_udm_tid(index)) == BADADDR)
+	if(index < 0 || (mtid = s.get_udm_tid(index)) == BADADDR) {
+		Log(llError, "get_memb2proc_ref no memb tid at offset 0x%x in %s\n", offInBytes, s.dstr());
 		return BADADDR;
+	}
 #endif
 
 	//search in cache, for now it can be only one member to proc ref on the member
@@ -1114,15 +1116,23 @@ ea_t get_memb2proc_ref(tinfo_t& s, uint32 offInBytes)
 	// actually get_vftable_ea is appeared in ida 7.6 but here will be used from ida9 because it probably depends on TAUDT_VFTABLE flag has been set in create_VT_struc
 	// get destination from vftable_ea
 	tid_t stid = s.get_tid();
-	if(stid != BADADDR && (vt_ea = get_vftable_ea(get_tid_ordinal(stid))) != BADADDR) {
+	if(stid != BADADDR) {
+		uint32 ord = get_tid_ordinal(stid);
+		if(ord) {
+			vt_ea = get_vftable_ea(ord); // in ida9.0 - 9.1 returns zero instead BADADDR
+			if(vt_ea != 0 && vt_ea != BADADDR)
+				dstEA = get_ea(vt_ea + offInBytes);
+		}
+	}
+	if(dstEA == BADADDR && s.get_type_rptcmt(&struCmt) && at_atoea(struCmt.c_str(), &vt_ea)) {
 		dstEA = get_ea(vt_ea + offInBytes);
-	} else if(s.get_type_rptcmt(&struCmt) && at_atoea(struCmt.c_str(), &vt_ea)) {
-		dstEA = get_ea(vt_ea + offInBytes);
-	} else {
+	}
+	if(dstEA == BADADDR) {
 		qstring mname = memb.name.c_str();
 		stripName(&mname);
 		dstEA = get_name_ea(BADADDR, mname.c_str());
 	}
+	Log(llDebug, "get_memb2proc_ref: dstEA %a for %s.%s\n", dstEA, s.dstr(), memb.name.c_str());
 #endif //IDA_SDK_VERSION < 850
 
 	if(dstEA != BADADDR && is_func(get_flags(dstEA))) {
