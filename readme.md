@@ -97,6 +97,7 @@ Messages, menu items, popup windows and dialog boxes belong to this plugin are m
 ## Media
 ### Reversing FinSpy
   * [securelist - Our secret ingredient for reverse engineering](https://securelist.com/hrtng-ida-pro-plugin/114780/) (EN)
+  * [Хабр - Cекретный ингредиент для реверс-инжиниринга: как работает наш собственный опенсорс-плагин для IDA](https://habr.com/ru/companies/kaspersky/articles/865394/) (RU)
   * [Positive Hack Days Fest 2025 - Наш секретный ингредиент для реверс-инжиниринга](https://www.youtube.com/watch?v=Yxkg2zD7Ggw) (RU)
   * [Off-By-One 2025 - Speed up your reverse engineering with the hrtng plugin](https://www.youtube.com/watch?v=846wdb06k2g) (EN)
 ### Analyzing PlugX  
