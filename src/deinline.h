@@ -19,7 +19,7 @@
 
 #pragma once
 bool deinline(mbl_array_t *mba);
-void deinline_reset(mbl_array_t *mba);
+void deinline_reset(ea_t entry_ea);
 void deinline_reset(vdui_t *vu, bool closeWnd);
 bool hasInlines(vdui_t *vu, bool* bEnabled);
 bool is_nlib_inline(vdui_t *vu);

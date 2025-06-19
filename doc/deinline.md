@@ -6,7 +6,7 @@ This experimental feature is inspired by ideas of [GraphSlick plugin](https://gi
 This implementation is based on comparing blocks by frequency dictionaries of Hex-Rays highly optimized micro-code and blocks relations. Such way is not sensitive to processor architecture, nor instruction ordering, nor even high level language was used - just a pure algorithm is in compare. Algorithm here is a set of high level constructions like arithmetic operations, loops and branches.  
 There are still some restrictions: the inlined function should be a quite long to not produce false positives, one long block or few short basic blocks are good enough. And main limitation - inlined function must be aligned to basic blocks boundaries, if it shares some code in the first or last block with surrounding code such inlining will not be detected.
 
-> ⚠️ Features of De-Inliner marked below as ~~strikethrough~~ are switched off as annoying in everyday work. To turn it on un-comment `findMatchedPaths();` call in `deinline.cpp` file of the plugin source code and recompile it.
+> ⚠️ Features of De-Inliner marked below as ~~strikethrough~~ are switched off as annoying in everyday work. To turn it on set `#define ENABLE_FIND_MATCHED_PATHS 1` in the `deinline.cpp` file of the plugin source code and recompile it.
 
 How does it work:
   - Library-Inlines are loaded from files with "`.inl`" extension in "`$HOME/.idapro/inlines`" or "`%APPDATA%/Hex-Rays/IDA Pro/inlines`" folder at the plugin initialization phase.

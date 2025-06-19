@@ -94,6 +94,14 @@ Messages, menu items, popup windows and dialog boxes belong to this plugin are m
 ### IDA plugin developer help
   * [Microcode Explorer](doc/mcode-expl.md)
 
+## Media
+### Reversing FinSpy
+  * [securelist - Our secret ingredient for reverse engineering](https://securelist.com/hrtng-ida-pro-plugin/114780/) (EN)
+  * [Positive Hack Days Fest 2025 - Наш секретный ингредиент для реверс-инжиниринга](https://www.youtube.com/watch?v=Yxkg2zD7Ggw) (RU)
+  * [Off-By-One 2025 - Speed up your reverse engineering with the hrtng plugin](https://www.youtube.com/watch?v=846wdb06k2g) (EN)
+### Analyzing PlugX  
+  * [SSTIC 2025 - Analysez des logiciels malveillants plus rapidement avec hrtng](https://www.sstic.org/2025/presentation/analysez_des_logiciels_malveillants_plus_rapidement_avec_hrtng/) (FR)
+
 ## Building
 
  * Clone hrtng together with [Crypto++® Library CMake](https://github.com/abdes/cryptopp-cmake) submodule. Or put manually downloaded `cryptopp-cmake` source code to `hrtng/src/cryptopp-cmake` folder.

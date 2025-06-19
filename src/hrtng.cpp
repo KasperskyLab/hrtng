@@ -135,8 +135,8 @@ ACT_DECL(enable_inlines          , AST_ENABLE_FOR(hasInlines(vu, NULL)))
 ACT_DECL(rename_inline           , AST_ENABLE_FOR(is_nlib_inline(vu)))
 ACT_DECL(create_inline_gr        , return ((ctx->widget_type != BWN_DISASM) ? AST_DISABLE_FOR_WIDGET : ((get_view_renderer_type(ctx->widget) == TCCRT_GRAPH) ? AST_ENABLE : AST_DISABLE)))
 ACT_DECL(create_inline_sel       , return ((ctx->widget_type != BWN_PSEUDOCODE && ctx->widget_type != BWN_DISASM) ?  AST_DISABLE_FOR_WIDGET : (ctx->has_flag(ACF_HAS_SELECTION) ?  AST_ENABLE : AST_DISABLE)))
-ACT_DECL(uf_enable               , AST_ENABLE_FOR(ufIsInGL(vu->mba->entry_ea)))
-ACT_DECL(uf_disable              , AST_ENABLE_FOR(ufIsInWL(vu->mba->entry_ea)))
+ACT_DECL(uf_enable               , AST_ENABLE_FOR(ufIsInGL(vu->cfunc->entry_ea)))
+ACT_DECL(uf_disable              , AST_ENABLE_FOR(ufIsInWL(vu->cfunc->entry_ea)))
 #if IDA_SDK_VERSION >= 750
 ACT_DECL(mavx_enable             , AST_ENABLE_FOR(isMicroAvx_avail() && !isMicroAvx_active()))
 ACT_DECL(mavx_disable            , AST_ENABLE_FOR(isMicroAvx_avail() &&  isMicroAvx_active()))
@@ -276,9 +276,9 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 		}
 	}
 	attach_action_to_popup(view, p, ACT_NAME(create_inline_sel));
-	if(ufIsInGL(vu->mba->entry_ea))
+	if(ufIsInGL(vu->cfunc->entry_ea))
 		attach_action_to_popup(view, p, ACT_NAME(uf_enable));
-	else if (ufIsInWL(vu->mba->entry_ea))
+	else if (ufIsInWL(vu->cfunc->entry_ea))
 		attach_action_to_popup(view, p, ACT_NAME(uf_disable));
 
 	attach_action_to_popup(view, p, ACT_NAME(msigAdd));
@@ -2436,7 +2436,7 @@ ACT_DEF(convert_gap)
 ACT_DEF(disable_inlines)
 {
 	vdui_t *vu = get_widget_vdui(ctx->widget);
-	XXable_inlines(vu->mba->entry_ea, true);
+	XXable_inlines(vu->cfunc->entry_ea, true);
 	vu->refresh_view(true);
 	return 0;
 }
@@ -2444,7 +2444,7 @@ ACT_DEF(disable_inlines)
 ACT_DEF(enable_inlines)
 {
 	vdui_t *vu = get_widget_vdui(ctx->widget);
-	XXable_inlines(vu->mba->entry_ea, false);
+	XXable_inlines(vu->cfunc->entry_ea, false);
 	vu->refresh_view(true);
 	return 0;
 }
@@ -2610,7 +2610,7 @@ ACT_DEF(create_inline_sel)
 	Log(llDebug, "%a-%a: inline applicant aligned to basic block boundaries\n", eaBgn, eaEnd);
 
 	selection2inline(eaBgn, eaEnd);
-	XXable_inlines(vu->mba->entry_ea, false);
+	XXable_inlines(vu->cfunc->entry_ea, false);
 	vu->refresh_view(true);
 	return 0;
 }
@@ -2780,7 +2780,7 @@ ACT_DEF(clear_if42blocks)
 ACT_DEF(uf_enable)
 {
 	vdui_t* vu = get_widget_vdui(ctx->widget);
-	ufDelGL(vu->mba->entry_ea);
+	ufDelGL(vu->cfunc->entry_ea);
 	vu->refresh_view(true);
 	return 0;
 }
@@ -2788,7 +2788,7 @@ ACT_DEF(uf_enable)
 ACT_DEF(uf_disable)
 {
 	vdui_t* vu = get_widget_vdui(ctx->widget);
-	ufAddGL(vu->mba->entry_ea);
+	ufAddGL(vu->cfunc->entry_ea);
 	vu->refresh_view(true);
 	return 0;
 }
@@ -3409,7 +3409,7 @@ ACT_DEF(decomp_obfus)
 			return decompile_obfuscated(get_screen_ea());
 		vdui_t *vu = get_widget_vdui(ctx->widget);
 		if (vu)
-			return decompile_obfuscated(vu->mba->entry_ea);
+			return decompile_obfuscated(vu->cfunc->entry_ea);
 	} catch (interr_exc_t &e) {
 		warning("[hrt] unhandled IDA internal error %d", e.code);
 	} catch (vd_failure_t &e) {
@@ -3550,7 +3550,7 @@ ACT_DEF(decomp_recur)
 		return 0;
 	}
 	vdui_t *vu = get_widget_vdui(ctx->widget);
-	if (vu && decompile_recursive(vu->mba->entry_ea))
+	if (vu && decompile_recursive(vu->cfunc->entry_ea))
 		vu->refresh_view(false);
 	return 0;
 }
@@ -4706,7 +4706,7 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 	case hxe_microcode:
 		{
 			mbl_array_t *mba = va_arg(va, mbl_array_t *);
-			deinline_reset(mba);
+			deinline_reset(mba->entry_ea);
 			deob_preprocess(mba);
 			ufCurr = BADADDR;
 			return MERR_OK;
@@ -5616,7 +5616,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.7.60";
+	addon.version = "2.7.61";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

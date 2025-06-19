@@ -21,6 +21,9 @@
 	This feature is inspired by ideas of GraphSlick plugin(https://github.com/lallousx86/GraphSlick)
 */
 
+//set 1 to enable automatic inlines detection like in GraphSlick (https://github.com/lallousx86/GraphSlick)
+#define ENABLE_FIND_MATCHED_PATHS 0
+
 #include "warn_off.h"
 #include <hexrays.hpp>
 #include <pro.h>
@@ -1645,8 +1648,10 @@ struct ida_local sBBGrpMatcher {
 		allBBs.makeCFG(mba);
 		selection2inline(mba);
 		findMatchedInlines();
-		//uncomment line below to enable automatic inlines detection like in GraphSlick (https://github.com/lallousx86/GraphSlick)
-		//findMatchedPaths();
+#if ENABLE_FIND_MATCHED_PATHS
+		//enable automatic inlines detection like in GraphSlick (https://github.com/lallousx86/GraphSlick)
+		findMatchedPaths();
+#endif
 		printInlines();
 		if (inlines.size())
 			return replaceInlines(mba);
@@ -1656,9 +1661,16 @@ struct ida_local sBBGrpMatcher {
 
 static std::map<ea_t, sBBGrpMatcher> matchers;
 static std::set<ea_t> disabled_matchers;
+static std::set<ea_t> has_inlines_cache;
 
 bool deinline(mbl_array_t *mba)
 {
+#if ENABLE_FIND_MATCHED_PATHS
+	//do not check were inlines loaded
+#else
+	if(!inlinesLib.size() && (selection_bgn == BADADDR || selection_end == BADADDR))
+		return false;
+#endif
 	if (disabled_matchers.find(mba->entry_ea) != disabled_matchers.end())
 		return false;
 	MSG_DI1(("[hrt] deinline at %d maturity\n", mba->maturity));
@@ -1670,14 +1682,17 @@ bool deinline(mbl_array_t *mba)
 		MSG_DI1(("[hrt] deinline already called\n"));
 		return false;
 	}
-	return matchers[mba->entry_ea].deinline(mba);
+	if(!matchers[mba->entry_ea].deinline(mba))
+		return false;
+	has_inlines_cache.insert(mba->entry_ea);
+	return true;
 }
 
-void deinline_reset(mbl_array_t *mba)
+void deinline_reset(ea_t entry_ea)
 {
 	//avoid dropping when showing hint for snipped started from function entry
-	if (disabled_matchers.find(mba->entry_ea) == disabled_matchers.end())
-		matchers.erase(mba->entry_ea);
+	if(disabled_matchers.find(entry_ea) == disabled_matchers.end())
+		matchers.erase(entry_ea);
 }
 
 //cleaning not more used matchers
@@ -1692,9 +1707,9 @@ void deinline_reset(vdui_t *vu, bool closeWnd)
 		}
 		return;
 	}
-	if (vdui2ea[vu] != vu->mba->entry_ea)
+	if (vdui2ea[vu] != vu->cfunc->entry_ea)
 		matchers.erase(vdui2ea[vu]);
-	vdui2ea[vu] = vu->mba->entry_ea;
+	vdui2ea[vu] = vu->cfunc->entry_ea;
 }
 
 //----------------------------------------------
@@ -1709,15 +1724,14 @@ static sBBGrpMatcher *getMatcher(ea_t ea)
 
 bool hasInlines(vdui_t *vu, bool* bEnabled)
 {
-	const sBBGrpMatcher *matcher = getMatcher(vu->mba->entry_ea);
 	bool disabled = false;
-	if (disabled_matchers.find(vu->mba->entry_ea) != disabled_matchers.end())
+	if (disabled_matchers.find(vu->cfunc->entry_ea) != disabled_matchers.end())
 		disabled = true;
 
 	if (bEnabled)
 		*bEnabled = !disabled;
 
-	return disabled || (matcher != nullptr && matcher->inlines.size());
+	return disabled || has_inlines_cache.find(vu->cfunc->entry_ea) != has_inlines_cache.end();
 }
 
 void XXable_inlines(ea_t entry_ea, bool bDisable)
@@ -1732,7 +1746,7 @@ static const path_t* getInlPath(vdui_t *vu, qstring &name)
 {
 	if (!vu->item.is_citem() || vu->item.e->op != cot_helper)
 		return nullptr;
-	const sBBGrpMatcher *matcher = getMatcher(vu->mba->entry_ea);
+	const sBBGrpMatcher *matcher = getMatcher(vu->cfunc->entry_ea);
 	if (!matcher)
 		return nullptr;
 
@@ -1770,7 +1784,7 @@ bool ren_inline(vdui_t *vu)
 {
 	if (!vu->item.is_citem() || vu->item.e->op != cot_helper)
 		return false;
-	sBBGrpMatcher *matcher = getMatcher(vu->mba->entry_ea);
+	sBBGrpMatcher *matcher = getMatcher(vu->cfunc->entry_ea);
 	if (!matcher)
 		return false;
 
