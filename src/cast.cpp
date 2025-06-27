@@ -204,7 +204,7 @@ void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 			if (trace.size() <= 1) {
 				res->type = cast->type;//make_pointer(create_typedef(num->nf.type_name.c_str()));
 				res->m = (uint32_t)n;
-				res->ptrsize = res->type.get_size(); //is it need?
+				res->ptrsize = static_cast<decltype(res->ptrsize)>(res->type.get_size()); //is it need?
 			} else {
 				for (size_t i = 0; i < trace.size(); i++) {
 #if IDA_SDK_VERSION < 850
@@ -334,7 +334,7 @@ void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 			if (ptr) {
 				res = new cexpr_t(cot_ptr, res);
 				res->type = exp->type;
-				res->ptrsize = res->type.get_size();
+				res->ptrsize = static_cast<decltype(res->ptrsize)>(res->type.get_size());
 			}
 			replaceExp(func, exp, res);
 			return true;

@@ -935,7 +935,7 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 			return 0;
 		}
 		MSG_DO(("[I] call_ARITH_2const: '%s'", call->dstr()));
-		op->make_number(res, (int)fi->return_type.get_size());
+		op->make_number(res, (int)fi->return_type.get_size(), call->ea);
 		return 1;
 	}
 
@@ -985,7 +985,7 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 		if(opcode == m_ret) {
 			if(!op)
 				return 0;
-			op->make_number(n, (int)fi->return_type.get_size());
+			op->make_number(n, (int)fi->return_type.get_size(), ins->ea);
 		} else {
 			if(fi->args.size() < 1)
 				return 0;
@@ -993,14 +993,14 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 				minsn_t* add = new minsn_t(ins->ea);
 				add->opcode = m_add;
 				add->l = fi->args.front();
-				add->r.make_number(n, add->l.size);
+				add->r.make_number(n, add->l.size, ins->ea);
 				add->d.size = ea_size;
 				ins->r.make_insn(add);
 				ins->r.size = ea_size;
 				ins->l.make_reg(reg2mreg(R_ds), 2); //FIXME: x86 specific!
 			} else {
 				ins->l = fi->args.front();
-				ins->r.make_number(n, (int)fi->return_type.get_size());
+				ins->r.make_number(n, (int)fi->return_type.get_size(), ins->ea);
 			}
 			ins->opcode = opcode;
 		}
@@ -1011,7 +1011,7 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 	// to:     x == c ^ d
 	int pat_XorCondImm(minsn_t* cjmp, mblock_t* blk)
 	{
-		if(!is_mcode_convertible_to_set(cjmp->opcode))
+		if(!is_mcode_convertible_to_set(cjmp->opcode) && !is_mcode_convertible_to_jmp(cjmp->opcode))
 			return 0;
 
 		if(!cjmp->l.is_insn(m_xor))

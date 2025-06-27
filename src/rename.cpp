@@ -24,6 +24,9 @@
 #include "helpers.h"
 #include "rename.h"
 
+//if number of code xrefs to proc is geater - the proc will not be target for name & type propagation
+#define TOO_POPULAR_CNT 5
+
 static bool isIdaInternalComment(const char* comment)
 {
 	if (!strncmp(comment, "jumptable", 9)) //jumptable 0040D4DD case 1
@@ -42,7 +45,7 @@ static bool isIdaInternalComment(const char* comment)
 }
 
 static const char* badVarNames[] = {
-  "inited", "result", "Mem", "Memory", "Block", "String", "ProcName", "ProcAddress", "LibFileName", "ModuleName", "LibraryA", "LibraryW"
+  "inited", "started", "result", "Mem", "Memory", "Block", "String", "ProcName", "ProcAddress", "LibFileName", "ModuleName", "LibraryA", "LibraryW"
 };
 
 //for Vars and Args only (globals and struct members have own checks)
@@ -363,8 +366,7 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 							if(!newType.empty() && isDummyType(fi[argIdx].type.get_decltype()))
 								fi[argIdx].type = newType;
 							tinfo_t newFType;
-							newFType.create_func(fi);
-							if(newFType.is_correct() && apply_tinfo(func->entry_ea, newFType, is_userti(func->entry_ea) ? TINFO_DEFINITE : TINFO_GUESSED)) {
+							if(newFType.create_func(fi) && apply_tinfo(func->entry_ea, newFType, is_userti(func->entry_ea) ? TINFO_DEFINITE : TINFO_GUESSED)) {
 								qstring typeStr;
 								newFType.print(&typeStr);
 								Log(llInfo, "%a: Function type was recasted for change arg%d into \"%s\"\n", refea, argIdx, typeStr.c_str());
@@ -384,9 +386,13 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 
 static bool isStructOffOver(cexpr_t* memref, const cfunc_t *func)
 {
-	if(memref->op == cot_memref && memref->x->op == cot_idx && memref->x->y->op == cot_num && memref->x->y->numval() > 0 /*&& memref->x->type.is_struct()*/) {//is it possible case for union?
-		printExp2Msg(func, memref, "probably invalid struct member access");
-		return true;
+	if(memref->op == cot_memref) {
+		while(memref->x->op == cot_memref)
+			memref = memref->x;
+		if(memref->x->op == cot_idx && memref->x->y->op == cot_num && memref->x->y->numval() > 0 /*&& memref->x->type.is_struct()*/) {//is it possible case for union?
+			printExp2Msg(func, memref, "probably invalid struct member access");
+			return true;
+		}
 	}
 	return false;
 }
@@ -854,15 +860,16 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			if(dstea != BADADDR && !tif.is_from_subtil()) {
 				func_t *f = get_func(dstea);
 				if(f && !(f->flags & FUNC_LIB)) {
-#if 1
+#if TOO_POPULAR_CNT
 					//do check number of crefs for avoid renaming args in popular funcs like memcpy, alloc, etc
 					uint32 nref = 0;
-					for(ea_t xrefea = get_first_cref_to(dstea); xrefea != BADADDR && nref++ < 5; xrefea = get_next_cref_to(dstea, xrefea))
+					for(ea_t xrefea = get_first_cref_to(dstea); xrefea != BADADDR && ++nref <= TOO_POPULAR_CNT; xrefea = get_next_cref_to(dstea, xrefea))
 						;
-					if(nref <= 4)
+					if(nref > TOO_POPULAR_CNT)
+						Log(llFlood, "%a %s: too many crefs to %a %s, do not change proto\n", call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str());
+					else
 #endif
 						bAllowTypeChange = true;
-					else Log(llDebug, "%a %s: too many crefs to %a %s, do not change proto\n", call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str());
 				}
 			}
 
@@ -931,7 +938,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 										Log(llDebug, "%a %s: In function %a %s recasted arg%d `%s` from \"%s\" to \"%s\"\n", 	call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str(), i + 1, fi[i].name.c_str(), fi[i].type.dstr(), argType.dstr());
 										fi[i].type = argType;
 									}
-								} else Log(llDebug, "arg%d `%s` (%d - %s) of %s", i + 1, fi[i].name.c_str(), fi[i].type.get_decltype(), fi[i].type.dstr(), get_short_name(dstea).c_str());
+								} //else Log(llDebug, "arg%d `%s` (%d - %s) of %s\n", i + 1, fi[i].name.c_str(), fi[i].type.get_decltype(), fi[i].type.dstr(), get_short_name(dstea).c_str());
 						}
 					}
 					if(bCallAssign) {
