@@ -215,13 +215,13 @@ template< class IsUniqueFunc >
 qstring unique_name(const char* name, IsUniqueFunc isUnique)
 {
 	qstring uName = name;
-	for(int i = 1; i < 100; i++) {
+	for(int i = 1; i < 1000; i++) {
 		if(isUnique(uName))
 			return uName;
 		uName = name;
 		uName.cat_sprnt("_%d", i);
 	}
-	Log(llError, "FIXME! unique_name '%s' in not unique\n", uName.c_str());
+	Log(llError, "FIXME! unique_name '%s' is not unique\n", uName.c_str());
 	return uName;
 }
 

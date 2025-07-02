@@ -5156,7 +5156,7 @@ static ssize_t idaapi ui_callback(void *user_data, int ncode, va_list va)
 	return 0;
 }
 
-static ea_t      funcRenameEa;
+static ea_t      funcRenameEa = BADADDR;
 static flags64_t funcRenameFlg;
 static qstring   funcRename;
 
@@ -5502,7 +5502,7 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 						}
 						Log(llDebug, "%a %s renaming %d members\n", funcRenameEa, funcRename.c_str(), tids.size());
 					}
-					funcRenameEa = 0; //avoid recursive renaming
+					funcRenameEa = BADADDR; //avoid recursive renaming
 				}
 			}
 			break;
@@ -5643,7 +5643,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.7.62";
+	addon.version = "2.7.63";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

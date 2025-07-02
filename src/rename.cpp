@@ -254,13 +254,15 @@ static bool getEaName(ea_t ea, qstring* name)
 
 bool renameEa(ea_t refea, ea_t ea, const qstring* name)
 {
-  if (!is_mapped(ea))
+	if(!is_mapped(ea)) {
+		Log(llDebug, "%a: renameEa(%a) - not mapped\n", refea, ea);
 		return false;
+	}
   qstring newName = name->c_str();
 	if (newName.size() > MAX_NAME_LEN)
 		newName.resize(MAX_NAME_LEN);
 	if(!validate_name(&newName, VNT_IDENT)) {
-		Log(llWarning, "bad name for renameEa(%a, \"%s\")\n", refea, newName.c_str());
+		Log(llWarning, "%a: bad name for renameEa(%a, \"%s\")\n", refea, ea, newName.c_str());
 		return false;
 	}
 	if (!has_cmt(get_flags(ea)) && newName != *name)
