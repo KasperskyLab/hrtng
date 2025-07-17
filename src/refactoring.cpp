@@ -521,7 +521,7 @@ struct ida_local refac_t {
 								qstring newname;
 								if(match(fi[i].name, &newname)) {
 									stripName(&newname);
-									newname = unique_name(newname.c_str(), [&fi, i](const qstring &n)
+									newname = unique_name(newname.c_str(), "_", [&fi, i](const qstring &n)
 									{
 										for(size_t j = 0; j < fi.size(); j++){
 											if(fi[i].name == n) {
@@ -563,7 +563,7 @@ struct ida_local refac_t {
 						qstring newname;
 						if(match(lvinf.lvvec[i].name, &newname)) {
 							stripName(&newname);
-							newname = unique_name(newname.c_str(), 	[&lvinf, i](const qstring &n)
+							newname = unique_name(newname.c_str(), "_", [&lvinf, i](const qstring &n)
 							{
 								for(size_t j = 0; j < lvinf.lvvec.size(); j++){
 									if(lvinf.lvvec[j].name == n) {

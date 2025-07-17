@@ -893,11 +893,7 @@ ACT_DEF(rename_func)
 			newName.resize(MAX_NAME_LEN);
 		if(!validate_name(&newName, VNT_IDENT))
 			continue;
-
-		qstring name = newName;
-		for(int i = 1; get_name_ea(BADADDR, newName.c_str()) != BADADDR && i < 100; i++) {
-			newName.sprnt("%s%d", name.c_str(), i);
-		}
+		newName = unique_name(newName.c_str(), "", [](const qstring& n) { return get_name_ea(BADADDR, n.c_str()) == BADADDR; });
 	}
 
 	vu->refresh_view(true);
@@ -5643,7 +5639,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.7.63";
+	addon.version = "2.7.64";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

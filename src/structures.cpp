@@ -62,20 +62,9 @@ int extract_substruct(uval_t idx, uval_t begin, uval_t end)
 
 	qstring struc_name;
 	get_struc_name(&struc_name, id);
+	struc_name = unique_name(struc_name.c_str(), "_obj", [](const qstring& n) { return get_name_ea(BADADDR, n.c_str()) == BADADDR; });
 
-	qstring new_struc_name;
-	const char *nsn = NULL;
-	int i = 1;
-	do {
-		new_struc_name = struc_name;
-		new_struc_name.cat_sprnt("_obj_%d",i);
-		i++;
-	} while ((get_name_ea(BADADDR, new_struc_name.c_str()) != BADADDR) && i < 100);
-
-	if (i < 100)
-		nsn = new_struc_name.c_str();
-
-	tid_t newid = add_struc(idx+1, nsn);
+	tid_t newid = add_struc(idx+1, struc_name.c_str());
 	struc_t * newstruc = get_struc(newid);
 	asize_t delta = begin;
 	asize_t off = begin;
@@ -89,7 +78,7 @@ int extract_substruct(uval_t idx, uval_t begin, uval_t end)
 			asize_t size = get_member_size(member);
 			struc_error_t err = add_struc_member(newstruc, name.c_str(), off - delta, member->flag, &mt, size);
 			if (err != STRUC_ERROR_MEMBER_OK) {
-				Log(llWarning, "add_struc_member(%s, %s, %a) error %d\n", new_struc_name.c_str(), name.c_str(), off - delta, err);
+				Log(llWarning, "add_struc_member(%s, %s, %a) error %d\n", struc_name.c_str(), name.c_str(), off - delta, err);
 			}
 
 			tinfo_t type;
@@ -627,17 +616,8 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 	qstring struccmt;
 	struccmt.sprnt("@0x%a", VT_ea);
 
-	qstring name_vt_base = name_vt.c_str();
-	name_vt_base.rtrim('_'); // avoid names ending like "_12" to not exec name-to-type conversion
-	for (int i = 1; ; ) {
-		if (get_named_type_tid(name_vt.c_str()) == BADADDR)
-			break;
-		if (i >= 100) {
-			warning("[hrt] struct '%s' already exist,\n rename VTBL global name or remove/rename conflicting type and try again\n", name_vt.c_str());
-			return BADADDR;
-		}
-		name_vt.sprnt("%s%d", name_vt_base.c_str(), i++);
-	}
+	name_vt.rtrim('_'); // avoid names ending like "_12" to not exec name-to-type conversion
+	name_vt = unique_name(name_vt.c_str(), "", [](const qstring& n) { return get_named_type_tid(n.c_str()) == BADADDR; });
 
 	tid_t newid = BADADDR;
 #if IDA_SDK_VERSION < 850
@@ -777,12 +757,14 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 				add_proc2memb_ref(ref.second, tid);
 		}
 	}
+	newType = newstruc;
 #endif //IDA_SDK_VERSION >= 850
 
 	name_vt.append('_');
 	set_name(VT_ea, name_vt.c_str(), SN_FORCE);
-	//VT_ea type should be set by set-type-on-rename on set_name above
-	//set_tinfo(VT_ea, newstruc);
+	//VT_ea type should be set by set-type-on-rename on set_name above,
+	//but in case of redefinition of incomplete VTBL it doesn't work because of checks is_userti(). So force it
+	apply_tinfo(VT_ea, newType, TINFO_DEFINITE | TINFO_DELAYFUNC | TINFO_STRICT);
 	return newid;
 }
 
@@ -885,6 +867,7 @@ int create_VT(tid_t parent, ea_t VT_ea, bool autoScan/*= false*/)
 			enable_numbered_types(nullptr, true);// is it need???
 			uint32 ord = alloc_type_ordinal(nullptr);
 			qstring utname("u"); utname.append(name_VT);
+			utname = unique_name(utname.c_str(), "", [](const qstring& n) { return get_named_type_tid(n.c_str()) == BADADDR; });
 			tinfo_code_t err = utype.set_numbered_type(nullptr, ord, 0, utname.c_str());
 			if (err == TERR_OK) {
 #if IDA_SDK_VERSION < 850

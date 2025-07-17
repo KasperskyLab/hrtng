@@ -306,7 +306,7 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 	}
 
 	//check if proc doesnt already has such name
-	newName = unique_name(newName.c_str(),
+	newName = unique_name(newName.c_str(), "_",
 												[&refea, &vars, &var](const qstring &n)
 	{
 		for(auto it = vars->begin(); it != vars->end(); it++) {

@@ -802,7 +802,7 @@ struct ida_local sInlinesLib : std::set<sInline*, lessInline>
 				}
 			}
 			qstring fullpath(basePath); fullpath.append(path);
-			fullpath = unique_name(fullpath.c_str(), [](const qstring &n){qstring p(n); p.append(".inl"); return !qfileexist(p.c_str());});
+			fullpath = unique_name(fullpath.c_str(), "-", [](const qstring& n) {qstring p(n); p.append(".inl"); return !qfileexist(p.c_str()); });
 			fullpath.append(".inl");
 			FILE *fd = qfopen(fullpath.c_str(), "wb");
 			if(!fd) {
