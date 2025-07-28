@@ -141,7 +141,7 @@ class rangeset_t
 };
 ```
 
- * Copy built binaries into `IDA_DIR/plugins` folder togeter with `apilist.txt` and `literal.txt` files from `hrtng/bin/plugins`
+ * Copy built binaries into `IDA_DIR/plugins` folder together with `apilist.txt` and `literal.txt` files from `hrtng/bin/plugins`
  * Profit
 
 ## License

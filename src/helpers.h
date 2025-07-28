@@ -70,6 +70,7 @@
 	#define tinfo_errstr(err) ""
 	#define TERR_BAD_TYPE ((tinfo_code_t)-5)
 	#define BWN_TILIST BWN_STRUCTS // not the same, just to decrease number of ifdefs
+	#define TERR_SAVE_ERROR TERR_SAVE
 #endif // IDA_SDK_VERSION < 840
 
 #if IDA_SDK_VERSION < 830

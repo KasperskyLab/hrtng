@@ -1118,7 +1118,7 @@ struct ida_local InstOptimizer : public optinsn_t
 			if (blk) {
 				blk->optimize_insn(ins);
 				blk->mark_lists_dirty();
-				//blk->mba->verify(true);
+				blk->mba->verify(false);
 			} else {
 				ins->optimize_solo();
 			}

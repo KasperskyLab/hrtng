@@ -25,6 +25,8 @@ Size of resulting number is set equal to the returning type size of original cal
  * `OR_(n1, n2)` ==> result of `n1 | n2` 
  * `XOR(n1, n2)` ==> result of `n1 ^ n2` 
 
+>⚠️ **Warning:** arguments and returning type of arithmetic functions declaration listed above (`ADD`, `ADD_0xNN`, etc) must be the same, otherwise you will got INTERR 50830 or 50831 
+
 ### Opaque Predicates removers mostly derived from HexRaysDeob plugin by Rolf Rolles and Takahiro Haruyama
 
 Below `x` and `y` are expressions. `a`, `b`, `c`, `d` - numbers

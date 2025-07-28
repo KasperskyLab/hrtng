@@ -1005,24 +1005,27 @@ qstring dummy_struct_name(size_t size, const char* sprefix);
 bool confirm_create_struct(tinfo_t &out_type, tinfo_t &in_type, const char* sprefix)
 {
 	qstring strucname = dummy_struct_name(in_type.get_size(), sprefix);
-	qstring in_type_decl;
-	if(!in_type.print(&in_type_decl, strucname.c_str(), PRTYPE_MULTI | PRTYPE_TYPE | PRTYPE_PRAGMA | PRTYPE_SEMI, 5, 40, NULL, NULL)
-		 || in_type_decl.empty())
-		return false;
+	while(1) {
+		qstring tdecl;
+		if(!in_type.print(&tdecl, strucname.c_str(), PRTYPE_MULTI | PRTYPE_TYPE | PRTYPE_PRAGMA | PRTYPE_SEMI, 5, 40, NULL, NULL))
+			return false;
 
-	qstring answer = in_type_decl;
-	while(1)
-	{
-		if(!ask_text(&answer, 0, in_type_decl.c_str(), "[hrt] The following new type %s will be created", strucname.c_str()))
+		if(!ask_text(&tdecl, 0, tdecl.c_str(), "[hrt] The following new type %s will be created", strucname.c_str()))
 			return false;
 
 		tinfo_t new_type;
-		if (!parse_decl(&new_type, &strucname, NULL, answer.c_str(), PT_TYP))
+		if (!parse_decl(&new_type, &strucname, NULL, tdecl.c_str(), PT_TYP))
 			continue;
 
 		tinfo_code_t err = new_type.set_named_type(NULL, strucname.c_str(), NTF_TYPE);
 		if (TERR_OK != err) {
-			warning("[hrt] Could not create %s, maybe it already exists? (tinfo_code_t = %d)", strucname.c_str(), err);
+			qstring hint;
+			if(err == TERR_SAVE_ERROR)
+				hint = dummy_struct_name(in_type.get_size(), strucname.substr(0, 1).c_str());
+
+			warning("[hrt] Could not create '%s' (error %d %s) try '%s'", strucname.c_str(), err, tinfo_errstr(err), hint.c_str());
+			if(err == TERR_SAVE_ERROR)
+				strucname = hint;
 			continue;
 		}
 #if IDA_SDK_VERSION < 850

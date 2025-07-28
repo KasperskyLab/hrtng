@@ -4953,7 +4953,7 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 											qstring typeStr;
 											newFType.print(&typeStr);
 											Log(llWarning, "lxe_lvar_name_changed wa %a: Function type was recasted for change arg%d into \"%s\"\n", vu->cfunc->entry_ea, i, typeStr.c_str());
-											vu->cfunc->refresh_func_ctext();
+											vu->refresh_view(true);
 										}
 									}
 									break;
@@ -5639,7 +5639,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.7.64";
+	addon.version = "2.7.65";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {
