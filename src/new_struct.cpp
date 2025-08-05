@@ -419,9 +419,9 @@ bool field_info_t::to_type(tinfo_t& out_type, field_info_t::iterator* bgn, field
 		dt.taudt_bits = TAUDT_UNALIGNED;
 		restype.create_udt(dt, BTF_STRUCT);
 	}
-	return confirm_create_struct(out_type, restype, NULL);
+	qstring tname;
+	return confirm_create_struct(out_type, tname, restype, NULL);
 }
-
 
 bool field_info_t::flip_enabled_status(uval_t idx, uval_t position)
 {

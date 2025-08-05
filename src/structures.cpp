@@ -1002,9 +1002,10 @@ void auto_create_vtbls(cfunc_t *cfunc)
 
 qstring dummy_struct_name(size_t size, const char* sprefix);
 
-bool confirm_create_struct(tinfo_t &out_type, tinfo_t &in_type, const char* sprefix)
+bool confirm_create_struct(tinfo_t &out_type, qstring& strucname, tinfo_t &in_type, const char* sprefix)
 {
-	qstring strucname = dummy_struct_name(in_type.get_size(), sprefix);
+	if(strucname.empty())
+		strucname = dummy_struct_name(in_type.get_size(), sprefix);
 	while(1) {
 		qstring tdecl;
 		if(!in_type.print(&tdecl, strucname.c_str(), PRTYPE_MULTI | PRTYPE_TYPE | PRTYPE_PRAGMA | PRTYPE_SEMI, 5, 40, NULL, NULL))
@@ -1021,7 +1022,7 @@ bool confirm_create_struct(tinfo_t &out_type, tinfo_t &in_type, const char* spre
 		if (TERR_OK != err) {
 			qstring hint;
 			if(err == TERR_SAVE_ERROR)
-				hint = dummy_struct_name(in_type.get_size(), strucname.substr(0, 1).c_str());
+				hint = dummy_struct_name(0, strucname.c_str());
 
 			warning("[hrt] Could not create '%s' (error %d %s) try '%s'", strucname.c_str(), err, tinfo_errstr(err), hint.c_str());
 			if(err == TERR_SAVE_ERROR)

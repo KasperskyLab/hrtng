@@ -8,11 +8,12 @@ void auto_create_vtbls(cfunc_t *cfunc);
 typedef qvector<tid_t> tidvec_t;
 asize_t struct_get_member(tid_t strId, asize_t offset, tid_t* last_member, tidvec_t* trace = NULL, asize_t adjust = 0);
 
-bool confirm_create_struct(tinfo_t &out_type, tinfo_t &in_type, const char* sprefix);
+bool confirm_create_struct(tinfo_t &out_type, qstring& out_type_name, tinfo_t &in_type, const char* sprefix);
 
 bool struct_has_member(tid_t strId, asize_t offset);
 bool print_struct_member_name(tid_t strcId, asize_t offset, qstring* name, bool InRecur = false);
 bool print_struct_member_type(tid_t membId, qstring *tname);
+tinfo_t type_by_tid(tid_t tid);
 
 struct ida_local matched_structs_t : public chooser_t
 {

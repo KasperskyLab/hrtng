@@ -92,5 +92,4 @@ struct ida_local field_info_t: std::map<uval_t, scan_info_t>
 
 extern field_info_t fi;
 bool can_be_converted_to_ptr(vdui_t &vu, bool bVarTesting);
-bool confirm_create_struct(tinfo_t &out_type, tinfo_t &in_type, const char* sprefix);
 

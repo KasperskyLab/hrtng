@@ -1090,15 +1090,11 @@ ACT_DEF(var_reuse)
 	//TODO: and then enum all existing unions to check if the same type was already created
 
 	tinfo_t ts;
-	if (!confirm_create_struct(ts, restype, "u"))
-		return 0;
-
-	vu->set_lvar_type(var, ts);
-
-	//force to rename var, it usually has a wrong name at this time
 	qstring tname;
-	if(ts.get_type_name(&tname))
-		renameVar(vu->cfunc->entry_ea, vu->cfunc, vi, &tname, vu);
+	if (!confirm_create_struct(ts, tname, restype, "u"))
+		return 0;
+	vu->set_lvar_type(var, ts);
+	renameVar(vu->cfunc->entry_ea, vu->cfunc, vi, &tname, vu); //force to rename var, it usually has a wrong name at this time
 
 #if 0
 	// (???) it may be probably better for older IDA versions
@@ -1502,18 +1498,33 @@ struct ida_local offset_locator_t : public ctree_parentee_t
 		vidxs.add_unique(varIdx);
 	}
 
+	void addOffType(uint64 off, const tinfo_t& type) {
+		auto it = offNtypes.find(off);
+		if (it != offNtypes.end()) {
+			size_t oldSz = it->second.get_size();
+			size_t newSz = type.get_size();
+			if (oldSz != BADSIZE && (newSz == BADSIZE || oldSz > newSz)) {
+				Log(llDebug, "    addOffType skip: %s > %s\n", it->second.dstr(), type.dstr());
+				return;
+			}
+		}
+		offNtypes[off] = type;
+	}
+
 	int idaapi visit_expr(cexpr_t * e)
 	{
 		if (e->op == cot_asg && e->x->op == cot_var && e->y->op == cot_var) {
-			vidxs.add_unique(e->x->v.idx);
-			vidxs.add_unique(e->y->v.idx);
+			if(vidxs.has(e->x->v.idx))
+				vidxs.add_unique(e->y->v.idx);
+			else if(vidxs.has(e->y->v.idx))
+				vidxs.add_unique(e->x->v.idx);
 			return 0;
 		}
 		if (e->op == cot_memptr && e->x->op == cot_var) {
 			cexpr_t *var = e->x;
 			if (vidxs.has(var->v.idx)) {
-				Log(llDebug, "var ref1: %s.%x [%s]\n", lvars->at(var->v.idx).name.c_str(), e->m, e->type.dstr());
-				offNtypes[e->m] = e->type;
+				Log(llDebug, "%a var ref1: %s.%x [%s]\n", e->ea, lvars->at(var->v.idx).name.c_str(), e->m, e->type.dstr());
+				addOffType(e->m, e->type);
 			}
 			return 0;
 		}
@@ -1543,13 +1554,17 @@ struct ida_local offset_locator_t : public ctree_parentee_t
 			if (delta_defined || delta2_defined) {
 				// skip casts
 				tinfo_t t;
-				while (i >= 0 && parents[i]->op == cot_cast) {
+				while(i >= 0 && parents[i]->op == cot_cast) {
 					t = ((cexpr_t*)parents[i])->type;
 					i--;
 				}
 				t = remove_pointer(t);
-				offNtypes[delta] = t;
-				Log(llFlood, "var ref2: %s.%x [%s]\n", lvars->at(e->v.idx).name.c_str(), (uint32)delta, t.dstr());
+				if(i >= 0 && parents[i]->op == cit_return) {
+					Log(llDebug, "%a ignore var ref %s.%x [%s] in return statement\n", e->ea, lvars->at(e->v.idx).name.c_str(), (uint32)delta, t.dstr());
+					return 0;
+				}
+				Log(llDebug, "%a var ref2: %s.%x [%s]\n", e->ea, lvars->at(e->v.idx).name.c_str(), (uint32)delta, t.dstr());
+				addOffType(delta, t);
 			}
 			return 0;
 		}
@@ -1588,32 +1603,59 @@ static bool struct_matches(offset_locator_t &ifi, tid_t strucId)
 {
 	for(auto it = ifi.offNtypes.begin(); it != ifi.offNtypes.end(); ++it) {
 		auto offset = it->first;
-#if 0 // too many false positives
-		if(!struct_has_member(strucId, offset))
-			return false;
-#else //compare type size too
+		size_t accSz = it->second.get_size();
+		if(offset == 0) {
+			//it may be the type been looking for
+			size_t strucSz = type_by_tid(strucId).get_size();
+			if (accSz != BADSIZE && strucSz != BADSIZE && accSz == strucSz)
+				continue; //continue check other offsets
+		}
 		tid_t membId = BADNODE;
 		if(struct_get_member(strucId, (asize_t)offset, &membId) != 0 || membId == BADNODE)
 			return false;
 #if IDA_SDK_VERSION < 850
 		member_t* member = get_member_by_id(membId);
+		if(!member)
+			return false;
+		size_t membSz;
 		tinfo_t membtype;
-		if(member && get_member_type(member, &membtype)) {
+		if(get_member_type(member, &membtype) && membtype.present())
+			membSz = membtype.get_size();
+		else
+			membSz = member->eoff - member->soff;
 #else
 		udm_t udm;
 		tinfo_t membStrucType;
 		ssize_t membIdx = membStrucType.get_udm_by_tid(&udm, membId);
-		if(membIdx >= 0) {
-			tinfo_t &membtype = udm.type;
+		if(membIdx < 0)
+			return false;
+		size_t membSz;
+		if(udm.type.present())
+			membSz = udm.type.get_size();
+		else
+			membSz = udm.size / 8;
+		tinfo_t membtype = udm.type;
 #endif //IDA_SDK_VERSION < 850
-			//try tinfo_t::compare_with
-			if(it->second.present() && membtype.present() &&
-				 it->second.get_size() != membtype.get_size()) {
+		if(accSz != BADSIZE && membSz != BADSIZE && accSz != membSz && !membtype.is_union()) {
+			bool ok = false;
+			while(membSz > accSz && membtype.is_struct()) {
+				//it probably may be the first member of a bigger structure
+				udm_t submemb;
+				submemb.offset = 0;
+				if(membtype.find_udm(&submemb, STRMEM_AUTO) < 0)
+					break;
+				membtype = submemb.type;
+				membSz = membtype.get_size();
+				if((membSz != BADSIZE && accSz == membSz) || membtype.is_union()) {
+					ok = true;
+					break;
+				}
+			}
+			if(!ok) {
 				//Log(llFlood, "!struct_matches %s at %x: %s <-sz-> %s\n", membStrucType.dstr(), (uint32)offset, it->second.dstr(), membtype.dstr());
 				return false;
 			}
 		}
-#endif
 	}
 	return true;
 }
@@ -1674,7 +1716,7 @@ ACT_DEF(recognize_shape)
 	if(vi == -1)
 		return 0;
 
-	//to additionally display details of the field the cursor is staying at
+	// additionally display details of the field the cursor is staying at
 	uint64 offset = 0;
 	if(vu.item.is_citem()) {
 		citem_t * ci = vu.cfunc->body.find_parent_of(vu.item.it);
@@ -1717,6 +1759,8 @@ ACT_DEF(recognize_shape)
 
 		tinfo_t ts = create_typedef(name.c_str());
 		vu.set_lvar_type(var, make_pointer(ts));
+		//if(!getVarName(var, NULL))
+		//	renameVar(var->defea, vu.cfunc, vi, &name, &vu);
 		vu.refresh_view(false);
 		return 0;
 	}
@@ -1741,7 +1785,7 @@ ACT_DEF(recognize_shape)
 #else
 		std::sort(utd.begin(), utd.end());
 		for(size_t i = 0; i < utd.size(); i++) {
-			Log(llDebug, "%d: off %x-%x, name %s, type %s (%x)\n", i, int(off/8), int(utd[i].offset/8), utd[i].name.c_str(), utd[i].type.dstr(), utd[i].size / 8);
+			Log(llFlood, "%d: off %x-%x, name %s, type %s (%x)\n", i, int(off/8), int(utd[i].offset/8), utd[i].name.c_str(), utd[i].type.dstr(), utd[i].size / 8);
 #endif
 			//make field auto-renameble
 			utd[i].name.sprnt("field_%X", utd[i].offset / 8);
@@ -1765,10 +1809,12 @@ ACT_DEF(recognize_shape)
 		tinfo_t restype;
 		restype.create_udt(utd, BTF_STRUCT);
 		tinfo_t ts;
-		if (!confirm_create_struct(ts, restype, NULL))
+		qstring tname;
+		if (!confirm_create_struct(ts, tname, restype, NULL))
 			return 0;
-
 		vu.set_lvar_type(var, make_pointer(ts));
+		//if(!getVarName(var, NULL))
+		//	renameVar(var->defea, vu.cfunc, vi, &tname, &vu);
 		vu.refresh_view(false);
 	}
 	return 0;
@@ -5639,7 +5685,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.7.65";
+	addon.version = "2.7.66";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

@@ -313,7 +313,7 @@ struct ida_local refac_t {
 				}
 			}
 
-#if 1 // restore_user_lvar_settings may cause crash somewhere deep inside decompiler on access nullptr exception on Windows in Debug mode (prbbl because of std::map)
+#ifndef _DEBUG // restore_user_lvar_settings may cause crash somewhere deep inside decompiler on access nullptr exception on Windows in Debug mode (prbbl because of std::map)
 			//match func local vars
 			lvar_uservec_t lvinf;
 			if(restore_user_lvar_settings(&lvinf, ea)) {
@@ -554,7 +554,7 @@ struct ida_local refac_t {
 			}
 			case eRF_loclVar:
 			{
-#if 1   // restore_user_lvar_settings may cause crash somewhere deep inside decompiler on access nullptr exception on Windows in Debug mode
+#ifndef _DEBUG   // restore_user_lvar_settings may cause crash somewhere deep inside decompiler on access nullptr exception on Windows in Debug mode
 			  // save_user_lvar_settings cause internal error 1099 on the same sample
 				lvar_uservec_t lvinf;
 				if(is_func(get_flags(m.ea)) && restore_user_lvar_settings(&lvinf, m.ea)) {
