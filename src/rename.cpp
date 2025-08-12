@@ -158,19 +158,22 @@ static bool getCallName(cfunc_t *func, cexpr_t* call, qstring* name)
 		size_t cnt = 3;
 		if(funcname[get + cnt] == '_') // strip '_' after "get" too
 			++cnt;
-		*name = funcname.substr(get + cnt);
+		if(name)
+			*name = funcname.substr(get + cnt);
 		return true;
 	}
 
 	size_t ctor = funcname.find("::ctor");
 	if(ctor != qstring::npos && ctor != 0) {
-		*name = funcname.substr(0, ctor);
+		if(name)
+			*name = funcname.substr(0, ctor);
 		return true;
 	}
 
 	carglist_t &args = *call->a;
 	if (args.size() == 0 && funcname == "GetLastError") {
-		*name = "err";
+		if(name)
+			*name = "err";
 		return true;
 	}
 
@@ -182,8 +185,10 @@ static bool getCallName(cfunc_t *func, cexpr_t* call, qstring* name)
 	if (args.size() >= 1 && (funcname == "LoadLibrary" || funcname == "GetModuleHandle" || funcname == "dlopen")) {
 		qstring argName;
 		if (getExpName(func, &args[0], &argName)) {
-			*name = "h";
-			*name += argName;
+			if(name) {
+				*name = "h";
+				*name += argName;
+			}
 			return true;
 		}
 		return false;
@@ -457,7 +462,7 @@ static bool renameUdtMemb(ea_t refea, tinfo_t udt, uint32 offset, qstring* name)
 	struc_t* st = get_member_struc(oldName.c_str());
 	if(st && set_member_name(st, offset, newName.c_str())) {
 #endif //IDA_SDK_VERSION >= 850
-		Log(llInfo, "%a: struct \"%s\" member at 0x%x was renamed to %s\n", refea, oldName.c_str(), offset, newName.c_str());
+		Log(llInfo, "%a: struct member \"%s\" at 0x%x was renamed to %s\n", refea, oldName.c_str(), offset, newName.c_str());
 		return true;
 	}
 	Log(llWarning, "%a: fail rename struct member \"%s\" at 0x%x to %s\n", refea, oldName.c_str(), offset, newName.c_str());
@@ -472,11 +477,13 @@ bool getExpName(cfunc_t *func, cexpr_t* exp, qstring* name, bool derefPtr /* =fa
 	switch (exp->op)
 	{
 	case cot_helper:
-		*name = exp->helper;
+		if(name)
+			*name = exp->helper;
 		res = true;
 		break;
 	case cot_str:
-		*name = exp->string;
+		if(name)
+			*name = exp->string;
 		res = true;
 		break;
 	case cot_var:
@@ -503,15 +510,17 @@ bool getExpName(cfunc_t *func, cexpr_t* exp, qstring* name, bool derefPtr /* =fa
 			} else if (/*val != 0*/ val > 1 && val < (uint64)0x80000000) {
 				ok = true;
 			}
-			if (en || ok) {
-				tinfo_t t = exp->type;
-				exp->n->print(name, t);
-				tag_remove(name);
-			}
-			if(ok) {
-				stripNum(name); //strip "i64"/"ui64","LL"/"uLL" suffix
-				name->insert('n');
-				//name->append('_');
+			if(name) {
+				if (en || ok) {
+					tinfo_t t = exp->type;
+					exp->n->print(name, t);
+					tag_remove(name);
+				}
+				if(ok) {
+					stripNum(name); //strip "i64"/"ui64","LL"/"uLL" suffix
+					name->insert('n');
+					//name->append('_');
+				}
 			}
 			res = en || ok;
 			break;
@@ -521,14 +530,18 @@ bool getExpName(cfunc_t *func, cexpr_t* exp, qstring* name, bool derefPtr /* =fa
 			qstring ref;
 			if(getExpName(func, exp->x, &ref)) {
 				if(ref.length() > 1 && ref.last() == '_') {
-					ref.remove_last();
-					*name = ref;
+					if(name) {
+						ref.remove_last();
+						*name = ref;
+					}
 					res = true;
 				} else {
 					qstring tname;
 					if(!exp->x->type.get_type_name(&tname) || tname != ref) {
-						*name = "p_";
-						name->append(ref);
+						if(name) {
+							*name = "p_";
+							name->append(ref);
+						}
 						res = true;
 					}
 				}
@@ -547,7 +560,8 @@ bool getExpName(cfunc_t *func, cexpr_t* exp, qstring* name, bool derefPtr /* =fa
 				qstring deref;
 				if(getExpName(func, exp->x, &deref)) {
 					if(deref.length() > 2 && deref[0] == 'p' && deref[1] == '_') {
-						*name = deref.substr(2);
+						if(name)
+							*name = deref.substr(2);
 						res = true;
 					}
 				}
@@ -555,7 +569,7 @@ bool getExpName(cfunc_t *func, cexpr_t* exp, qstring* name, bool derefPtr /* =fa
 		}
 		break;
 	}
-	if (res) {
+	if (res && name) {
 		stripName(name);
 		return name->length() != 0;
 	}
@@ -565,17 +579,20 @@ bool getExpName(cfunc_t *func, cexpr_t* exp, qstring* name, bool derefPtr /* =fa
 bool renameExp(ea_t refea, cfunc_t *func, cexpr_t* exp, qstring* name, vdui_t *vdui, bool derefPtr /*= false*/)
 {
 	exp = skipCast(exp);
-	if(derefPtr && exp->op == cot_ptr && isRenameble(exp->x->op) && exp->x->type.is_scalar()) {
+	if(derefPtr && exp->op == cot_ptr && isRenameble(exp->x->op) && exp->x->type.is_scalar() && !getExpName(func, exp->x, nullptr)) {
 		name->insert(0,"p_");
 		return renameExp(refea, func, exp->x, name);
 	}
 	if(derefPtr && exp->op == cot_ref && isRenameble(exp->x->op)) {
-		if(name->length() > 2 && name->at(0) == 'p' && name->at(1) == '_') {
-			name->remove(0, 2);
-		} else {
-			name->append('_');
+		qstring xname;
+		if(!getExpName(func, exp->x, &xname) || xname == *name) {
+			if(name->length() > 2 && name->at(0) == 'p' && name->at(1) == '_') {
+				name->remove(0, 2);
+			} else {
+				name->append('_');
+			}
+			return renameExp(refea, func, exp->x, name);
 		}
-		return renameExp(refea, func, exp->x, name);
 	}
 
 	//dirty hack for case when structure is placed on stack, and pointer to this struct is passed to func arg
