@@ -1,7 +1,7 @@
 ## Get API help
-Context menu *"Zeal offline API help (zealdocs.org) (Ctrl-F1)"*
+Context menu *"Zeal offline API help (zealdocs.org) (Alt-F1)"*
 
-When cursor is on a call statement press "Ctrl-F1" or right click and select *"Zeal offline API help"*. The plugin strips "_X" in the end of name called function (where X is a number), removes last A/W character and launch Zeal offline documentation browser for this API.
+When cursor is on a call statement press "Alt-F1" or right click and select *"Zeal offline API help"*. The plugin strips "_X" in the end of name called function (where X is a number), removes last A/W character and launch Zeal offline documentation browser for this API.
 
  - Zeal doc browser for Windows/Linux/MacOS can be downloaded at [zealdocs.org](https://zealdocs.org)
  - Zeal browser executable have to be in PATH.

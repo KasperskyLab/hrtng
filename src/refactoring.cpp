@@ -1051,6 +1051,6 @@ int do_refactoring(action_activation_ctx_t *ctx)
 		"<~L~ist:E0:0:100:::>\n"
 		"<~S~earch for:q1:::><|><Re~p~lace with:q2:::>\n"
 		"<~C~ase sensitive:c><|><Whole words onl~y~:c><|><Use re~g~ular expression:c>3>\n\n"; //!!! check RFF_ flags in case of changes in this line
-	refac->rfform = open_form(form, 0, callback, refac, rfch, &selected, &refac->searchFor, &refac->replaceWith, &refac->flags);
+	refac->rfform = open_form(form, WOPN_RESTORE, callback, refac, rfch, &selected, &refac->searchFor, &refac->replaceWith, &refac->flags);
 	return 0;
 }

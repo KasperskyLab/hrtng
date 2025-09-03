@@ -674,7 +674,7 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 
 		if(autoScan && funcname.find("purecall") != qstring::npos) {
 			// do not create unnecessary union types for vtables. Wrong selection of union member may offends right virtual call target search
-			Log(llWarning, "%a: ignore abstract class vtbl in auto-scan mode (\"%s\")\n", VT_ea, funcname.c_str());
+			Log(llDebug, "%a: ignore abstract class vtbl in auto-scan mode (\"%s\")\n", VT_ea, funcname.c_str());
 			ok = false;
 			newid = BADADDR;
 			break;

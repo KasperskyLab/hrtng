@@ -366,8 +366,17 @@ struct ida_local ah_visitor_t : public ctree_visitor_t
 	}
 	virtual int idaapi visit_expr(cexpr_t *expr)
 	{
-		if(expr->op == cot_num && expr->n->nf.org_nbytes >= 4)
-			chkVal(expr->numval(), expr);
+		if(expr->op == cot_num) {
+			hash_t v = expr->n->_value;
+			switch(expr->n->nf.org_nbytes) {
+			case 4:
+				v = HASH32to64(v);
+				//pass down
+			case 8:
+				chkVal(v, expr);
+				break;
+			}
+		}
 		return 0;
 	}
 	virtual int idaapi visit_insn(cinsn_t *insn)

@@ -164,7 +164,7 @@ static const action_desc_t actions[] =
 	ACT_DESC("[hrt] Unite var reuse",                NULL, var_reuse),
 	ACT_DESC("[hrt] Convert to __usercall",          "U", convert_to_usercall),
 	ACT_DESC("[hrt] Jump to indirect call",          "J", jump_to_indirect_call),
-	ACT_DESC("[hrt] Zeal offline API help (zealdocs.org)",  "Ctrl-F1", zeal_doc_help),
+	ACT_DESC("[hrt] Zeal offline API help (zealdocs.org)",  "Alt-F1", zeal_doc_help),
 	ACT_DESC("[hrt] Add VT",                         NULL, add_VT),
 	ACT_DESC("[hrt] Add VT struct",                  NULL, add_VT_struct),
 	ACT_DESC("[hrt] Recast item",                    "R", recast_item),
@@ -989,11 +989,12 @@ ACT_DEF(remove_rettype)
 //-------------------------------------------------------------------------------------------------------------------------
 struct ida_local types_locator_t : public ctree_parentee_t
 {
-	lvars_t*   lvars;
+	cfunc_t* func;
+	lvars_t* lvars;
 	intvec_t   vidxs;
 	tinfovec_t types;
 
-	types_locator_t(lvars_t * lvars_, int varIdx) : lvars(lvars_)
+	types_locator_t(cfunc_t* func_, lvars_t* lvars_, int varIdx) : func(func_), lvars(lvars_)
 	{
 		vidxs.add_unique(varIdx);
 		types.add_unique(lvars->at(varIdx).type());
@@ -1001,9 +1002,15 @@ struct ida_local types_locator_t : public ctree_parentee_t
 
 	int idaapi visit_expr(cexpr_t * e)
 	{
-		if(e->op == cot_asg && skipCast(e->x)->op == cot_var && skipCast(e->y)->op == cot_var) {
-			vidxs.add_unique(skipCast(e->x)->v.idx);
-			vidxs.add_unique(skipCast(e->y)->v.idx);
+		if(e->op == cot_asg) {
+			cexpr_t* x = skipCast(e->x);
+			cexpr_t* y = skipCast(e->y);
+			if(x->op == cot_var && y->op == cot_var) {
+				if(vidxs.has(x->v.idx))
+					vidxs.add_unique(y->v.idx);
+				else if(vidxs.has(y->v.idx))
+					vidxs.add_unique(x->v.idx);
+			}
 			return 0;
 		}
 		if(e->op != cot_var || !vidxs.has(e->v.idx))
@@ -1017,14 +1024,17 @@ struct ida_local types_locator_t : public ctree_parentee_t
 		cexpr_t* parent = (cexpr_t*)parents[i];
 		switch(parent->op) {
 		case cot_cast:
-			//Log(llDebug, "var cast: %s [%s]\n", parent->dstr(), parent->type.dstr());
+			Log(llDebug, "var cast: %s [%s]\n", printExp(func, parent).c_str(), parent->type.dstr());
 			types.add_unique(parent->type);
 			break;
 		case cot_ref:
-			if(i > 1 && parents[i - 1]->op == cot_cast) {
+			if(i > 1 /*&& parents[i - 1]->op == cot_cast*/) {
 				parent = (cexpr_t*)parents[i - 1];
-				//Log(llDebug, "var ref cast: %s [%s]\n", parent->dstr(), parent->type.dstr());
-				types.add_unique(remove_pointer(parent->type));
+				Log(llDebug, "var ref: %s [%s]\n", printExp(func, parent).c_str(), parent->type.dstr());
+				if(parent->type.is_ptr())
+					types.add_unique(remove_pointer(parent->type));
+				else
+					Log(llDebug, " not pointer\n");
 			}
 			break;
 		case cot_ptr:
@@ -1034,13 +1044,17 @@ struct ida_local types_locator_t : public ctree_parentee_t
 			parent = (cexpr_t*)parents[i - 1];
 			//fall down to cot_asg handler
 		case cot_asg:
+		{
 			cexpr_t *y = skipCast(parent->y);
 			tinfo_t yType = y->type; //??? getExpType
 			if(bDerefPtr)
 				yType = make_pointer(yType);
-			//Log(llDebug, "var assign cast: %s [%s]\n", parent->dstr(), yType.dstr());
+			Log(llDebug, "var assign cast: %s [%s]\n", printExp(func, parent).c_str(), yType.dstr());
 			types.add_unique(yType);
 			break;
+		}
+		default:
+			Log(llDebug, "unhandled var use: %s\n", printExp(func, parent).c_str());
 		}
 		return 0;
 	}
@@ -1057,7 +1071,7 @@ ACT_DEF(var_reuse)
 	if(vi == -1)
 		return 0;
 
-	types_locator_t tl(lvars, (int)vi);
+	types_locator_t tl(vu->cfunc, lvars, (int)vi);
 	tl.apply_to(&vu->cfunc->body, NULL);
 	if(tl.types.size() < 2) {
 		Log(llWarning, "There is no stack var reusing found (%s)\n", var->name.c_str());
@@ -1093,6 +1107,7 @@ ACT_DEF(var_reuse)
 	qstring tname;
 	if (!confirm_create_struct(ts, tname, restype, "u"))
 		return 0;
+	tname.append('_');
 	vu->set_lvar_type(var, ts);
 	renameVar(vu->cfunc->entry_ea, vu->cfunc, vi, &tname, vu); //force to rename var, it usually has a wrong name at this time
 
@@ -5685,7 +5700,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.7.67";
+	addon.version = "2.7.68";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

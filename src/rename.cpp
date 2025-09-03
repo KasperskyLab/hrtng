@@ -45,7 +45,7 @@ static bool isIdaInternalComment(const char* comment)
 }
 
 static const char* badVarNames[] = {
-  "inited", "started", "result", "Mem", "Memory", "Block", "String", "ProcName", "ProcAddress", "LibFileName", "ModuleName", "LibraryA", "LibraryW"
+  "inited", "started", "result", "data", "Mem", "Memory", "Block", "String", "ProcName", "ProcAddress", "LibFileName", "ModuleName", "LibraryA", "LibraryW"
 };
 
 //for Vars and Args only (globals and struct members have own checks)
