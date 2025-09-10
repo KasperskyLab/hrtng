@@ -63,7 +63,12 @@
 #include "new_struct.h"
 #include "new_struc_view.h"
 #include "new_struc_place.h"
-
+#include "invert_if.h"
+#include "varval.h"
+#include "callrefs.h"
+#include "regrefs.h"
+#include "ctreeg.h"
+#include "idb2pat.h"
 
 #if IDA_SDK_VERSION >= 750
 #include "microavx.h"
@@ -103,6 +108,7 @@ ACT_DECL(clear_hr_cache, AST_ENABLE_ALW)
 ACT_DECL(decomp_obfus, return ((ctx->widget_type == BWN_DISASM || ctx->widget_type == BWN_PSEUDOCODE) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
 ACT_DECL(decomp_recur, return (((ctx->widget_type == BWN_DISASM && get_func(ctx->cur_ea)) || ctx->widget_type == BWN_PSEUDOCODE) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
 ACT_DECL(jmp2xref, return ((ctx->widget_type == BWN_DISASM || ctx->widget_type == BWN_PSEUDOCODE) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
+ACT_DECL(idb2pat, AST_ENABLE_ALW)
 //ACT_DECL(kill_toolbars, AST_ENABLE_ALW)
 
 //dynamically attached actions
@@ -211,7 +217,10 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 		attach_action_to_popup(view, p, ACT_NAME(fin_struct));
 		attach_action_to_popup(view, p, ACT_NAME(recognize_shape));
 		attach_action_to_popup(view, p, ACT_NAME(var_reuse));
+		attach_action_to_popup(view, p, ACT_NAME(insert_varval));
 	}
+	if (has_varvals(vu->cfunc->entry_ea))
+		attach_action_to_popup(view, p, ACT_NAME(clear_varvals));
 	if (vu->item.citype == VDI_FUNC) {
 		attach_action_to_popup(view, p, ACT_NAME(convert_to_usercall));
 #if IDA_SDK_VERSION < 850
@@ -316,14 +325,22 @@ void hrt_reg_act()
 	COMPAT_register_and_attach_to_menu("View/Open subviews/Generate pseudocode", ACT_NAME(decomp_recur), "[hrt] Decompile recursively", "Shift-Alt-F5", SETMENU_APP, &decomp_recur, &PLUGIN);
 	COMPAT_register_and_attach_to_menu("View/Open subviews/Generate pseudocode", ACT_NAME(decomp_obfus), "[hrt] Decompile obfuscated code", "Alt-F5", SETMENU_APP, &decomp_obfus, &PLUGIN);
 	COMPAT_register_and_attach_to_menu("Jump/Jump to xref to operand...", ACT_NAME(jmp2xref), "[hrt] Jump to xref Ex...", "Shift-X", SETMENU_APP, &jmp2xref, &PLUGIN);
+	COMPAT_register_and_attach_to_menu("File/Produce file/Create MAP file...", ACT_NAME(idb2pat), "[hrt] Create PAT file...", NULL, SETMENU_INS, &idb2pat, &PLUGIN);
 
 	for (size_t i = 0, n = qnumber(actions); i < n; ++i)
 		register_action(actions[i]);
 
-	//kill duplicating shortcut, we will call it directly on same shortcut in appropriate cases
+	//kill duplicating shortcut
 	qstring shortcut;
+#if IDA_SDK_VERSION < 920
+	// we will call it directly on same shortcut in appropriate cases
 	if(get_action_shortcut(&shortcut, "hx:JumpGlobalXref") && !qstrcmp("Shift-X", shortcut.c_str()))
 		update_action_shortcut("hx:JumpGlobalXref", NULL);
+#else
+	// XrefsTree is not so convenient to left it on a such habitual shortcut
+	if(get_action_shortcut(&shortcut, "OpenXrefsTree") && !qstrcmp("Shift-X", shortcut.c_str()))
+		update_action_shortcut("OpenXrefsTree", NULL);
+#endif // IDA_SDK_VERSION < 920
 }
 
 void hrt_unreg_act()
@@ -341,10 +358,12 @@ void hrt_unreg_act()
 	detach_action_from_menu("View/Open subviews/[hrt] Decompile obfuscated code", ACT_NAME(decomp_obfus));
 	detach_action_from_menu("View/Open subviews/[hrt] Decompile recursively", ACT_NAME(decomp_recur));
 	detach_action_from_menu("Jump/[hrt] Jump to xref Ex...", ACT_NAME(jmp2xref));
+	detach_action_from_menu("File/Produce file/[hrt] Create PAT file...", ACT_NAME(idb2pat));
 
 	for (size_t i = 0, n = qnumber(actions); i < n; ++i)
 		unregister_action(actions[i].name);
 	//unregister_action(ACT_NAME(kill_toolbars));
+	unregister_action(ACT_NAME(idb2pat));
 	unregister_action(ACT_NAME(create_dec));
 	unregister_action(ACT_NAME(apihashes));
 	unregister_action(ACT_NAME(dbg_patch));
@@ -424,8 +443,8 @@ static int idaapi jump_to_call_dst(vdui_t *vu)
 	ea_t dst_ea = get_call_dst(vu->cfunc, call);
 	if(dst_ea != BADADDR && is_func(get_flags(dst_ea))) {
 		if(call->ea != BADADDR)
-			add_cref(call->ea, dst_ea, fl_CN);
-		jumpto(dst_ea); //COMPAT_open_pseudocode_REUSE_ACTIVE(dst_ea);
+			add_cref(call->ea, dst_ea, (cref_t)(fl_CN | XREF_USER));
+		jumpto(dst_ea);
 		return 1;
 	}
 	//pass unhandled action to IDA
@@ -698,6 +717,7 @@ ACT_DEF(add_VT_struct)
 	return 0;
 }
 
+#if IDA_SDK_VERSION < 920
 static bool convert_cc_to_special(func_type_data_t & fti)
 {
 	switch(fti.cc & CM_CC_MASK)
@@ -725,6 +745,35 @@ static bool convert_cc_to_special(func_type_data_t & fti)
 	}
 	return true;
 }
+#else
+static bool convert_cc_to_special(func_type_data_t & fti)
+{
+	switch(fti.get_cc())
+	{
+	case CM_CC_CDECL:
+	case CM_CC_UNKNOWN:
+		fti.set_cc(CM_CC_SPECIAL);
+		break;
+	case CM_CC_STDCALL:
+	case CM_CC_PASCAL:
+	case CM_CC_FASTCALL:
+	case CM_CC_THISCALL:
+		fti.set_cc(CM_CC_SPECIALP);
+		break;
+	case CM_CC_ELLIPSIS:
+		fti.set_cc(CM_CC_SPECIALE);
+		break;
+	default:
+		Log(llError, "convert to __usercall: Unknown function cc, %x\n", fti.get_cc());
+	case CM_CC_SPECIAL:
+	case CM_CC_SPECIALE:
+	case CM_CC_SPECIALP:
+		//do nothing but return true
+		break;
+	}
+	return true;
+}
+#endif //IDA_SDK_VERSION < 920
 
 //-------------------------------------------------------------------------------------------------------------------------
 ACT_DEF(scan_var)
@@ -985,6 +1034,13 @@ ACT_DEF(remove_rettype)
 	return 0;
 }
 #endif //IDA_SDK_VERSION < 750
+
+//------------------------------------------------
+ACT_DEF(idb2pat)
+{
+	run_idb2pat();
+	return 1;
+}
 
 //-------------------------------------------------------------------------------------------------------------------------
 struct ida_local types_locator_t : public ctree_parentee_t
@@ -3614,122 +3670,31 @@ ACT_DEF(decomp_recur)
 
 //------------------------------------------------
 
-struct ida_local href_t
-{
-  qstring text;
-  ea_t ea;
-};
-DECLARE_TYPE_AS_MOVABLE(href_t);
-typedef qvector<href_t> hrefvec_t;
-
-struct ida_local helpers_locator_t : public ctree_visitor_t
-{
-	cfunc_t *func;
-	const char* helper;
-	hrefvec_t *list;
-	helpers_locator_t(cfunc_t *func_, const char* helper_, hrefvec_t *list_): ctree_visitor_t(CV_FAST), func(func_), helper(helper_), list(list_) {}
-	int idaapi visit_expr(cexpr_t * e)
-	{
-		if(e->op == cot_call && e->x->op == cot_helper && !qstrcmp(helper, e->x->helper)) {
-			href_t &entry = list->push_back();
-			entry.ea = e->ea;
-			const strvec_t &sv = func->get_pseudocode();
-			int y;
-			if (func->find_item_coords(e, NULL, &y)) {
-				entry.text = sv[y].line;
-				tag_remove(&entry.text);
-				entry.text.ltrim();
-			}
-		}
-		return 0; //continue
-	}
-};
-
-struct ida_local href_chooser_t : public chooser_t
-{
-protected:
-  ea_t cur_ea;
-  const hrefvec_t &list;
-	static const int widths_[];
-	static const char *const header_[];
-public:
-  href_chooser_t(uint32 flags_, ea_t cur_ea_, const hrefvec_t &list_, const char *title_);
-  ea_t choose(ea_t ea)
-	{
-		ea_t pos_ea = ea;
-		ssize_t n = ::choose(this, &pos_ea);
-		if ( n < 0 || n >= (ssize_t)list.size() )
-			return BADADDR;
-		const href_t &entry = list[n];
-		return entry.ea;
-	}
-	virtual size_t idaapi get_count() const { return list.size(); }
-  virtual void idaapi get_row(qstrvec_t *cols_, int *, chooser_item_attrs_t *, size_t n) const
-	{
-		const href_t &href = list[n];
-		qstrvec_t &cols = *cols_;
-		cols[0] = cur_ea > href.ea ? "Up" : cur_ea < href.ea ? "Down" : "";
-		cols[1].cat_sprnt("%a", href.ea);
-		cols[2] = href.text;
-	}
-  virtual ssize_t idaapi get_item_index(const void *item_data) const
-	{
-		if(!list.empty()) {
-			ea_t ea = *(const ea_t *)item_data;
-			if(ea != BADADDR) {
-				for(auto it = list.begin(); it != list.end(); ++it)
-					if(it->ea == ea)
-						return it - list.begin();
-			}
-		}
-		return NO_SELECTION;
-	}
-};
-const         int href_chooser_t::widths_[] = { 6,           15,        50};
-const char *const href_chooser_t::header_[] = {"Direction", "Address", "Text"};
-href_chooser_t::href_chooser_t(uint32 flags_, ea_t cur_ea_, const hrefvec_t &list_, const char *title_)
-	: chooser_t(flags_, qnumber(widths_), widths_, header_, title_), cur_ea(cur_ea_), list(list_)
-{
-	CASSERT(qnumber(widths_) == qnumber(header_));
-	deflt_col = 2;
-}
-
-bool jump_to_helper(vdui_t *vu, cexpr_t *helper)
-{
-  if(helper->op != cot_helper)
-    return false;
-
-  hrefvec_t list;
-  helpers_locator_t loc(vu->cfunc, helper->helper, &list);
-  loc.apply_to(&vu->cfunc->body, NULL);
-
-  qstring title = "[hrt] xrefs to ";
-	title.append(helper->helper);
-  citem_t *call = vu->cfunc->body.find_parent_of(helper);
-
-  href_chooser_t xrefch(CH_MODAL | CH_KEEP, call->ea, list, title.c_str());
-  ea_t target = xrefch.choose(call->ea);
-  if ( target == BADADDR )
-    return false;
-
-  citem_t *item = vu->cfunc->body.find_closest_addr(target);
-  if (!item)
-    return false;
-
-  int x, y;
-  if (!vu->cfunc->find_item_coords(item, &x, &y))
-    return false;
-  return jump_custom_viewer(vu->ct, y, x, 0);
-}
-//------------------------------------------------
-
 ACT_DEF(jmp2xref)
 {
+	if (ctx->widget_type == BWN_DISASM) {
+		ea_t ea = get_screen_ea();
+		flags64_t F = get_flags(ea);
+		if (is_code(F)) {
+			func_t *pfn = get_func(ea);
+			if (pfn && pfn->start_ea != ea) {
+				gco_info_t gco;
+				if (get_current_operand(&gco)) {
+					return regrefs(ea, pfn, gco);
+				}
+			}
+		}
+		if (is_func(F) || is_data(F))
+			return jump_to_call_or_glbl(ea);
+	}
+	
 	if (ctx->widget_type == BWN_PSEUDOCODE) {
 		vdui_t *vu = get_widget_vdui(ctx->widget);
 		if(vu) {
 			if (vu->item.is_citem()) {
 				switch(vu->item.e->op) {
+				case cot_obj:
+					return jump_to_call_or_glbl(vu->item.e->obj_ea);
 				case cot_helper:
 					return jump_to_helper(vu, vu->item.e);
 				case cot_memptr:
@@ -3742,6 +3707,8 @@ ACT_DEF(jmp2xref)
 						break;
 					}
 				}
+			} else if (vu->item.citype == VDI_FUNC && vu->cfunc) {
+				return jump_to_call_or_glbl(vu->cfunc->entry_ea);
 			}
 		}
 		return process_ui_action("hx:JmpXref");// fallback to the built-in action
@@ -4763,6 +4730,7 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 	case hxe_microcode:
 		{
 			mbl_array_t *mba = va_arg(va, mbl_array_t *);
+			vv_insert_assertions(mba);
 			deinline_reset(mba->entry_ea);
 			deob_preprocess(mba);
 			ufCurr = BADADDR;
@@ -4804,6 +4772,9 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 				cfunc->sv.insert(cfunc->sv.begin(), simpleline_t("// The function may be unflattened"));
 			else if (ufIsInWL(cfunc->entry_ea))
 				cfunc->sv.insert(cfunc->sv.begin(), simpleline_t("// The function seems has been flattened"));
+
+			if (has_varvals(cfunc->entry_ea))
+				cfunc->sv.insert(cfunc->sv.begin(), simpleline_t("// The function is modified by hidden variable assignment(s)"));
 
 			// hxe_func_printed is not called in packet decompiling mode
 			const char* msigName = msig_cached(cfunc->entry_ea);
@@ -4869,6 +4840,8 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 			TWidget *form = va_arg(va, TWidget *);
 			TPopupMenu *popup = va_arg(va, TPopupMenu *);
 			vdui_t *vu = va_arg(va, vdui_t *);
+			if (find_if_statement(vu))
+				attach_action_to_popup(form, popup, INV_IF_ACTION_NAME);
 			add_hrt_popup_items(form, popup, vu);
 		}
 		break;
@@ -4962,6 +4935,7 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 				if(!cfg.disable_autorename)
 					autorename_n_pull_comments(cfunc);
 				lit_scan(cfunc); // after autorename_n_pull_comments: to search literals in renamed indirect calls
+				convert_marked_ifs(cfunc);
 				make_if42blocks(cfunc);
 
 				//there is not found a better place that called once after microcode is completed
@@ -5171,7 +5145,7 @@ public:
 
 //-----------
 // Callback for ui notifications
-static ssize_t idaapi ui_callback(void *user_data, int ncode, va_list va)
+MY_DECLARE_LISTENER(ui_callback)
 {
 	ui_notification_t notification_code = (ui_notification_t)ncode;
 	if(notification_code == ui_populating_widget_popup) {
@@ -5200,6 +5174,17 @@ static ssize_t idaapi ui_callback(void *user_data, int ncode, va_list va)
 			} else {
 				attach_action_to_popup(widget, p, ACT_NAME(create_inline_sel));
 			}
+			func_t* func = get_func(ctx->cur_ea);
+			if (func) {
+				if (func->start_ea != ctx->cur_ea && is_code(get_flags(ctx->cur_ea))) {
+					gco_info_t gco;
+					if (get_current_operand(&gco))
+						attach_action_to_popup(widget, p, ACT_NAME(insert_varval));
+				}
+				if(has_varvals(func->start_ea))
+					attach_action_to_popup(widget, p, ACT_NAME(clear_varvals));
+			}
+			break;
 		}
 	} else if( notification_code == ui_ready_to_run) {
 		Log(llDebug, "ui_ready_to_run\n");
@@ -5218,7 +5203,7 @@ static flags64_t funcRenameFlg;
 static qstring   funcRename;
 
 // Callback for IDP notifications
-static ssize_t idaapi idp_callback(void *user_data, int ncode, va_list va)
+MY_DECLARE_LISTENER(idp_callback)
 {
 	processor_t::event_t code = (processor_t::event_t)ncode;
 	switch (code) {
@@ -5322,7 +5307,7 @@ void findStrucMembersByName(const char* memberName, tidvec_t* tids)
 #endif //IDA_SDK_VERSION < 850
 
 // Callback for IDB notifications
-static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
+MY_DECLARE_LISTENER(idb_callback)
 {
 	static bool bLitTypesOverridden = false;
 
@@ -5671,7 +5656,7 @@ static ssize_t idaapi idb_callback(void *user_data, int ncode, va_list va)
 	return 0;
 }
 
-static ssize_t idaapi dbg_callback(void *user_data, int ncode, va_list va)
+MY_DECLARE_LISTENER(dbg_callback)
 {
 	dbg_notification_t code = (dbg_notification_t)ncode;
 	switch (code) {
@@ -5697,10 +5682,10 @@ plugmod_t*
 	addon_info_t addon;
 	addon.id = "hrtng";
 	addon.name = "bes's tools collection";
-	addon.producer = "Sergey Belov and Milan Bohacek, Rolf Rolles, Takahiro Haruyama," \
+	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "2.7.68";
+	addon.version = "3.7.69";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {
@@ -5715,23 +5700,27 @@ plugmod_t*
 	configLoad();
 
 	install_hexrays_callback(callback, NULL);
-	hook_to_notification_point(HT_UI, ui_callback, NULL);	
-	hook_to_notification_point(HT_IDB, idb_callback, NULL);
-	hook_to_notification_point(HT_DBG, dbg_callback, NULL);
-	hook_to_notification_point(HT_IDP, idp_callback, NULL);
+	HOOK_CB(HT_UI,  ui_callback);
+	HOOK_CB(HT_IDB, idb_callback);
+	HOOK_CB(HT_DBG, dbg_callback);
+	HOOK_CB(HT_IDP, idp_callback);
 
 	appcall_view_reg_act();
 	reincast_reg_act();
-	registerMicrocodeExplorer();
 	hrt_reg_act();
 	register_idc_functions();
-
+	varval_reg_act();
+	registerCtreeGraph();
+	init_invert_if();
 #if IDA_SDK_VERSION <= 730
 	ncast_reg_act();
 #endif //IDA_SDK_VERSION <= 730
 #if IDA_SDK_VERSION < 850
 	structs_reg_act();
 #endif //IDA_SDK_VERSION < 850
+#if IDA_SDK_VERSION < 920
+	registerMicrocodeExplorer();
+#endif //IDA_SDK_VERSION < 920
 	register_new_struc_place();
 	new_struct_view_reg_act();
 	lit_init();
@@ -5751,6 +5740,9 @@ void idaapi term(void)
 {
 	if ( inited )
 	{
+#if IDA_SDK_VERSION < 920
+		unregisterMicrocodeExplorer();
+#endif //IDA_SDK_VERSION < 920
 #if IDA_SDK_VERSION < 850
 		structs_unreg_act();
 #endif //IDA_SDK_VERSION < 850
@@ -5758,18 +5750,19 @@ void idaapi term(void)
 		ncast_unreg_act();
 #endif //IDA_SDK_VERSION <= 730
 		new_struct_view_unreg_act();
-
+		varval_unreg_act();
+		unregisterCtreeGraph();
 		msig_unreg_act();
 		appcall_view_unreg_act();
 		reincast_unreg_act();
-		unregisterMicrocodeExplorer();
 		hrt_unreg_act();
 
 		remove_hexrays_callback(callback, NULL);
-		unhook_from_notification_point(HT_IDP, idp_callback, NULL);
-		unhook_from_notification_point(HT_DBG, dbg_callback, NULL);
-		unhook_from_notification_point(HT_IDB, idb_callback, NULL);
-		unhook_from_notification_point(HT_UI, ui_callback);
+		UNHOOK_CB(HT_IDP, idp_callback);
+		UNHOOK_CB(HT_DBG, dbg_callback);
+		UNHOOK_CB(HT_IDB, idb_callback);
+		UNHOOK_CB(HT_UI,  ui_callback);
+
 		unregister_idc_functions();
 		opt_done();
 		deinline_done();
@@ -5800,4 +5793,50 @@ plugin_t PLUGIN =
 	"[hrt] hrtng options",// the preferred short name of the plugin
 	""                    // the preferred hotkey to run the plugin
 };
+
+#ifdef _DEBUG
+//--------------------------------------------------------------------------
+// ida-sdk\src\plugins\vds18\hexrays_sample18.cpp
+//--------------------------------------------------------------------------
+// Code for making debugging easy
+// Ensure that the debug helper functions are linked in.
+// With them it is possible to print microinstructions like this:
+//      insn->dstr()
+//      operand->dstr()
+// in your favorite debugger. Having these functions greatly
+// simplifies debugging.
+
+//lint -e{413} Likely use of null pointer
+void refs_for_linker(void)
+{
+#define CALL_DSTR(type) ((type*)0)->dstr()
+	CALL_DSTR(bitset_t);
+	CALL_DSTR(rlist_t);
+	CALL_DSTR(ivl_t);
+	CALL_DSTR(ivlset_t);
+	CALL_DSTR(mlist_t);
+	CALL_DSTR(valrng_t);
+	CALL_DSTR(chain_t);
+	CALL_DSTR(block_chains_t);
+	CALL_DSTR(tinfo_t);
+	CALL_DSTR(mcases_t);
+	CALL_DSTR(lvar_t);
+	CALL_DSTR(mop_t);
+	CALL_DSTR(minsn_t);
+	CALL_DSTR(mcallarg_t);
+	CALL_DSTR(vdloc_t);
+
+	CALL_DSTR(lvar_locator_t);
+	CALL_DSTR(fnumber_t);
+	CALL_DSTR(mcallinfo_t);
+	CALL_DSTR(vivl_t);
+	CALL_DSTR(cexpr_t);
+	CALL_DSTR(cinsn_t);
+	CALL_DSTR(ctree_item_t);
+	dstr((tinfo_t*)0);
+	((mbl_array_t*)0)->dump();
+	((mblock_t*)0)->dump();
+#undef CALL_DSTR
+}
+#endif // _DEBUG
 //--------------------------------------------------------------------------

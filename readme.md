@@ -2,7 +2,9 @@
 hrtng IDA plugin is a collection of tools, ideas and experiments I've found interesting and useful in my reversing work.
 
 Special thanks to following peoples for their great plugins were used as base for my work:
+  * Hex-Rays SA [ida-sdk](https://github.com/HexRaysSA/ida-sdk) examples
   * Milan Bohacek, [hexrays_tools](https://github.com/nihilus/hexrays_tools) and [hexrays_hlight](https://hex-rays.com/contests_details/contest2016/hexlight/hexrays_hlight.py)
+  * J.C. Roberts and Alexander Pick: [IDB2PAT](https://github.com/alexander-pick/idb2pat)
   * HexRaysDeob by [Rolf Rolles](https://hex-rays.com/blog/hex-rays-microcode-api-vs-obfuscating-compiler) and [Takahiro Haruyama](https://blogs.vmware.com/security/2019/02/defeating-compiler-level-obfuscations-used-in-apt10-malware.html)
   * Karthik Selvaraj [Krypton plugin](https://www.hex-rays.com/contests/2012/Krypton_2012_Hex-Rays_Contest.zip) 
   * Ali Rahbar, Ali Pezeshk and Elias Bachaalany [GraphSlick plugin](https://github.com/lallousx86/GraphSlick)
@@ -26,6 +28,7 @@ Messages, menu items, popup windows and dialog boxes belong to this plugin are m
 ### Interactive pseudocode transformation
   * [User interactive renaming/retyping assistance](doc/rename-recast.md)
   * [Assists with changing type of structure member or local/global variable](doc/recast.md)
+  * [Invert "if" statement](doc/invert-if.md)
   * [reinterpret_cast](doc/reicast.md)
   * [Collapse selection](doc/collapse.md)
   * ["offsetof" convertor](doc/offsetof.md)
@@ -38,6 +41,7 @@ Messages, menu items, popup windows and dialog boxes belong to this plugin are m
 
 ### Deal with obfuscated code
   * [Decompile obfuscated code](doc/deob.md)
+  * [Hidden variable assignments](doc/hidden-assign.md)
   * [Scan for API names hashes](doc/api-hashes.md)
   * [Unflattening](doc/unflat.md)
   * [Microcode optimizers / "Magic" calls](doc/opt.md)
@@ -45,6 +49,7 @@ Messages, menu items, popup windows and dialog boxes belong to this plugin are m
 ### Code recognition
   * [Microcode signatures](doc/msig.md)
   * [De-Inline - detection of inlined functions](doc/deinline.md)
+  * [Create patterns (PAT) file from IDA database](doc/idb2pat.md)
 
 ### Type management assistance
   * [Create dummy structs](doc/cr_struc.md)
@@ -65,7 +70,7 @@ Messages, menu items, popup windows and dialog boxes belong to this plugin are m
 ### Function name and type
   * [Smart rename func](doc/rename-func.md)
   * [Convert function to __usercall, detect spoiled registers](doc/usercall.md)
-  * [Set calling conventions bit closer to Go-lang](doc/golang.md)
+  * [~~Set calling conventions bit closer to Go-lang~~](doc/golang.md)
   * [~~Remove function's return type converting it to void func(...)~~](doc/remove-ret-type.md)
   * [~~Remove function's argument~~](doc/remove-arg.md)
 
@@ -92,7 +97,8 @@ Messages, menu items, popup windows and dialog boxes belong to this plugin are m
   * [Create patched (DEC) file](doc/create_dec.md)
 
 ### IDA plugin developer help
-  * [Microcode Explorer](doc/mcode-expl.md)
+  * [~~Microcode Explorer~~](doc/mcode-expl.md)
+  * [Ctree graph](doc/ctree-graph.md)
 
 ## Media
 ### Reversing FinSpy

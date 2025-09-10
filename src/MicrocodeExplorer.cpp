@@ -12,6 +12,7 @@
 #include "helpers.h"
 #include "MicrocodeExplorer.h"
 
+#if IDA_SDK_VERSION < 920
 //typedef qrefcnt_t<mbl_array_t*> shared_mbl_array_t;
 typedef std::shared_ptr<mbl_array_t *> shared_mbl_array_t;
 
@@ -682,3 +683,4 @@ ACT_DEF(show_microcode_explorer)
 	showMicrocodeExplorer(mba, true, MicroMaturityToString(mmat));
 	return 1;
 }
+#endif //IDA_SDK_VERSION < 920

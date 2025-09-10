@@ -89,6 +89,14 @@ int ida_export new_struc_place_t__compare2(const cp_t *ths, const place_t *t2, v
 {
 	return new_struc_place_t__compare(ths, t2);
 }
+
+#if IDA_SDK_VERSION >= 920
+bool ida_export new_struc_place_t__equals(const cp_t *ths, const place_t *t2, void*)
+{
+	return new_struc_place_t__compare(ths, t2) == 0;
+}
+#endif // IDA_SDK_VERSION >= 920
+
 //--------------------------------------------------------------------------
 // Check if the location data is correct and if not, adjust it
 void ida_export new_struc_place_t__adjust(cp_t *ths, void *ud)

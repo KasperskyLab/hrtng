@@ -11,7 +11,9 @@ import ida_nalt
 import ida_idaapi
 
 from idaapi import PluginForm
-from PyQt5 import QtWidgets
+# swap commented out PyQt5 to PySide6 in lines below for IDA < 9.2
+#from PyQt5 import QtWidgets
+from PySide6 import QtWidgets
 
 mdnpForm = None
 

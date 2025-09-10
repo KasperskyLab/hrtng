@@ -1,4 +1,4 @@
-## ~~Remove function's argument~~
+## Remove function's argument
 Context menu *"Remove this argument (A)"*  
 > ⚠️ Obsolete since IDA 7.5 has the [same](https://hex-rays.com/products/decompiler/manual/cmd_delarg.shtml). Available when build with an older SDK
 

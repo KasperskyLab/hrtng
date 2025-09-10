@@ -454,39 +454,22 @@ ACT_DEF(clear_var_scan)
 }
 
 //--------------------------------------------------------------------------
-static ssize_t idaapi ui_callback(void *ud, int code, va_list va)
+MY_DECLARE_LISTENER(ns_ui_callback)
 {
-	TWidget *vi = (TWidget *)ud;
-	switch (code) {
-	case ui_get_custom_viewer_hint:
-		{
-			qstring &hint = *va_arg(va, qstring *);
-			TWidget *viewer = va_arg(va, TWidget *);
-			place_t *place         = va_arg(va, place_t *);
-			int *important_lines   = va_arg(va, int *);
-			if (vi == viewer) {
-				if ( place == NULL )
-					return 0;
-				new_struc_place_t *spl = (new_struc_place_t *)place;
-				//hint.sprnt("[hrt] Hint for line %d", spl->idx);
-				//*important_lines = 1;
-				//return 1;
-			}
-			break;
-		}
+	switch (ncode) {
 	case ui_widget_invisible:
 		{
 			TWidget *f = va_arg(va, TWidget *);
-			if (f == vi) {
+			if (f == stBld) {
 				stBld = NULL;
-				unhook_from_notification_point(HT_UI, ui_callback);
+				UNHOOK_CB(HT_UI, ns_ui_callback);
 			}
 		}
 		break;
 	case ui_widget_visible:
 	{
 		TWidget *f = va_arg(va, TWidget *);
-		if (f == vi) {
+		if (f == stBld) {
 			attach_action_to_popup(f, NULL, ACT_NAME(pack_cb));
 			attach_action_to_popup(f, NULL, ACT_NAME(change_item_type_cb));
 			attach_action_to_popup(f, NULL, ACT_NAME(make_array_cb));
@@ -499,7 +482,7 @@ static ssize_t idaapi ui_callback(void *ud, int code, va_list va)
 	case ui_populating_widget_popup:
 		{
 			TWidget *f = va_arg(va, TWidget *);
-			if (f == vi) {
+			if (f == stBld) {
 				TPopupMenu *p = va_arg(va, TPopupMenu *);
 				// Create right-click menu on the fly
 				if(fi.function_adjustments.size())
@@ -535,7 +518,7 @@ bool show_new_struc_view()
 	cvh.keyboard = ct_keyboard;
 	set_custom_viewer_handlers(stBld, &cvh, stBld);
 
-	hook_to_notification_point(HT_UI, ui_callback, stBld);
+	HOOK_CB(HT_UI, ns_ui_callback);
 	display_widget(stBld, WOPN_RESTORE);
 	return true;
 }

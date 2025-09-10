@@ -322,9 +322,9 @@ static ssize_t idaapi make_data_callback(va_list va)
 
 //--------------------------------------------------------------------------
 // This callback is called for IDP notification events
-static ssize_t idaapi make_callback(void * /*user_data*/, int event_id, va_list va)
+MY_DECLARE_LISTENER(make_callback)
 {
-	switch(event_id)
+	switch(ncode)
 	{
 	case idb_event::make_code:
 		return make_code_callback(va);
@@ -506,7 +506,7 @@ void apihashes_init()
 	Log(llNotice, "%d lines, %d hashes, %d collisions\n", lines, (int)hashes.size(), collisions);
 
 	if(!bApihashesInited) {
-		hook_to_notification_point(HT_IDB, make_callback);
+		HOOK_CB(HT_IDB, make_callback);
 		bApihashesInited = true;
 	}
 }
@@ -515,7 +515,7 @@ void apihashes_init()
 void apihashes_done()
 {
 	if(bApihashesInited) {
-		unhook_from_notification_point(HT_IDB, make_callback);
+		UNHOOK_CB(HT_IDB, make_callback);
 		hashes.clear();
 		bApihashesInited = false;
 	}

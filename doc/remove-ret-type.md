@@ -1,4 +1,4 @@
-## ~~Removes function's return type converting it to void func(...)~~
+## Removes function's return type converting it to void func(...)
 Context menu *"Remove return type"*  
 > ⚠️ Obsolete since IDA 7.5 has the [same](https://hex-rays.com/products/decompiler/manual/cmd_adddel_rettype.shtml). Available when build with an older SDK
 

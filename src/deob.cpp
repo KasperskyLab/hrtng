@@ -592,7 +592,7 @@ struct ida_local frac_visitor_t : minsn_visitor_t
 					if (ret_dests->add_unique(ret_dest)) {
 						MSG_DO(("[hrt] new ret_addr %a\n", ret_dest));
 						//if(!has_xref(get_flags(ret_dest))) //FIXME: check xref 'from'
-						add_cref(curins->ea, ret_dest, fl_JN);
+						add_cref(curins->ea, ret_dest, (cref_t)(fl_JN | XREF_USER));
 					}
 				}
 			}

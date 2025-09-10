@@ -10,8 +10,8 @@ IF(NOT ${UNI64})
   SET_TARGET_PROPERTIES(${target_name}_64 PROPERTIES PREFIX "" )
 ENDIF()
 
-SET(CMAKE_CXX_STANDARD 11)
-SET(OPT_CXX_FLAGS "-std=c++11 -flto -fvisibility=hidden -fvisibility-inlines-hidden")
+SET(CMAKE_CXX_STANDARD 17)
+SET(OPT_CXX_FLAGS "-std=c++17 -flto -fvisibility=hidden -fvisibility-inlines-hidden")
 SET(IDA_COMMON_CXX_FLAGS "-D__X64__ -DUSE_DANGEROUS_FUNCTIONS")
 
 IF (${IDASDK_VER} STREQUAL "83" OR ${IDASDK_VER} STREQUAL "84")

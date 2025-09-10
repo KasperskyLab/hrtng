@@ -1,4 +1,4 @@
-## ~~Deals with structures with negative offsets or access based on offsets in a middle of structure~~
+## Deals with structures with negative offsets or access based on offsets in a middle of structure
 Context menu *"Use CONTAINER_OF here"*, *"Destroy CONTAINER_OF"*  
 > ⚠️ Obsolete since IDA 7.4 has better alternative - [shifted pointers](https://hex-rays.com/products/ida/support/idadoc/1695.shtml). Available when build with an older SDK
 

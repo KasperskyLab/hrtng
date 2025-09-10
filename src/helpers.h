@@ -45,6 +45,19 @@
 	};\
 	static name ## _t name;
 
+
+#if IDA_SDK_VERSION < 920
+  #define MY_DECLARE_LISTENER(name) static ssize_t idaapi name(void *ud, int ncode, va_list va)
+  #define HOOK_CB(ht, cb) hook_to_notification_point(ht, cb)
+  #define UNHOOK_CB(ht, cb) unhook_from_notification_point(ht, cb)
+#else
+  #define MY_DECLARE_LISTENER(name) \
+	  struct ida_local name ## _t : public event_listener_t { virtual ssize_t idaapi on_event(ssize_t code, va_list va) override; }; name ## _t name; \
+    ssize_t idaapi name ## _t::on_event(ssize_t ncode, va_list va)
+  #define HOOK_CB(ht, cb) hook_event_listener(ht, &cb, nullptr)
+  #define UNHOOK_CB(ht, cb) unhook_event_listener(ht, &cb)
+#endif //IDA_SDK_VERSION >= 920
+
 #if IDA_SDK_VERSION < 910
   #define isIlp32() false
 #else

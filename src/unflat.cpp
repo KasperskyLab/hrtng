@@ -1938,7 +1938,7 @@ static uint32 reentryCnt;
 	}
 
 #if DEBUG_UF >= 3
-	ShowMicrocodeExplorer(mba, "beforeUnflattening0");
+	//ShowMicrocodeExplorer(mba, "beforeUnflattening0");
 #endif
 	CFUnflattener unfl;
 	if (unfl.run(mba)) {
