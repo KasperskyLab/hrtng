@@ -932,16 +932,15 @@ ACT_DEF(rename_func)
 		if(!ask_ident(&newName, "[hrt] Rename %s:", oldname.c_str()))
 			return 0;
 
+		if(!validate_name(&newName, VNT_IDENT, SN_CHECK))
+			continue;
+
 		if(set_name(vu->cfunc->entry_ea, newName.c_str(), SN_NOCHECK | SN_NOWARN /*| SN_FORCE*/))
 			break;
 
 		// manually implement SN_FORCE like behavior because numeric suffix like "_12" is stripped by the plugin on a type-to-name and name-to-type checks
 		// but the functions with such names may have different prototypes, so need to add different suffix, for example without "_"
 
-		if (newName.size() > MAX_NAME_LEN)
-			newName.resize(MAX_NAME_LEN);
-		if(!validate_name(&newName, VNT_IDENT))
-			continue;
 		newName = unique_name(newName.c_str(), "", [](const qstring& n) { return get_name_ea(BADADDR, n.c_str()) == BADADDR; });
 	}
 
@@ -1141,11 +1140,13 @@ ACT_DEF(var_reuse)
 
 	size_t total_size = 0;
 	for(size_t i = 0; i < tl.types.size(); i++) {
+		size_t tsz = tl.types[i].get_size();
+		if(tsz == BADSIZE) //ignore "void" and bad types
+			continue;
 		udm_t &udm = utd.push_back();
 		udm.offset = 0; // i ?
     udm.type = tl.types[i];
 		udm.name = create_field_name(udm.type);
-		size_t tsz = udm.type.get_size();
     udm.size = tsz * 8;
 		if(total_size < tsz)
 			total_size = tsz;
@@ -5685,7 +5686,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.7.69";
+	addon.version = "3.7.70";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {
@@ -5718,9 +5719,7 @@ plugmod_t*
 #if IDA_SDK_VERSION < 850
 	structs_reg_act();
 #endif //IDA_SDK_VERSION < 850
-#if IDA_SDK_VERSION < 920
 	registerMicrocodeExplorer();
-#endif //IDA_SDK_VERSION < 920
 	register_new_struc_place();
 	new_struct_view_reg_act();
 	lit_init();
@@ -5740,9 +5739,7 @@ void idaapi term(void)
 {
 	if ( inited )
 	{
-#if IDA_SDK_VERSION < 920
 		unregisterMicrocodeExplorer();
-#endif //IDA_SDK_VERSION < 920
 #if IDA_SDK_VERSION < 850
 		structs_unreg_act();
 #endif //IDA_SDK_VERSION < 850

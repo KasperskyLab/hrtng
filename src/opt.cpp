@@ -901,45 +901,45 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 		return 1;
 	}
 
-	// Replaces 'call ARITH(cons1, const2)' to result of `cons1 [&|^+-] const2`
-	int call_ARITH_2const(mop_t* op, minsn_t* call, mblock_t* /*blk*/)
+	// Replaces 'call ARITH(x, y)' to inlined expression ==> `x & y` or `x | y` or `x ^ y` or `x + y` or `x - y`
+	int call_ARITH(minsn_t* call, mblock_t* blk)
 	{
-		if(!op || call->opcode != m_call || call->l.t != mop_v)
+		if(call->opcode != m_call || call->l.t != mop_v)
 			return 0;
 		mcallinfo_t *fi = call->d.f;
 		if (!fi || fi->return_type.is_void() || fi->args.size() != 2)
 			return 0;
 		//FIXME: what about spoiled registers and stack balance in case of __stdcall
 
-		uint64 val1, val2, res;
-		if (!fi->args.front().is_constant(&val1, false) || !fi->args.back().is_constant(&val2, false))
-			return 0;
-
 		qstring funcname = get_name(call->l.g);
 		stripName(&funcname, true);
 		if(funcname.length() > 3)
 			return 0; //optimize away funcs with longer names
 
+		mcode_t opcode;
 		if(!qstrcmp(funcname.c_str(), "AND"))
-			res = val1 & val2;
+			opcode = m_and;
 		else if(!qstrcmp(funcname.c_str(), "OR_"))
-			res = val1 | val2;
+			opcode = m_or;
 		else if(!qstrcmp(funcname.c_str(), "XOR"))
-			res = val1 ^ val2;
+			opcode = m_xor;
 		else if(!qstrcmp(funcname.c_str(), "ADD"))
-			res = val1 + val2;
+			opcode = m_add;
 		else if(!qstrcmp(funcname.c_str(), "SUB"))
-			res = val1 - val2;
+			opcode = m_sub;
 		else {
 			MSG_DO(("[E] not implemented op"));
 			return 0;
 		}
-		MSG_DO(("[I] call_ARITH_2const: '%s'", call->dstr()));
-		op->make_number(res, (int)fi->return_type.get_size(), call->ea);
+		MSG_DO(("[I] call_ARITH: '%s'", call->dstr()));
+		call->opcode = opcode;
+		call->l = fi->args.front();
+		call->r = fi->args.back();
+		//call->d = // doesn't care, at this stage `call` must be a part of `m_mov mop_d(call), reg`
 		return 1;
 	}
 
-	// Replaces 'call ARITH_0xNN(x)' ==> `x & NN` or `x ^ NN` or `x + NN` or `x - NN`
+	// Replaces 'call ARITH_0xNN(x)' ==> `x & NN` or `x | NN` or `x ^ NN` or `x + NN` or `x - NN`
 	// Replaces 'call LDX_0xNN(x)'   ==> `[x + NN]` (ldx  ds.2, (arg.8+#0xNN.8), result.4)
 	// Replaces 'call RET_0xNN()'    ==> `NN`
 	int call_ARITH_0xNN(mop_t* op, minsn_t* ins, mblock_t* /*blk*/)
@@ -1076,7 +1076,7 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 			iLocalRetVal = pat_AddSub(ins, blk);
 			break;
 		case m_call:
-			iLocalRetVal = call_ARITH_2const(op, ins, blk);
+			iLocalRetVal = call_ARITH(ins, blk);
 			if (!iLocalRetVal)
 				iLocalRetVal = call_ARITH_0xNN(op, ins, blk);
 			break;

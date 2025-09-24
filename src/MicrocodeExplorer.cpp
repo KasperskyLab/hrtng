@@ -12,23 +12,129 @@
 #include "helpers.h"
 #include "MicrocodeExplorer.h"
 
-#if IDA_SDK_VERSION < 920
 //typedef qrefcnt_t<mbl_array_t*> shared_mbl_array_t;
 typedef std::shared_ptr<mbl_array_t *> shared_mbl_array_t;
 
+const char *matLevels[] =
+{
+	"MMAT_GENERATED",
+	"MMAT_PREOPTIMIZED",
+	"MMAT_LOCOPT",
+	"MMAT_CALLS",
+	"MMAT_GLBOPT1",
+	"MMAT_GLBOPT2",
+	"MMAT_GLBOPT3",
+	"MMAT_LVARS"
+};
+
 const char* MicroMaturityToString(mba_maturity_t mmt) 
 { 
-	switch (mmt) {
-	case MMAT_ZERO: return "MMAT_ZERO";
-	case MMAT_GENERATED: return "MMAT_GENERATED";
-	case MMAT_PREOPTIMIZED: return "MMAT_PREOPTIMIZED";
-	case MMAT_LOCOPT: return "MMAT_LOCOPT";
-	case MMAT_CALLS: return "MMAT_CALLS";
-	case MMAT_GLBOPT1: return "MMAT_GLBOPT1";
-	case MMAT_GLBOPT2: return "MMAT_GLBOPT2";
-	case MMAT_GLBOPT3: return "MMAT_GLBOPT3";
-	case MMAT_LVARS: return "MMAT_LVARS";
-	default: return "???"; 
+	if(mmt > MMAT_ZERO && mmt <= MMAT_LVARS)
+		return matLevels[mmt - MMAT_GENERATED];
+	return "???";
+}
+
+const char* moptToString(mopt_t mop)
+{
+	switch(mop) {
+	case mop_z  : return "mop_z";
+	case mop_r  : return "mop_r";
+	case mop_n  : return "mop_n";
+	case mop_str: return "mop_str";
+	case mop_d  : return "mop_d";
+	case mop_S  : return "mop_S";
+	case mop_v  : return "mop_v";
+	case mop_b  : return "mop_b";
+	case mop_f  : return "mop_f";
+	case mop_l  : return "mop_l";
+	case mop_a  : return "mop_a";
+	case mop_h  : return "mop_h";
+	case mop_c  : return "mop_c";
+	case mop_fn : return "mop_fn";
+	case mop_p  : return "mop_p";
+	case mop_sc : return "mop_sc";
+	default: return "???";
+	}
+}
+
+const char* mcodeToString(mcode_t mcode)
+{
+	switch(mcode) {
+	case m_nop  : return "m_nop  ";
+  case m_stx  : return "m_stx  ";
+  case m_ldx  : return "m_ldx  ";
+  case m_ldc  : return "m_ldc  ";
+  case m_mov  : return "m_mov  ";
+  case m_neg  : return "m_neg  ";
+  case m_lnot : return "m_lnot ";
+  case m_bnot : return "m_bnot ";
+  case m_xds  : return "m_xds  ";
+  case m_xdu  : return "m_xdu  ";
+  case m_low  : return "m_low  ";
+  case m_high : return "m_high ";
+  case m_add  : return "m_add  ";
+  case m_sub  : return "m_sub  ";
+  case m_mul  : return "m_mul  ";
+  case m_udiv : return "m_udiv ";
+  case m_sdiv : return "m_sdiv ";
+  case m_umod : return "m_umod ";
+  case m_smod : return "m_smod ";
+  case m_or   : return "m_or   ";
+  case m_and  : return "m_and  ";
+  case m_xor  : return "m_xor  ";
+  case m_shl  : return "m_shl  ";
+  case m_shr  : return "m_shr  ";
+  case m_sar  : return "m_sar  ";
+  case m_cfadd: return "m_cfadd";
+  case m_ofadd: return "m_ofadd";
+  case m_cfshl: return "m_cfshl";
+  case m_cfshr: return "m_cfshr";
+  case m_sets : return "m_sets ";
+  case m_seto : return "m_seto ";
+  case m_setp : return "m_setp ";
+  case m_setnz: return "m_setnz";
+  case m_setz : return "m_setz ";
+  case m_setae: return "m_setae";
+  case m_setb : return "m_setb ";
+  case m_seta : return "m_seta ";
+  case m_setbe: return "m_setbe";
+  case m_setg : return "m_setg ";
+  case m_setge: return "m_setge";
+  case m_setl : return "m_setl ";
+  case m_setle: return "m_setle";
+  case m_jcnd : return "m_jcnd ";
+  case m_jnz  : return "m_jnz  ";
+  case m_jz   : return "m_jz   ";
+  case m_jae  : return "m_jae  ";
+  case m_jb   : return "m_jb   ";
+  case m_ja   : return "m_ja   ";
+  case m_jbe  : return "m_jbe  ";
+  case m_jg   : return "m_jg   ";
+  case m_jge  : return "m_jge  ";
+  case m_jl   : return "m_jl   ";
+  case m_jle  : return "m_jle  ";
+  case m_jtbl : return "m_jtbl ";
+  case m_ijmp : return "m_ijmp ";
+  case m_goto : return "m_goto ";
+  case m_call : return "m_call ";
+  case m_icall: return "m_icall";
+  case m_ret  : return "m_ret  ";
+  case m_push : return "m_push ";
+  case m_pop  : return "m_pop  ";
+  case m_und  : return "m_und  ";
+  case m_ext  : return "m_ext  ";
+  case m_f2i  : return "m_f2i  ";
+  case m_f2u  : return "m_f2u  ";
+  case m_i2f  : return "m_i2f  ";
+  case m_u2f  : return "m_u2f  ";
+  case m_f2f  : return "m_f2f  ";
+  case m_fneg : return "m_fneg ";
+  case m_fadd : return "m_fadd ";
+  case m_fsub : return "m_fsub ";
+  case m_fmul : return "m_fmul ";
+  case m_fdiv : return "m_fdiv ";
+
+	default: return "???";
 	}
 }
 
@@ -97,12 +203,22 @@ struct ida_local mblock_dumper_t : public mblock_virtual_dumper_t
 };
 
 struct ida_local sample_info_t
+#if IDA_SDK_VERSION < 920
 {
+#else
+	: public event_listener_t
+{ virtual ssize_t idaapi on_event(ssize_t code, va_list va) override;
+#endif //IDA_SDK_VERSION >= 920
 	TWidget *cv;
 	mblock_dumper_t md;
 	shared_mbl_array_t mba;
 	qstring name;
-	sample_info_t() : cv(NULL), mba(NULL) {}
+	sample_info_t(mbl_array_t* mba_, bool keepMba, const char* name_) : cv(NULL), mba(NULL), name(name_)
+	{
+		if(keepMba)
+			mba = std::make_shared<mbl_array_t*>(mba_);
+		mba_->print(md);
+	}
 };
 
 class ida_local MicrocodeInstructionGraph
@@ -110,6 +226,7 @@ class ida_local MicrocodeInstructionGraph
 public:
 	qstring tmp;            // temporary buffer for grcode_user_text
 	qstrvec_t m_BlockText;
+	qstrvec_t m_BlockHint;
 	intvec_t m_EdgeColors;
 	edgevec_t m_Edges;
 	int m_NumBlocks;
@@ -117,6 +234,7 @@ public:
 	void Clear()
 	{
 		m_BlockText.clear();
+		m_BlockHint.clear();
 		m_EdgeColors.clear();
 		m_Edges.clear();
 		m_NumBlocks = 0;
@@ -148,6 +266,7 @@ protected:
 		qstring qStr;
 		ins->print(&qStr);
 		m_BlockText.push_back(qStr);
+		m_BlockHint.push_back() = mcodeToString(ins->opcode);
 
 		int iThisBlock = GetIncrBlockNum();
 
@@ -165,6 +284,7 @@ protected:
 		qstring qStr;
 		op.print(&qStr);
 		m_BlockText.push_back(qStr);
+		m_BlockHint.push_back() = moptToString(op.t);
 
 		int iThisBlock = GetIncrBlockNum();
 		AddEdge(iParent, iThisBlock, iPos);
@@ -234,14 +354,12 @@ static ssize_t idaapi migr_callback(void *ud, int code, va_list va)
 {
 	MicrocodeInstructionGraphContainer *gcont = (MicrocodeInstructionGraphContainer *)ud;
 	MicrocodeInstructionGraph *microg = &gcont->m_MG;
-	bool result = false;
 
 	switch (code)
 	{
 #if IDA_SDK_VERSION < 760
 	case grcode_user_gentext:
-		result = true;
-		break;
+		return 1;
 #endif //IDA_SDK_VERSION < 760
 
 		// refresh user-defined graph nodes and edges
@@ -250,14 +368,10 @@ static ssize_t idaapi migr_callback(void *ud, int code, va_list va)
 		// out: success
 	{
 		interactive_graph_t* mg = va_arg(va, interactive_graph_t*);
-
-		// we have to resize
 		mg->resize(microg->m_NumBlocks);
-
 		for (auto &it : microg->m_Edges)
 			mg->add_edge(it.src, it.dst, NULL);
-
-		result = true;
+		return 1;
 	}
 	break;
 
@@ -276,11 +390,29 @@ static ssize_t idaapi migr_callback(void *ud, int code, va_list va)
 
 		microg->tmp = microg->m_BlockText[node];
 		*text = microg->tmp.begin();
-		result = true;
+		return 1;
 	}
 	break;
+
+	// retrieve hint for the user-defined graph.
+	case grcode_user_hint:
+	//(::interactive_graph_t *)
+	// mousenode      (int)
+	// mouseedge_src  (int)
+  // mouseedge_dst  (int)
+  // hint           (char **) must be allocated by qalloc() or qstrdup()
+	// retval 0  use default hint; retval 1  use proposed hint
+		va_arg(va, interactive_graph_t*);
+		int node = va_arg(va, int);
+		va_arg(va, int);
+		va_arg(va, int);
+		const char **hint = va_arg(va, const char **);
+		if(node >= 0 && node < microg->m_BlockHint.size()) {
+			*hint = qstrdup(microg->m_BlockHint[node].c_str());
+			return 1;
+		}
 	}
-	return (int)result;
+	return 0;
 }
 
 static ssize_t idaapi mgr_callback(void *ud, int code, va_list va);
@@ -534,18 +666,28 @@ struct ida_local microinsngraph_ah_t : public action_handler_t
 	}
 };
 
-
+#if IDA_SDK_VERSION < 920
 static ssize_t idaapi ui_callback(void *ud, int code, va_list va)
 {
 	sample_info_t *si = (sample_info_t *)ud;
+#else
+ssize_t idaapi sample_info_t::on_event(ssize_t code, va_list va)
+{
+	sample_info_t *si = this;
+#endif //IDA_SDK_VERSION < 920
 	switch (code)
 	{
 	case ui_widget_invisible:
 	{
 		TWidget *f = va_arg(va, TWidget *);
 		if (f == si->cv) {
-			delete si;
+#if IDA_SDK_VERSION < 920
 			unhook_from_notification_point(HT_UI, ui_callback);
+#else
+			//unhook_event_listener(HT_UI, si); it should be done by `delete si;` on next line
+#endif //IDA_SDK_VERSION < 920
+			delete si;
+			return 0;
 		}
 	}
 	break;
@@ -583,16 +725,10 @@ void showMicrocodeExplorer(mbl_array_t* mba, bool keepMba, const char* name)
 		title.sprnt("Microcode - %a - %s%s", mba->entry_ea, name, suffix.c_str());
 		widget = find_widget(title.c_str());
 	} while (widget);
-	sample_info_t* si = new sample_info_t;
-	si->name = name;
-	if(keepMba)
-		si->mba = std::make_shared<mbl_array_t*>(mba);
-
-	mba->print(si->md);
+	sample_info_t* si = new sample_info_t(mba, keepMba, name);
 
 	simpleline_place_t s1;
 	simpleline_place_t s2((int)si->md.lines.size() - 1);
-
 
 	si->cv = create_custom_viewer(
 		title.c_str(), // title
@@ -605,7 +741,11 @@ void showMicrocodeExplorer(mbl_array_t* mba, bool keepMba, const char* name)
 		si, // cvhandlers_ud
 		NULL); // parent
 
+#if IDA_SDK_VERSION < 920
 	hook_to_notification_point(HT_UI, ui_callback, si);
+#else
+	hook_event_listener(HT_UI, si, nullptr);
+#endif //IDA_SDK_VERSION < 920
 	display_widget(si->cv, WOPN_DP_TAB | WOPN_NOT_CLOSED_BY_ESC, "IDA View-A");
 }
 
@@ -615,18 +755,6 @@ void ShowMicrocodeExplorer(mbl_array_t* mba, const char* name)
 }
 
 //-------------------------------------------------------------------------
-
-const char *matLevels[] =
-{
-	"MMAT_GENERATED",
-	"MMAT_PREOPTIMIZED",
-	"MMAT_LOCOPT",
-	"MMAT_CALLS",
-	"MMAT_GLBOPT1",
-	"MMAT_GLBOPT2",
-	"MMAT_GLBOPT3",
-	"MMAT_LVARS"
-};
 
 mba_maturity_t AskDesiredMaturity()
 {
@@ -683,4 +811,3 @@ ACT_DEF(show_microcode_explorer)
 	showMicrocodeExplorer(mba, true, MicroMaturityToString(mmat));
 	return 1;
 }
-#endif //IDA_SDK_VERSION < 920

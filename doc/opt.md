@@ -17,13 +17,13 @@ For the following calls where `NN` is a number in hex and `x` is an any expressi
  * `OR__0xNN(x)` ==> `x | NN`
  * `XOR_0xNN(x)` ==> `x ^ NN`
 
-One more optimizer watches calls that do simple arithmetic operation and receive two numbers as arguments then replaces call expression to the result of arithmetic operation.
+One more optimizer watches calls that do simple arithmetic operation and inlines the call as arithmetic operation with call's arguments.
 Size of resulting number is set equal to the returning type size of original call.
- * `ADD(n1, n2)` ==> result of `n1 + n2` 
- * `SUB(n1, n2)` ==> result of `n1 - n2` 
- * `AND(n1, n2)` ==> result of `n1 & n2` 
- * `OR_(n1, n2)` ==> result of `n1 | n2` 
- * `XOR(n1, n2)` ==> result of `n1 ^ n2` 
+ * `ADD(a1, a2)` ==> `a1 + a2` 
+ * `SUB(a1, a2)` ==> `a1 - a2` 
+ * `AND(a1, a2)` ==> `a1 & a2` 
+ * `OR_(a1, a2)` ==> `a1 | a2` 
+ * `XOR(a1, a2)` ==> `a1 ^ a2` 
 
 >⚠️ **Warning:** arguments and returning type of arithmetic functions declaration listed above (`ADD`, `ADD_0xNN`, etc) must be the same, otherwise you will got INTERR 50830 or 50831 
 
