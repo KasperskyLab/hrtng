@@ -37,6 +37,8 @@ The comment is appeared it the first pseudocode line when a matching signature h
 // The function matches msig: msig_name. Press F5 to refresh pseudocode.
 ```
 
+To turn off proc rename on matching: before loading into IDA fix msig file by your favourite text editor with using regular expressions like "`^(\w{32}) (.[^ ])`" for search and "`\1 e \2`" for replace. 
+
 For a matched 'Relaxed' signature or a signature with multiple names, the proc will not be auto-renamed
 ```
 // The function matches msig: r msig_nameX msig_nameY msig_nameZ

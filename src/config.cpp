@@ -33,7 +33,8 @@ static const char cfgNodeName[] = "$ hrt options";
 
 static const cfgopt_t opts[] = {
 	cfgopt_t("LOGGING_LEVEL", &cfg.logLevel),
-	cfgopt_t("DISABLE_AUTORENAME", &cfg.disable_autorename, 1)
+	cfgopt_t("DISABLE_AUTORENAME", &cfg.disable_autorename, 1),
+	cfgopt_t("MATCHED_BRACE_COLOR", (int*)&cfg.braceBgColor)
 // !!! add new config_t fields here in arbitrary order
 };
 
@@ -41,9 +42,14 @@ void configLoad()
 {
 	//load from IDB last used settings made by configDlg
 	netnode nn(cfgNodeName);
-	if(exist(nn) && nn.valobj(&cfg, sizeof(config_t)) > 0) {
-		Log(llDebug, "config loaded from IDB\n");
-		return;
+	if(exist(nn)) {
+		uint8 tmp[MAXSPECSIZE];
+		CASSERT(sizeof(config_t) < MAXSPECSIZE);
+		ssize_t valSize = nn.valobj(tmp, sizeof(config_t));// idb saved by older plugin version may have smaller size of config blob
+		if(valSize > 0 && valSize <= sizeof(config_t) && nn.valobj(&cfg, valSize) > 0) {
+			Log(llDebug, "config loaded from IDB (%d bytes)\n", valSize);
+			return;
+		}
 	}
 
 	//load user defined defaults from hrtng.cfg file
@@ -69,10 +75,11 @@ void configDlg()
 			//title
 			"[hrt] Options\n\n"
 			"<Logging level:b:0:>\n"
+			"<#-1 to turn highlighting off#Matching brace color:l::8::>\n"
 			"<#NOT RECOMMENDED#Disable auto~r~ename:C>>\n"
 // !!! add new config_t fields here in arbitrary order
 			"\n\n";
-	if (1 != ask_form(format, &llNames, &cfg.logLevel, &cfg.disable_autorename))
+	if (1 != ask_form(format, &llNames, &cfg.logLevel, &cfg.braceBgColor, &cfg.disable_autorename))
 		return;
 	configSave();
 }

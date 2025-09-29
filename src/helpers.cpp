@@ -32,7 +32,7 @@
 
 bool at_atoea(const char * str, ea_t * pea )
 {
-	while(*str && isspace(*str))
+	while(*str && qisspace(*str))
 		str++;
 	if(str[0] == '@' && str[1] == '0' && str[2] == 'x')
 		return atoea(pea, str + 1);

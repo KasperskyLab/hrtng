@@ -27,7 +27,7 @@
 //if number of code xrefs to proc is geater - the proc will not be target for name & type propagation
 #define TOO_POPULAR_CNT 5
 
-static bool isIdaInternalComment(const char* comment)
+bool isIdaInternalComment(const char* comment)
 {
 	if (!strncmp(comment, "jumptable", 9)) //jumptable 0040D4DD case 1
 		return true;
