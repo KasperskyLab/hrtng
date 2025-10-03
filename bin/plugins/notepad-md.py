@@ -10,10 +10,11 @@ import ida_kernwin
 import ida_nalt
 import ida_idaapi
 
-if float(ida_kernwin.get_kernel_version()) > 9.2:
-  from PySide6 import QtWidgets
-else:
+from idaapi import PluginForm
+if float(ida_kernwin.get_kernel_version()) < 9.2:
   from PyQt5 import QtWidgets
+else:
+  from PySide6 import QtWidgets
 
 mdnpForm = None
 
