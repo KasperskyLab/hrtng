@@ -58,7 +58,6 @@ Messages, menu items, popup windows and dialog boxes belong to this plugin are m
   * [List of structures with given size, with given offset](doc/struct-sz-off.md)
   * [Assist in creation of new structure definitions](doc/struct-bld.md)
   * [Finds structures with same "shape" as is used](doc/struct-shape.md)
-  * [Import user named functions prototypes into the local type library](doc/import_unf_types.md)
   * [~~New functionality in Structures view~~](doc/ex-unp-struc.md)
   * [IDC script for interactive merging types across multiple IDBs](bin/idc/merge_types.idc)
 
@@ -70,6 +69,7 @@ Messages, menu items, popup windows and dialog boxes belong to this plugin are m
 ### Function name and type
   * [Smart rename func](doc/rename-func.md)
   * [Convert function to __usercall, detect spoiled registers](doc/usercall.md)
+  * [Import user named functions prototypes into the local type library](doc/import_unf_types.md)
   * [~~Set calling conventions bit closer to Go-lang~~](doc/golang.md)
   * [~~Remove function's return type converting it to void func(...)~~](doc/remove-ret-type.md)
   * [~~Remove function's argument~~](doc/remove-arg.md)

@@ -417,8 +417,16 @@ inline qstring msig_auto_filename()
 {
 	qstring filename;
 	netnode nn(msigNodeName);
-	if(exist(nn))
+	if(exist(nn)) {
 		nn.valstr(&filename);
+
+		//if msig placed in the same dir as IDB, store only filename part of path to easier files transfer
+		char dir[QMAXPATH];
+		if(!qisabspath(filename.c_str()) && qdirname(dir, QMAXPATH, get_path(PATH_TYPE_IDB))) {
+			filename.insert(0,'/');
+			filename.insert(0, dir);
+		}
+	}
 	return filename;
 }
 
@@ -491,13 +499,23 @@ void msig_unreg_act()
 //------------------------------------------------
 ACT_DEF(msigLoad)
 {
-	qstring filename = get_path(PATH_TYPE_IDB);
+	const char *idbPath = get_path(PATH_TYPE_IDB);
+	qstring filename = idbPath;
 	filename.append(".msig");
 	filename = ask_file(0, filename.c_str(), "FILTER MSIG files|*.msig\n[hrt] Load MSIG file:");
 	if(filename.empty())
 		return 0;
 
 	msigs.load(filename.c_str());
+
+	//if msig placed in the same dir as IDB, store only filename part of path to easier files transfer
+	char dir[QMAXPATH];
+	if(qisabspath(filename.c_str()) && qdirname(dir, QMAXPATH, idbPath)) {
+		size_t dirLen = qstrlen(dir);
+		if(dirLen > 1 && dirLen < filename.length() && !strncmp(filename.c_str(), dir, dirLen))
+			filename = filename.substr(dirLen + 1);
+	}
+
 	netnode nn(msigNodeName, 0, true);
 	nn.set(filename.c_str(), filename.size());
 	return 1;

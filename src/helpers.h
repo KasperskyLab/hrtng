@@ -145,6 +145,7 @@ template <typename T> size_t get_idx_of(qvector<T> * vec, T *item)
 
 size_t get_idx_of_lvar(vdui_t &vu, lvar_t *lvar);
 tinfo_t getType4Name(const char *name, bool funcType = false);
+bool isNamedTypeExists(const char *name);
 
 #define is64bit()  inf_is_64bit()
 #define ea_size  ((is64bit() && !isIlp32()) ? 8 : 4)

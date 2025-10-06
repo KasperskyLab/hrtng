@@ -3003,7 +3003,7 @@ qstring dummy_struct_name(size_t size, const char* sprefix)
 	for (char j = 'z'; j > 'f'; j--) {
 		qstring basename = name;
 		for (char i = 'z'; i > 'f'; i--) {
-			if (get_named_type_tid(name.c_str()) == BADADDR)
+			if(!isNamedTypeExists(name.c_str()))
 				return name;
 			name = basename;
 			name.cat_sprnt("%c", i);
@@ -3062,7 +3062,7 @@ ACT_DEF(create_dummy_struct)
 	do {
 		if (1 != ask_form(format, dummy_struct_cb, &dummy_struct_prefix, &size, &name, &empty))
 			return 0;
-		if (get_named_type_tid(name.c_str()) != BADADDR) {
+		if(isNamedTypeExists(name.c_str())) {
 			Log(llError, "struct '%s' already exists\n", name.c_str());
 		} else if (size != 0) {
 			break;
@@ -3141,8 +3141,10 @@ ACT_DEF(create_dummy_struct)
 #if IDA_SDK_VERSION < 850
 #else //IDA_SDK_VERSION >= 850
 	tinfo_t ti;
-	if (!ti.create_udt(s) || ti.set_named_type(NULL, name.c_str()) != TERR_OK)
+	if (!ti.create_udt(s) || ti.set_named_type(NULL, name.c_str()) != TERR_OK) {
+		Log(llError, "create_udt() || set_named_type(\"%s\") error\n", name.c_str());
 		return 0;
+	}
 #endif //IDA_SDK_VERSION < 850
 	Log(llNotice, "struct '%s' was created\n", name.c_str());
 
@@ -5728,7 +5730,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.7.71";
+	addon.version = "3.7.72";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

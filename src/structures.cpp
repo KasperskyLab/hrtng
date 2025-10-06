@@ -617,7 +617,7 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 	struccmt.sprnt("@0x%a", VT_ea);
 
 	name_vt.rtrim('_'); // avoid names ending like "_12" to not exec name-to-type conversion
-	name_vt = unique_name(name_vt.c_str(), "", [](const qstring& n) { return get_named_type_tid(n.c_str()) == BADADDR; });
+	name_vt = unique_name(name_vt.c_str(), "", [](const qstring& n) { return !isNamedTypeExists(n.c_str()); });
 
 	tid_t newid = BADADDR;
 #if IDA_SDK_VERSION < 850
@@ -867,7 +867,7 @@ int create_VT(tid_t parent, ea_t VT_ea, bool autoScan/*= false*/)
 			enable_numbered_types(nullptr, true);// is it need???
 			uint32 ord = alloc_type_ordinal(nullptr);
 			qstring utname("u"); utname.append(name_VT);
-			utname = unique_name(utname.c_str(), "", [](const qstring& n) { return get_named_type_tid(n.c_str()) == BADADDR; });
+			utname = unique_name(utname.c_str(), "", [](const qstring& n) { return !isNamedTypeExists(n.c_str()); });
 			tinfo_code_t err = utype.set_numbered_type(nullptr, ord, 0, utname.c_str());
 			if (err == TERR_OK) {
 #if IDA_SDK_VERSION < 850
