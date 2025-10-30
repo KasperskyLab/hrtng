@@ -983,10 +983,8 @@ bool RemoveSingleGotos(mbl_array_t* mba)
 		goto_targets[i] = NO_GOTO;
 		mblock_t* b = mba->get_mblock(i);
 		minsn_t* m2 = getf_reginsn(b->head);
-		if (m2 == NULL || m2->opcode != m_goto)// Is the first non-assert instruction a goto?
-			continue;
-		QASSERT(100501, m2->l.t == mop_b);
-		goto_targets[i] = m2->l.b;
+		if (m2 != nullptr && m2->opcode == m_goto && m2->l.t == mop_b)// Is the first non-assert instruction a direct goto?
+			goto_targets[i] = m2->l.b;
 	}
 
 	int iRetVal = 0;

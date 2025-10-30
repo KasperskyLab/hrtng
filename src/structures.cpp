@@ -7,6 +7,7 @@
 #include <kernwin.hpp>
 #include <pro.h>
 #include <auto.hpp>
+#include <demangle.hpp>
 #include "warn_on.h"
 
 #include "helpers.h"
@@ -590,12 +591,16 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 	qstring name_vt(basename);
 	if (!basename) {
 		if(has_user_name(get_flags(VT_ea))) {
+			//remove everything except class-name if mangled name exist
 			name_vt = get_name(VT_ea);
-			if(name_vt.length() > 9 && !strncmp(name_vt.c_str(), "??_7", 4)) {
-				//remove everything except main class name
-				name_vt.remove(0, 4);
-				name_vt = name_vt.substr(0, name_vt.find("@@6B"));
+			qstring dname;
+			if(demangle_name(&dname, name_vt.c_str(), MNG_NODEFINIT) >= 0) {
+				name_vt = dname;
+				size_t tail = name_vt.find("::`vftable'"); // FIXME: MSVC specific?
+				if(tail != qstring::npos)
+					name_vt.remove(tail, 11);
 			}
+			validate_name(&name_vt, VNT_TYPE, SN_NOCHECK);
 			if(!strnicmp(name_vt.c_str(), "vtbl_", 5))
 				name_vt.remove(0, 5);
 			name_vt.remove(name_vt.find(VTBL_SUFFIX "_"), 6);
@@ -738,7 +743,7 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 	// store type later to not produce deleted types
 	err = newstruc.set_named_type(NULL, name_vt.c_str());
 	if(err != TERR_OK) {
-		Log(llError, "error %d (%s) on create vtbl stuct\n", err, tinfo_errstr(err));
+		Log(llError, "error %d (%s) on set name for vtbl stuct\n", err, tinfo_errstr(err));
 		return BADADDR;
 	}
 	newstruc.set_type_cmt(struccmt.c_str());
@@ -760,10 +765,10 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 	newType = newstruc;
 #endif //IDA_SDK_VERSION >= 850
 
-	name_vt.append('_');
-	set_name(VT_ea, name_vt.c_str(), SN_FORCE);
-	//VT_ea type should be set by set-type-on-rename on set_name above,
-	//but in case of redefinition of incomplete VTBL it doesn't work because of checks is_userti(). So force it
+	if(!has_user_name(get_flags(VT_ea))) {
+		name_vt.append('_');
+		set_name(VT_ea, name_vt.c_str(), SN_FORCE);
+	}
 	apply_tinfo(VT_ea, newType, TINFO_DEFINITE | TINFO_DELAYFUNC | TINFO_STRICT);
 	return newid;
 }

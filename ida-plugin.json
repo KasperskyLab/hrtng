@@ -7,6 +7,6 @@
     "logoPath": "doc/logo.jpg",
     "idaVersions": ">=7.3",
     "description" : "IDA Pro plugin with a rich set of features: decryption, deobfuscation, patching, lib code recognition and various pseudocode transformations",
-    "version": "3.7.72"
+    "version": "3.7.73"
   }
 }

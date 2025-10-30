@@ -1080,7 +1080,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			//and mark as a wrapper by "_w" or "_ww" or "_www" .... suffix
 			// unlike "j_" jump functions, wrapper can have some additional code, like set values for args of callee
 			if (stmtCnt <= 1 && callCnt == 1 && has_dummy_name(get_flags(func->entry_ea))) {
-				if (!callProcName.empty() && strncmp(callProcName.c_str(), "sub_", 4)) {
+				if (!callProcName.empty() && strncmp(callProcName.c_str(), "sub_", 4) && callProcName != "JUMPOUT") {
 					qstring newName = callProcName;
 					if (newName.size() > MAX_NAME_LEN - 2)
 						newName.resize(MAX_NAME_LEN - 2);
