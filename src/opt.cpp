@@ -11,6 +11,9 @@
 
 #define DEBUG_DO 0
 
+// Dirty hack for a quite popular opaque predicate is often used together with flattening, not quite correctly handled. Disabled by default
+#define RO_GVAR 0
+
 #if DEBUG_DO
 #define MSG_DO(msg_) msg msg_;
 #else
@@ -258,32 +261,6 @@ bool AreConditionsOpposite(minsn_t* lhsCond, minsn_t* rhsCond)
 			return	rhsCond->r.equal_mops(lhsCond->l, EQ_IGNSIZE) && rhsCond->l.equal_mops(lhsCond->r, EQ_IGNSIZE);
 	}
 	return false;
-}
-
-// This function checks whether the operand is a global variable unchanged since the initialization
-bool IsReadOnlyInitedVar(mop_t* op)
-{
-	if (op->t != mop_v) // global variable?
-		return false;
-
-	// The variable is in a writable section? (e.g., .data section)
-	segment_t* s = getseg(op->g);
-	if (s == NULL)
-		return false;
-	if (s->perm != (SEGPERM_READ | SEGPERM_WRITE))
-		return false;
-	// TODO: section with IMAGE_SCN_CNT_INITIALIZED_DATA?
-
-	// The variable doesn't have a byte value?
-	if (!is_mapped(op->g))
-		return false;
-	// The variable doesn't have xrefsTo with write access?
-	xrefblk_t xb;
-	for (bool ok = xb.first_to(op->g, XREF_DATA); ok; ok = xb.next_to())
-		if (xb.type == dr_W)
-			return false;
-
-	return true;
 }
 
 // Put an mop_t into an mlist_t. The op must be either a register or a stack variable.
@@ -619,12 +596,40 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 		return 1;
 	}
 
-#if 0
+#if RO_GVAR
+	// This function checks whether the operand is a global variable unchanged since the initialization
+	bool IsReadOnlyInitedVar(mop_t* op)
+	{
+		if (op->t != mop_v) // global variable?
+			return false;
+
+		// The variable is in a writable section? (e.g., .data section)
+		segment_t* s = getseg(op->g);
+		if (s == NULL)
+			return false;
+		if (s->perm != (SEGPERM_READ | SEGPERM_WRITE))
+			return false;
+		// TODO: section with IMAGE_SCN_CNT_INITIALIZED_DATA?
+
+		// The variable doesn't have a byte value?
+		if (!is_mapped(op->g))
+			return false;
+		// The variable doesn't have xrefsTo with write access?
+		xrefblk_t xb;
+		for (bool ok = xb.first_to(op->g, XREF_DATA); ok; ok = xb.next_to())
+			if (xb.type == dr_W)
+				return false;
+
+		return true;
+	}
+#endif
+
 	// This function replaces read-only initialized global variable patterns with 0 in m_setl/m_jl/m_jge, m_seto (MMAT_CALLS or later only)
 	// either: dword_73FBB588 >= immediate value (e.g., 10, 9)
 	// or:     dword_73FBB588 < immediate value (e.g., 10, 9)
 	int pat_InitedVarCondImm(minsn_t*& ins, mblock_t* blk)
 	{
+#if RO_GVAR
 		if (ins->opcode == m_seto && (blk == NULL || blk->mba->maturity <= MMAT_LOCOPT))
 			return 0;
 
@@ -633,17 +638,13 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 		if (!ExtractNumAndNonNum(ins, condNum, condNonNum))
 			return 0;
 
-		//if (condNum->nnn->value != 10)
 		if (condNum->nnn->value != 10 && condNum->nnn->value != 9)
 			return 0;
 
-		if (condNonNum->t == mop_v)
-		{
+		if (condNonNum->t == mop_v) {
 			if (!IsReadOnlyInitedVar(condNonNum))
 				return 0;
-		}
-		else
-		{
+		} else {
 			if (blk == NULL)
 				return 0;
 			// data flow tracking
@@ -661,6 +662,9 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 		else
 			ins->r.make_number(0, ins->r.size);
 		return 1;
+#else
+		return 0;
+#endif
 	}
 
 	// This function replaces read-only initialized global variable patterns with 0 in m_sets (MMAT_CALLS or later only)
@@ -668,6 +672,7 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 	// or:     dword_10020CE4 - 10 < 0
 	int pat_InitedVarSubImmCond0(minsn_t* ins, mblock_t* blk)
 	{
+#if RO_GVAR
 		if (blk == NULL || blk->mba->maturity <= MMAT_LOCOPT)
 			return 0;
 
@@ -683,6 +688,7 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 			ins->l.make_number(1, 1);
 			return 1;
 		}
+#endif
 		return 0;
 	}
 
@@ -693,14 +699,17 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 	//     ....
 	int pat_InitedVarMov(minsn_t* ins)
 	{
+#if RO_GVAR
 		if (!IsReadOnlyInitedVar(&ins->l))
 			return 0;
 
 		// Replace the global variable with 0
 		ins->l.make_number(0, ins->l.size);
 		return 1;
-	}
+#else
+		return 0;
 #endif
+	}
 
 	// This function looks tries to replace patterns of the form
 	// either: (x&y)|(x^y)   ==> x|y
@@ -1046,7 +1055,7 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 			if (!iLocalRetVal)
 				iLocalRetVal = pat_LogicAnd1(ins, blk);
 			if (!iLocalRetVal)
-				iLocalRetVal = pat_MulSub2(ins, blk); // added
+				iLocalRetVal = pat_MulSub2(ins, blk);
 			break;
 		case m_and:
 			iLocalRetVal = pat_MulSub(ins, blk);
@@ -1063,13 +1072,13 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 		case m_jl:
 		case m_jge:
 		case m_seto: // cause INTERR 50862 -> replace in later maturity level
-			//iLocalRetVal = pat_InitedVarCondImm(ins, blk); // added
+			iLocalRetVal = pat_InitedVarCondImm(ins, blk);
 			break;
 		case m_sets:
-			//iLocalRetVal = pat_InitedVarSubImmCond0(ins, blk); // added
+			iLocalRetVal = pat_InitedVarSubImmCond0(ins, blk);
 			break;
 		case m_mov:
-			//iLocalRetVal = pat_InitedVarMov(ins);// data-flow tracking required
+			iLocalRetVal = pat_InitedVarMov(ins);// data-flow tracking required
 			break;
 		case m_add:
 		case m_sub:

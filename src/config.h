@@ -38,6 +38,8 @@ struct config_t {
 	int logLevel = llNotice;
 	int64 align = 0; // new field(s) with zero default value may be put here
 	int64 braceBgColor = 0x7f7f7fLL; //aligned to offset 0x10 to keep default value when part of config_t is overwritten by older struct version loading
+	int64 align2 = 0; // new field(s) with zero default value may be put here
+	uint64 tooPopularFuncCRefCnt = 5; //aligned to offset 0x20
 	// !!! add new fields to the end of the struct to keep backward compatibility
 	// !!! search "add new config_t fields" comment in `config.cpp`
 } ATTR_PACKED(16);

@@ -1152,9 +1152,9 @@ struct ida_local DeferredGraphModifier
 
 	// Either change the destination of an existing goto, or add a new goto onto the end of the block to the destination. 
 	// Also, plan to modify the graph structure later to reflect these changes.
-	bool ChangeGoto(mblock_t *blk, int iOld, int iNew)
+	void ChangeGoto(mblock_t *blk, int iOld, int iNew)
 	{
-		MSG_UF3(("[I] %a: ChangeGoto %d -> %d (was %d)\n", blk->start, blk->serial, iNew, iOld));
+		MSG_UF3(("[I] %a: ChangeGoto %d->%d (was %d)\n", blk->start, blk->serial, iNew, iOld));
 		if (blk->tail != NULL && is_mcode_jcond(blk->tail->opcode))
 			blk->tail->d.b = iNew;
 		else if (blk->tail && blk->tail->opcode == m_goto)
@@ -1167,7 +1167,6 @@ struct ida_local DeferredGraphModifier
 		else
 			Add(blk->serial, iNew);
 		blk->mark_lists_dirty();
-		return true;
 	}
 };
 
@@ -1555,11 +1554,12 @@ struct ida_local CFUnflattener
 	bool FindJccInFirstBlocks(mbl_array_t* mba, mop_t*& opCopy, mblock_t*& endsWithJcc, mblock_t*& nonJcc, int& actualGotoTarget, int& actualJccTarget)
 	{
 		actualGotoTarget = actualJccTarget = -1;
+		int first = cfi.iFirst;
 
 		// search assignment for endsWithJcc (the assignment can be done in every endsWithJcc blocks)
-		for (int iCurrent = cfi.iFirst; iCurrent > 0; iCurrent -= 2) {
+		for (int iCurrent = first; iCurrent > 0; iCurrent -= 2) {
 			endsWithJcc = mba->get_mblock(iCurrent);
-			if (iCurrent == cfi.iFirst || is_mcode_jcond(endsWithJcc->tail->opcode)) {
+			if (iCurrent == first || is_mcode_jcond(endsWithJcc->tail->opcode)) {
 				actualGotoTarget = FindBlockTargetOrLastCopy(endsWithJcc, endsWithJcc, opCopy, false, false);
 				if (actualGotoTarget > 0)
 					break;
@@ -1569,8 +1569,9 @@ struct ida_local CFUnflattener
 #if DEBUG_UF >= 3
 						qstring qs1;	opCopy2nd->print(&qs1); tag_remove(&qs1);
 						qstring qs2;	opCopy->print(&qs2); tag_remove(&qs2);
-						MSG_UF3(("[I] %a: FindJccInFirstBlocks %s assigned to %s\n", m_DeferredErasuresLocal.back().insMov->ea, qs1.c_str(), qs2.c_str()));
+						MSG_UF3(("[I] %a: Blk %d FindJccInFirstBlocks %s assigned to %s\n", m_DeferredErasuresLocal.back().insMov->ea, iCurrent, qs1.c_str(), qs2.c_str()));
 #endif
+						first = iCurrent;
 						opCopy = opCopy2nd;
 					}
 				}
@@ -1578,7 +1579,7 @@ struct ida_local CFUnflattener
 		}
 
 		// search assignment for nonJcc
-		for (int iCurrent = cfi.iFirst - 1; iCurrent > 0; iCurrent -= 2) {
+		for (int iCurrent = first - 1; iCurrent > 0; iCurrent -= 2) {
 			nonJcc = mba->get_mblock(iCurrent);
 			if (!is_mcode_jcond(nonJcc->tail->opcode)) {
 				actualJccTarget = FindBlockTargetOrLastCopy(nonJcc, nonJcc, opCopy, false, false);
@@ -1591,7 +1592,7 @@ struct ida_local CFUnflattener
 		}
 
 		// handle case then first block assing additional variable
-		return actualGotoTarget > 0 && endsWithJcc->serial == cfi.iFirst;
+		return actualGotoTarget > 0 && endsWithJcc->serial == first;
 	}
 
 	// Erase the now-superfluous chain of instructions that were used to copy a numeric value into the assignment variable.
@@ -1636,6 +1637,7 @@ struct ida_local CFUnflattener
 		// Iterate through the predecessors of the top-level control flow switch
 		for (auto iDispPred : mba->get_mblock(cfi.iDispatch)->predset) {
 			mblock_t* mb = mba->get_mblock(iDispPred);
+			MSG_UF3(("[I] --- Dispatcher's predecessor %d ---\n", iDispPred));
 			int nsucc = mb->nsucc();
 			if (nsucc > 2) {
 				MSG_UF1(("[E] nsucc check: The dispatcher predecessor %d had %d successors, > 2 (continue)\n", iDispPred, mb->nsucc()));
@@ -1828,7 +1830,8 @@ struct ida_local CFUnflattener
 					}
 
 					// dispatcher predecessor -> endsWithJcc
-					MSG_UF3(("[I] first blocks: The dispatcher predecessor %d, endsWithJcc = %d & actualDfltTarget = %d, nonJcc = %d & actualNonJccTarget = %d\n", mb->serial, endsWithJcc->serial, actualDfltTarget, nonJcc->serial, actualNonJccTarget));
+					MSG_UF3(("[I] first blocks: The dispatcher predecessor %d, endsWithJcc = %d & actualDfltTarget = %d, nonJcc = %d & actualNonJccTarget = %d\n",
+									 mb->serial, endsWithJcc->serial, actualDfltTarget, nonJcc->serial, actualNonJccTarget));
 					dgm.ChangeGoto(mb, cfi.iDispatch, endsWithJcc->serial);
 
 					// endsWithJcc true case -> actualDfltTarget
@@ -1880,6 +1883,10 @@ struct ida_local CFUnflattener
 		// fix/append jump in the pred of the last block to pass control correctly
 		CorrectStopBlockPreds(dgm, mba);
 		int defChanged = dgm.Apply();// apply the deferred modifications to the graph structure.
+#if DEBUG_UF >= 3
+	ShowMicrocodeExplorer(mba, "beforePruneUnreachable");
+	mba->verify(true);
+#endif
 
 #if 1
 		if (defChanged != 0) {
@@ -1936,13 +1943,14 @@ static uint32 reentryCnt;
 	}
 
 #if DEBUG_UF >= 3
-	//ShowMicrocodeExplorer(mba, "beforeUnflattening0");
+	ShowMicrocodeExplorer(mba, "beforeUnflattening%d - %a", reentryCnt, mba->entry_ea);
 #endif
 	CFUnflattener unfl;
 	if (unfl.run(mba)) {
+		changed = true;
 		mba->dump_mba(true, "[hrt] after unflattening");
-		return true;
 	} else {
+		MSG_UF3(("[I] no unflattening\n"));
 		if (!ufIsInWL(mba->entry_ea) && !ufIsInGL(mba->entry_ea))
 			g_BlackList.insert(mba->entry_ea);
 	}

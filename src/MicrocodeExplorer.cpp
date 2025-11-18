@@ -749,9 +749,14 @@ void showMicrocodeExplorer(mbl_array_t* mba, bool keepMba, const char* name)
 	display_widget(si->cv, WOPN_DP_TAB | WOPN_NOT_CLOSED_BY_ESC, "IDA View-A");
 }
 
-void ShowMicrocodeExplorer(mbl_array_t* mba, const char* name)
+void ShowMicrocodeExplorer(mbl_array_t* mba, const char* fmt, ...)
 {
-	showMicrocodeExplorer(mba, false, name);
+	qstring name;
+	va_list va;
+	va_start(va, fmt);
+	name.vsprnt(fmt, va);
+	va_end(va);
+	showMicrocodeExplorer(mba, false, name.c_str());
 }
 
 //-------------------------------------------------------------------------

@@ -22,10 +22,8 @@
 #include "warn_on.h"
 
 #include "helpers.h"
+#include "config.h"
 #include "rename.h"
-
-//if number of code xrefs to proc is geater - the proc will not be target for name & type propagation
-#define TOO_POPULAR_CNT 5
 
 bool isIdaInternalComment(const char* comment)
 {
@@ -879,15 +877,13 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			if(dstea != BADADDR && !tif.is_from_subtil()) {
 				func_t *f = get_func(dstea);
 				if(f && !(f->flags & FUNC_LIB)) {
-#if TOO_POPULAR_CNT
 					//do check number of crefs for avoid renaming args in popular funcs like memcpy, alloc, etc
 					uint32 nref = 0;
-					for(ea_t xrefea = get_first_cref_to(dstea); xrefea != BADADDR && ++nref <= TOO_POPULAR_CNT; xrefea = get_next_cref_to(dstea, xrefea))
+					for(ea_t xrefea = get_first_cref_to(dstea); xrefea != BADADDR && ++nref <= cfg.tooPopularFuncCRefCnt; xrefea = get_next_cref_to(dstea, xrefea))
 						;
-					if(nref > TOO_POPULAR_CNT)
+					if(nref > cfg.tooPopularFuncCRefCnt)
 						Log(llFlood, "%a %s: too many crefs to %a %s, do not change proto\n", call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str());
 					else
-#endif
 						bAllowTypeChange = true;
 				}
 			}

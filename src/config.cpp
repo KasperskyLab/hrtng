@@ -34,6 +34,7 @@ static const char cfgNodeName[] = "$ hrt options";
 static const cfgopt_t opts[] = {
 	cfgopt_t("LOGGING_LEVEL", &cfg.logLevel),
 	cfgopt_t("DISABLE_AUTORENAME", &cfg.disable_autorename, 1),
+	cfgopt_t("TOO_POPULAR_FUNC", (int*)&cfg.tooPopularFuncCRefCnt),
 	cfgopt_t("MATCHED_BRACE_COLOR", (int*)&cfg.braceBgColor)
 // !!! add new config_t fields here in arbitrary order
 };
@@ -76,10 +77,11 @@ void configDlg()
 			"[hrt] Options\n\n"
 			"<Logging level:b:0:>\n"
 			"<#-1 to turn highlighting off#Matching brace color:l::8::>\n"
+			"<#If number of code xrefs to proc is greater - the proc will not be target for name & type propagation#Too popular cref cnt:D::8::>\n"
 			"<#NOT RECOMMENDED#Disable auto~r~ename:C>>\n"
 // !!! add new config_t fields here in arbitrary order
 			"\n\n";
-	if (1 != ask_form(format, &llNames, &cfg.logLevel, &cfg.braceBgColor, &cfg.disable_autorename))
+	if (1 != ask_form(format, &llNames, &cfg.logLevel, &cfg.braceBgColor, &cfg.tooPopularFuncCRefCnt, &cfg.disable_autorename))
 		return;
 	configSave();
 }
