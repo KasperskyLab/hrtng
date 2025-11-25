@@ -1,0 +1,127 @@
+name: build
+
+on:
+  push:
+    branches: [ "master" ]
+    tags:
+      - "v*"
+  pull_request:
+    branches: [ "master" ]
+
+permissions: read-all
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    permissions:
+      # for upload to release
+      contents: write
+    name: IDA ${{ matrix.ida.version }} on ${{ matrix.os.name }}
+    runs-on: ${{ matrix.os.runner }}
+    strategy:
+      # Set fail-fast to false to ensure that feedback is delivered for all matrix combinations. Consider changing this to true when your workflow is stable.
+      fail-fast: false
+      matrix:
+        os:
+          - runner: ubuntu-latest
+            name: linux
+            mask: "*.so"
+          - runner: windows-latest
+            name: windows
+            mask: "Release/*.dll"
+          - runner: macos-latest
+            name: macos
+            mask: "*.dylib"
+        ida:
+          - version: "9.2"
+            ver: "92"
+
+    steps:
+      - name: Setup MSBuild
+        if: matrix.os.name == 'windows'
+        uses: microsoft/setup-msbuild@v1.1
+
+      - name: Setup Visual Studio 2022
+        if: matrix.os.name == 'windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          vsversion: 2022
+
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          submodules: "recursive"
+
+      - name: Download IDA SDK ${{ matrix.ida.version }}
+        shell: bash
+        run: |
+          git clone https://github.com/HexRaysSA/ida-sdk.git ida-sdk
+          cd ida-sdk
+          git checkout v${{ matrix.ida.version }}
+          cd ..
+
+      - name: Setup CMake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '3.28.x'
+
+      - name: Build
+        shell: bash
+        run: |
+          cmake -B build -S src -D IDASDK_VER=${{ matrix.ida.ver }} -D IDASDK_DIR="${{ github.workspace }}/ida-sdk/src"
+          cmake --build build --config Release
+
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          cp -v ./build/${{ matrix.os.mask }} artifacts/
+          cp -v ./bin/plugins/*.txt artifacts/
+          cp -v ida-plugin.json artifacts/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: hrtng-ida${{ matrix.ida.version }}-${{ matrix.os.name }}
+          path: artifacts/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    name: release for IDA ${{ matrix.ida.version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        ida:
+          - version: "9.2"
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: hrtng-ida${{ matrix.ida.version }}-*
+          merge-multiple: true
+
+      - name: Create archive
+        shell: bash
+        run: |
+          cd artifacts
+          zip -r ../hrtng-ida${{ matrix.ida.version }}.zip *
+          cd ..
+          mv hrtng-ida${{ matrix.ida.version }}.zip artifacts/
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.zip
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
