@@ -3,10 +3,17 @@
   "plugin": {
     "name": "hrtng",
     "entryPoint": "hrtng",
-    "categories": ["decompilation", "deobfuscation", "malware-analysis"],
-    "logoPath": "doc/logo.jpg",
+    "version": "3.7.74",
     "idaVersions": ">=7.3",
+    "categories": ["decompilation", "deobfuscation", "malware-analysis"],
     "description" : "IDA Pro plugin with a rich set of features: decryption, deobfuscation, patching, lib code recognition and various pseudocode transformations",
-    "version": "3.7.74"
+    "license": "GPL-3.0",
+    "logoPath": "doc/logo.jpg",
+    "urls": {
+      "repository": "https://github.com/KasperskyLab/hrtng"
+    },
+    "authors": [{
+      "email": "bes@kaspersky.com"
+    }]
   }
 }
