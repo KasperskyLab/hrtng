@@ -1,9 +1,9 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 3.10)
 project(hrtng)
 
-#run ccmake to change IDASDK_VER
+#run ccmake to change IDASDK_VER / IDASDK_DIR
 SET(IDASDK_VER "92" CACHE STRING "92" )
-SET(IDASDK_DIR ${CMAKE_SOURCE_DIR}/../../idasdk${IDASDK_VER})
+SET(IDASDK_DIR ${CMAKE_SOURCE_DIR}/../../idasdk${IDASDK_VER} CACHE STRING "ida-sdk/src")
 MESSAGE("${PROJECT_NAME}")
 MESSAGE("Using IDA SDK dir: ${IDASDK_DIR}")
 MESSAGE("-------------------")
