@@ -113,6 +113,7 @@ jobs:
       - name: Create archive
         shell: bash
         run: |
+          cp -v logo.jpg artifacts/
           cd artifacts
           zip -r ../hrtng-ida${{ matrix.ida.version }}.zip *
           cd ..

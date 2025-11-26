@@ -8,7 +8,7 @@
     "categories": ["decompilation", "deobfuscation", "malware-analysis"],
     "description" : "IDA Pro plugin with a rich set of features: decryption, deobfuscation, patching, lib code recognition and various pseudocode transformations",
     "license": "GPL-3.0",
-    "logoPath": "doc/logo.jpg",
+    "logoPath": "logo.jpg",
     "urls": {
       "repository": "https://github.com/KasperskyLab/hrtng"
     },
