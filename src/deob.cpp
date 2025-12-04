@@ -106,7 +106,7 @@ struct ida_local deob_op_visitor_t : mop_visitor_t
 struct ida_local deob_instr_visitor_t : minsn_visitor_t
 {
 	int visit_minsn()
-	{ 
+	{
 		switch (curins->opcode) {
 		case m_ret:
 			//return insert_ret_addr_catcher(curins);
@@ -279,7 +279,7 @@ to:
 
 		if (!b3->predset.size()) {
 			//b3 is unreacheble
-			//b3->start can be FAKE block eith same addr range as b2 
+			//b3->start can be FAKE block eith same addr range as b2
 			while (b3->start != b2->end && b3->type == BLT_1WAY && (b3->flags & MBL_FAKE) != 0) {
 				b3 = mba->get_mblock(b3->succset[0]);
 			}
@@ -317,7 +317,7 @@ void deob_init()
 		deob = true;
 	}
 }
-void deob_done() 
+void deob_done()
 {
 	if (deob) {
 		remove_optinsn_handler(&deobfuscation_optimizer);
@@ -599,11 +599,11 @@ struct ida_local frac_visitor_t : minsn_visitor_t
 		}
 		//do not delete helpers on hxe_glbopt event before final pass
 		//on prev passes it doesn't care - mba is deleted just after deob_postprocess call
-		if (final_pass) { 
+		if (final_pass) {
 			blk->make_nop(curins);
 			changed = true;
 		}
-		return 0; 
+		return 0;
 	}
 };
 
@@ -889,11 +889,11 @@ static ea_t get_nullsub_1()
 
 	ea = inf_get_max_ea();
 	if(is_unknown(get_flags(ea)) &&
-		add_segm(0, ea, ea + 1, "[hrt]nullsub", "CODE", ADDSEG_QUIET | ADDSEG_FILLGAP) && 
-		put_byte(ea, 0xc3) && 
-		create_insn(ea) && 
-		add_func(ea) && 
-		set_name(ea, "nullsub_1")) 
+		add_segm(0, ea, ea + 1, "[hrt]nullsub", "CODE", ADDSEG_QUIET | ADDSEG_FILLGAP) &&
+		put_byte(ea, 0xc3) &&
+		create_insn(ea) &&
+		add_func(ea) &&
+		set_name(ea, "nullsub_1"))
 	{
 		return ea;
 	}
@@ -925,7 +925,7 @@ void rset2rvec(ea_t eaBgn, const rangeset_t *rs, rangevec_t *rv)
 
 //create func chunks
 func_t *remake_func(ea_t startEA,  const rangeset_t &ranges)
-{ 
+{
 #if 0
 	//does not help
 	//if (!inf_is_auto_enabled())
@@ -988,7 +988,7 @@ int decompile_obfuscated(ea_t eaBgn)
 		"\n\n";
 	if (1 != ask_form(format, &dflags))
 		return false;
-	
+
 	rangeset_t ranges;
 	unreachBlocks.clear();
 
@@ -1052,7 +1052,7 @@ int decompile_obfuscated(ea_t eaBgn)
 			Log(llError, "%a: gen_microcode err %d (%s)\n", hf.errea, hf.code, hf.desc().c_str());
 			return 0;
 		}
-		
+
 		eavec_t new_dests;
 		for (int i = 0; i < mba->qty; i++) {
 			mblock_t *blk = mba->get_mblock(i);

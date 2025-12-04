@@ -229,7 +229,7 @@ static bool getEaName(ea_t ea, qstring* name)
 		}
 		return true;
 	}
-		
+
 	if (has_user_name(flg) || has_auto_name(flg)) {
 		qstring n;
 		get_ea_name(&n, ea);
@@ -251,6 +251,23 @@ static bool getEaName(ea_t ea, qstring* name)
 			}
 			return true;
 		}
+	}
+	return false;
+}
+
+// renaming a function at this late stage can cause INTERR 51774 because the control
+// flow graph may become wrong. It occurs if we rename a function with a non-returning name,
+// like exit(). In this case, the microcode control graph would still have an edge originating
+// after the call. We should examine all microcode calls and remove these edges.
+//
+// This probably can happens also for indirect calls with using local var or struc member
+bool isNoretProcName(ea_t refea, const char* name)
+{
+	tinfo_t ft = getType4Name(name, true);
+	func_type_data_t fi;
+	if(ft.is_decl_func() && ft.get_func_details(&fi, GTD_NO_ARGLOCS) && fi.is_noret()) {
+		Log(llWarning, "%a: no autorename no-return call target \"%s\")\n", refea, name);
+		return true;
 	}
 	return false;
 }
@@ -335,13 +352,17 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 		res = vdui->rename_lvar(var, newName.c_str(), true); // vdui->rename_lvar can rebuild all internal structures/ call later!!!
 	} else {
 		//this way of renaming/retyping is not stored in database. And don't need, it's temporary renaming
+#if IDA_SDK_VERSION < 830
 		var->name = newName;
 		var->set_user_name();
+#else // IDA_SDK_VERSION >= 830
+		res = func->mba->set_lvar_name(*var, newName.c_str(), CVAR_NAME | CVAR_UNAME);
+#endif // IDA_SDK_VERSION < 830
 
 		tinfo_t newType;
 		if(!var->has_user_type()) {
 			tinfo_t t = getType4Name(newName.c_str());
-			if(!t.empty() && var->accepts_type(t))
+			if(!t.empty() && var->accepts_type(t) && t.get_size() >= (size_t)var->width)
 				if(var->set_lvar_type(t, true)) {
 					Log(llInfo, "%a: type of var '%s' refreshed\n", refea, newName.c_str());
 					newType = t;
@@ -384,7 +405,8 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 	}
 	if(!res)
 		Log(llWarning, "%a: Var \"%s\" rename to \"%s\" failed\n", refea, oldname.c_str(), newName.c_str());
-	else Log(llInfo, "%a: Var \"%s\" was renamed to \"%s\"\n", refea, oldname.c_str(), newName.c_str());
+	else
+		Log(llInfo, "%a: Var \"%s\" was renamed to \"%s\"\n", refea, oldname.c_str(), newName.c_str());
 
 	return res;
 }
@@ -609,6 +631,9 @@ bool renameExp(ea_t refea, cfunc_t *func, cexpr_t* exp, qstring* name, vdui_t *v
 		}
 	}
 
+	if(isNoretProcName(refea, name->c_str()))
+		 return false;
+
 	if(exp->op == cot_var)
 		return renameVar(refea, func, exp->v.idx, name, vdui);
 	if(exp->op == cot_obj)
@@ -625,7 +650,7 @@ static tinfo_t getExpType(cfunc_t *func, cexpr_t* exp)
 
 	switch (exp->op)
 	{
-	case cot_var: 
+	case cot_var:
 		{
 			lvars_t *vars = func->get_lvars();
 			lvar_t * var = &vars->at(exp->v.idx);
@@ -756,7 +781,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 				return 0;
 			}
 			//ida first block started from address of first operator, so we need skip first block startea override
-			isProlog = false; 
+			isProlog = false;
 			if(ins->op <= cit_block || //chks statements only
 				ins->ea == BADADDR ) { // some statements have no address (ex: cit_break)
 				DEBUG_COMMENTS(("skip %a: %d\n", ins->ea, ins->op));
@@ -897,7 +922,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 						qstring n = get_name(callDst->obj_ea);
 						if(!strncmp(n.c_str(), "off_", 4)) {
 							ea_t dest = get_ea(callDst->obj_ea);
-							if(getEaName(dest, &callProcName)) {
+							if(getEaName(dest, &callProcName) && !isNoretProcName(call->ea, callProcName.c_str())) {
 								renameEa(call->ea, callDst->obj_ea, &callProcName);
 							}
 						}
@@ -924,7 +949,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 				//get_func_details(&fi, GTD_CALC_ARGLOCS) may cause INTERR 50689 on call cot_helper
 				if(tif.get_func_details(&fi, bAllowTypeChange ? GTD_CALC_ARGLOCS : GTD_NO_ARGLOCS)) {
 					size_t nArgs = fi.size();//??? check vararg(,...)
-					if(nArgs > args.size()) 
+					if(nArgs > args.size())
 						return 0;
 					bool fiChanged = false;
 					for(size_t i = 0; i < fi.size(); i++) {
@@ -1000,14 +1025,17 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			while (p && p->op <= cot_last && p->op != cot_call) {
 				p = func->body.find_parent_of(p);
 			}
-			if (!p)
+			if (!p) {
 				p = parent_expr();
+        if (!p)
+          return 0;
+      }
 			if (p->op == cot_call) {
 				carglist_t &args = *((cexpr_t*)p)->a;
 				if (args.size() > 1) {
 					for (size_t i = 0; i < args.size(); i++) {
 						cexpr_t *arg = &args[i];
-						if (arg == obj || 
+						if (arg == obj ||
 							(arg->op == cot_cast && arg->x == obj)
 							/*arg->contains_expr((cexpr_t const *)obj)*/) {
 							if (args.size() != i + 1 && i < 63)
@@ -1030,7 +1058,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 				loc.ea = p->ea;
 
 			user_cmts_iterator_t it = user_cmts_find(cmts, loc);
-			if (it != user_cmts_end(cmts)) 
+			if (it != user_cmts_end(cmts))
 				return 0;
 
 			opinfo_t oi;
@@ -1045,7 +1073,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			}
 			return 0;
 		}
-		
+
 		int idaapi visit_expr(cexpr_t *exp)
 		{
 			if(exp->op == cot_call)
@@ -1071,7 +1099,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			if(i >= 10) {
 				Log(llWarning, "%a %s WARNING: rename looping...\n", func->entry_ea, funcname.c_str());
 			}
-			
+
 			//rename func itself if it has dummy name and only one statement inside
 			//and mark as a wrapper by "_w" or "_ww" or "_www" .... suffix
 			// unlike "j_" jump functions, wrapper can have some additional code, like set values for args of callee

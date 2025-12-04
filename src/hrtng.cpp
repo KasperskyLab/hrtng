@@ -255,7 +255,7 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 
 	if (is_recastable(vu, NULL))
 		attach_action_to_popup(view, p, ACT_NAME(recast_item));
-	
+
 	if (is_stack_var_assign(vu, NULL, NULL, NULL)) {
 		attach_action_to_popup(view, p, ACT_NAME(scan_stack_string));
 		attach_action_to_popup(view, p, ACT_NAME(scan_stack_string_n_decr));
@@ -780,6 +780,7 @@ static bool convert_cc_to_special(func_type_data_t & fti)
 		break;
 	default:
 		Log(llError, "convert to __usercall: Unknown function cc, %x\n", fti.cc & CM_CC_MASK);
+    [[fallthrough]];
 	case CM_CC_SPECIAL:
 	case CM_CC_SPECIALE:
 	case CM_CC_SPECIALP:
@@ -808,6 +809,7 @@ static bool convert_cc_to_special(func_type_data_t & fti)
 		break;
 	default:
 		Log(llError, "convert to __usercall: Unknown function cc, %x\n", fti.get_cc());
+    [[fallthrough]];
 	case CM_CC_SPECIAL:
 	case CM_CC_SPECIALE:
 	case CM_CC_SPECIALP:
@@ -860,7 +862,7 @@ ACT_DEF(fin_struct)
 				apply_tinfo(*iter, fitype, TINFO_DEFINITE);
 		}
 	}
-	
+
 	//process other funcs
 	ea_t save_ea = vu.cfunc->entry_ea;
 	for(auto it = fi.scanned_variables.begin(); it !=  fi.scanned_variables.end(); it++) {
@@ -912,7 +914,7 @@ ACT_DEF(fin_struct)
 						ui->set_lvar_type(var, restype);//var->set_lvar_type(restype);
 				} else {
 					tinfo_t tt;
-					
+
 					if (fi.types_cache.find(x.first) != fi.types_cache.end()) {
 						tt = fi.types_cache[x.first];
 					} else {
@@ -1016,7 +1018,7 @@ ACT_DEF(remove_argument)
 	tinfo_t type;
 	if(!vu.cfunc->get_func_type(&type))
 		return 0;
-	
+
 	lvar_t* lvar =  vu.item.get_lvar();
 	int answer = ask_yn(ASKBTN_NO, "[hrt] Delete arg '%s'?",lvar->name.c_str());
 	if(answer == ASKBTN_NO || answer ==ASKBTN_CANCEL)
@@ -1025,20 +1027,20 @@ ACT_DEF(remove_argument)
 	func_type_data_t fti;
 	type.get_func_details(&fti);
 	if (!convert_cc_to_special(fti))
-		return 0;	
+		return 0;
 
 	for(func_type_data_t::iterator i =  fti.begin(); i!=fti.end(); i++) {
 		if(i->name.size() && i->name == lvar->name) {
-			fti.erase(i);			
+			fti.erase(i);
 			break;
-		}	
+		}
 	}
 	type.clear();
 	type.create_func(fti);
 
 	if(!apply_tinfo(vu.cfunc->entry_ea, type, TINFO_DEFINITE))
 		return 0;
-	
+
 	vu.refresh_view(true);
 	return 0;
 }
@@ -1141,6 +1143,7 @@ struct ida_local types_locator_t : public ctree_parentee_t
 			bDerefPtr = true;
 			parent = (cexpr_t*)parents[i - 1];
 			//fall down to cot_asg handler
+      [[fallthrough]];
 		case cot_asg:
 		{
 			cexpr_t *y = skipCast(parent->y);
@@ -1425,7 +1428,6 @@ void golang_add(ea_t ea)
 	node.hashdel(GO_NETNODE_HASH_IDX);
 	node.hashset(GO_NETNODE_HASH_IDX, GO_NETNODE_VAL);
 	Log(llDebug, "%a: golang mode on\n", ea);
-	
 }
 
 void golang_check(mbl_array_t *mba)
@@ -1841,7 +1843,7 @@ ACT_DEF(recognize_shape)
 				offset = exp->y->numval();
 		}
 	}
-		
+
 	offset_locator_t ifi(lvars, (int)vi);
 	ifi.apply_to(&vu.cfunc->body, NULL);
 
@@ -2088,7 +2090,7 @@ static bool is_cast_assign(cfuncptr_t cfunc, cexpr_t * var, tinfo_t * ts)
 {
 	if (!isRenameble(var->op))
 		return false;
-		
+
 	citem_t * asg_ci = cfunc->body.find_parent_of(var);
 	if(!asg_ci->is_expr())
 		return false;
@@ -2161,8 +2163,8 @@ static bool is_cast_var(cfuncptr_t cfunc, cexpr_t * var, tinfo_t * ts)
 		cast_ci = cfunc->body.find_parent_of(exp);
 		if(cast_ci->is_expr())
 			exp = (cexpr_t *)cast_ci;
-	} 
-	
+	}
+
 	if(exp->op != cot_cast)
 		return false;
 
@@ -2752,7 +2754,7 @@ ACT_DEF(create_inline_sel)
 	QASSERT(100204, ctx->widget_type == BWN_PSEUDOCODE);
 	vdui_t *vu = get_widget_vdui(ctx->widget);
 
-	//align eaBgn/eaEnd to blocks boundaries 
+	//align eaBgn/eaEnd to blocks boundaries
 	Log(llDebug, "%a-%a: range selected for inline\n", eaBgn, eaEnd);
 	qflow_chart_t fc;
 	fc.create("tmpfc", ctx->cur_func, ctx->cur_func->start_ea, ctx->cur_func->end_ea, 0);
@@ -2891,7 +2893,7 @@ void make_if42blocks(cfunc_t *cfunc)
 	rangevec_t rv;
 	if (!load_if42blocks(cfunc->entry_ea, rv) || rv.empty())
 		return;
-	for (auto r : rv) 
+	for (auto r : rv)
 		makeif42block(cfunc, r.start_ea, r.end_ea);
 }
 
@@ -3154,7 +3156,7 @@ ACT_DEF(create_dummy_struct)
 			qstring callname;
 			if(getExpName(vu->cfunc, call->x, &callname)) {
 				cexpr_t* asgn = get_assign_or_helper(vu, call, false);
-				if(asgn && (stristr(callname.c_str(), "alloc") || callname == "??2@YAPAXI@Z")) { // "??2@YAPEAX_KAEBUnothrow_t@std@@@Z"  "??2@YAPEAX_K@Z"
+				if(asgn && (stristr(callname.c_str(), "alloc") || callname == "??2@YAPAXI@Z" || callname == "??2@YAPEAX_K@Z")) { // "??2@YAPEAX_KAEBUnothrow_t@std@@@Z"
 					if(vu->item.is_citem() && vu->item.it->op == cot_num && vu->item.e->ea != BADADDR && !vu->item.e->n->nf.is_fixed()) {
 #if IDA_SDK_VERSION < 850
 						size = get_struc_size(s);
@@ -3733,7 +3735,7 @@ ACT_DEF(jmp2xref)
 		if (is_func(F) || is_data(F))
 			return jump_to_call_or_glbl(ea);
 	}
-	
+
 	if (ctx->widget_type == BWN_PSEUDOCODE) {
 		vdui_t *vu = get_widget_vdui(ctx->widget);
 		if(vu) {
@@ -4157,7 +4159,7 @@ struct ida_local array_char_assign_locator_t : public ctree_visitor_t
 	int varIdx;
 	var_asgn_map2_t varVal;
 	ea_t skipBeforeEa;
-	array_char_assign_locator_t(cfunc_t *func_, int varIdx_, ea_t skipBeforeEa_) : 
+	array_char_assign_locator_t(cfunc_t *func_, int varIdx_, ea_t skipBeforeEa_) :
 		ctree_visitor_t(CV_FAST), func(func_), varIdx(varIdx_), skipBeforeEa(skipBeforeEa_) {}
 	int idaapi visit_expr(cexpr_t * e)
 	{
@@ -4841,7 +4843,7 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 			vdui_t &vu = *va_arg(va, vdui_t *);
 			safeBr(vu.ct, true);
 			break;
-		}	
+		}
 	case hxe_switch_pseudocode:
 		{
 			vdui_t *vu = va_arg(va, vdui_t *);
@@ -4903,7 +4905,7 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 				case ']':
 				case '[':
 				case 0x425: // crutch for ida64 + wine, sometimes send wrong codes instead []
-				case 0x42a: 
+				case 0x42a:
 				{
 					bracketsMatching* br = getBr(vu.ct);
 					if(br && br->Safe && br->TheOtherLine) {
@@ -5730,7 +5732,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.7.74";
+	addon.version = "3.7.75";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

@@ -92,9 +92,9 @@ tinfo_t getType4Name(const char *name, bool funcType /*= false*/)
 
 	const type_t *type;
 	const p_list *fields;
-	tinfo_t       t; 
+	tinfo_t       t;
 	if(get_named_type(NULL, newName.c_str(), NTF_TYPE, &type, &fields)) {
-		if(is_type_struct(*type)) 
+		if(is_type_struct(*type))
 			t = create_typedef(newName.c_str());
 		else
 			t.deserialize(NULL, &type, &fields);
@@ -528,7 +528,7 @@ int Log(LogLevel level, const char *fmt, ...)
   va_start(va, fmt);
 	s.cat_vsprnt(fmt, va);
 	va_end(va);
-  return msg(s.c_str());
+  return msg("%s", s.c_str());
 }
 
 int LogTail(LogLevel level, const char *fmt, ...)

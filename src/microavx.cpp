@@ -73,12 +73,15 @@ mreg_t get_ymm_mreg(mreg_t xmm_mreg)
 // Extend the given xmm reg, clearing the upper bits (through ymm).
 minsn_t* clear_upper(codegen_t& cdg, mreg_t xmm_mreg, int op_size = XMM_SIZE)
 {
-  return cdg.emit(m_xdu, new mop_t(xmm_mreg, op_size), new mop_t(), new mop_t(get_ymm_mreg(xmm_mreg), YMM_SIZE));
+  mop_t l(xmm_mreg, op_size);
+  mop_t d(get_ymm_mreg(xmm_mreg), YMM_SIZE);
+  d.set_udt();
+  return cdg.emit(m_xdu, &l, nullptr, &d);
 }
 
 #if IDA_SDK_VERSION < 760
 // XXX: why is there a load_operand(), but no inverse.. ?
-bool store_operand_hack(codegen_t &cdg, int n, const mop_t &mop, int flags=0, minsn_t **outins=nullptr)
+static bool store_operand_hack(codegen_t &cdg, int n, mop_t mop, int flags=0, minsn_t **outins=nullptr)
 {
     // emit a 'load' operation...
     mreg_t memX = cdg.load_operand(n);
@@ -105,8 +108,10 @@ bool store_operand_hack(codegen_t &cdg, int n, const mop_t &mop, int flags=0, mi
     return true;
 }
 #else //IDA_SDK_VERSION >= 760
-bool store_operand_hack(codegen_t &cdg, int n, const mop_t &mop, int flags=0, minsn_t **outins=nullptr)
+static bool store_operand_hack(codegen_t &cdg, int n, mop_t mop, int flags=0, minsn_t **outins=nullptr)
 {
+	if ( mop.size > XMM_SIZE )
+		mop.set_udt();
 	return cdg.store_operand(n, mop, flags, outins);
 }
 #endif //IDA_SDK_VERSION < 760
@@ -459,12 +464,12 @@ struct ida_local AVXLifter : microcode_filter_t {
     mreg_t l_reg = reg2mreg(cdg.insn.Op2.reg); // op2 -- xmm2
     mreg_t d_reg = reg2mreg(cdg.insn.Op1.reg); // op1 -- xmm1
     mreg_t t0_result = cdg.mba->alloc_kreg(XMM_SIZE);// create a temp register to compute the final result into
-    mop_t* t0_mop = new mop_t(t0_result, FLOAT_SIZE);
+    mop_t t0_mop = mop_t(t0_result, FLOAT_SIZE);
     mreg_t t1_i2f = cdg.mba->alloc_kreg(src_size);   // create a temp register to downcast a double to a float (if needed)
-    mop_t* t1_mop = new mop_t(t1_i2f, src_size);
+    mop_t t1_mop = mop_t(t1_i2f, src_size);
     cdg.emit(m_mov, XMM_SIZE, l_reg, 0, t0_result, 0); // copy xmm2 into the temp result reg, as we need its upper 3 dwords
     cdg.emit(m_i2f, src_size, r_reg, 0, t1_i2f, 0);    // convert the integer (op3) to a float/double depending on its size
-    cdg.emit(m_f2f, t1_mop, nullptr, t0_mop);          // reduce precision on the converted floating point value if needed (only r64/m64)
+    cdg.emit(m_f2f, &t1_mop, nullptr, &t0_mop);          // reduce precision on the converted floating point value if needed (only r64/m64)
     cdg.emit(m_mov, XMM_SIZE, t0_result, 0, d_reg, 0); // transfer the fully computed temp register to the real dest reg
     cdg.mba->free_kreg(t0_result, XMM_SIZE);
     cdg.mba->free_kreg(t1_i2f, src_size);
@@ -524,13 +529,13 @@ struct ida_local AVXLifter : microcode_filter_t {
       QASSERT(100611, is_reg_op(cdg.insn.Op3));
       r_reg = reg2mreg(cdg.insn.Op3.reg);
     }
-    mop_t* r_mop = new mop_t(r_reg, FLOAT_SIZE);
+    mop_t r_mop = mop_t(r_reg, FLOAT_SIZE);
     mreg_t l_reg = reg2mreg(cdg.insn.Op2.reg); // op2 -- xmm2
     mreg_t d_reg = reg2mreg(cdg.insn.Op1.reg); // op1 -- xmm1
     mreg_t t0_result = cdg.mba->alloc_kreg(XMM_SIZE);  // create a temp register to compute the final result into
-    mop_t* t0_mop = new mop_t(t0_result, DOUBLE_SIZE);
+    mop_t t0_mop = mop_t(t0_result, DOUBLE_SIZE);
     cdg.emit(m_mov, XMM_SIZE, l_reg, 0, t0_result, 0); // copy xmm2 into the temp result reg, as we need its upper quadword
-    cdg.emit(m_f2f, r_mop, nullptr, t0_mop);           // convert float (op3) to a double, storing it in the lower 64 of the temp result reg
+    cdg.emit(m_f2f, &r_mop, nullptr, &t0_mop);         // convert float (op3) to a double, storing it in the lower 64 of the temp result reg
     cdg.emit(m_mov, XMM_SIZE, t0_result, 0, d_reg, 0); // transfer the fully computed temp register to the real dest reg
     cdg.mba->free_kreg(t0_result, XMM_SIZE);
     clear_upper(cdg, d_reg);// clear upper 128 bits of ymm1
@@ -554,9 +559,10 @@ struct ida_local AVXLifter : microcode_filter_t {
       if (is_xmm_reg(cdg.insn.Op1)) {
         // op form: xmm1, m32/m64
         QASSERT(100612, is_mem_op(cdg.insn.Op2));
-        mop_t* l_mop = new mop_t(cdg.load_operand(1), data_size);  // op2 -- m32/m64
+        mop_t l_mop = mop_t(cdg.load_operand(1), data_size);  // op2 -- m32/m64
         mreg_t d_reg = reg2mreg(cdg.insn.Op1.reg); // op1 -- xmm1
-        cdg.emit(m_xdu, l_mop, nullptr, new mop_t(d_reg, XMM_SIZE)); // xmm1[:data_size] = [mem]
+        mop_t d_mop = mop_t(d_reg, XMM_SIZE);
+        cdg.emit(m_xdu, &l_mop, nullptr, &d_mop); // xmm1[:data_size] = [mem]
         clear_upper(cdg, d_reg, data_size); // clear xmm1[data_size:] bits (through ymm1)
         return MERR_OK;
       } else {
@@ -605,7 +611,9 @@ struct ida_local AVXLifter : microcode_filter_t {
       else
         l_reg = reg2mreg(cdg.insn.Op2.reg); // op2 -- r32/r64
       mreg_t d_reg = reg2mreg(cdg.insn.Op1.reg); // op1 -- xmm1
-      cdg.emit(m_xdu, new mop_t(l_reg, data_size), nullptr, new mop_t(d_reg, XMM_SIZE));
+      mop_t l = mop_t(l_reg, data_size);
+      mop_t d = mop_t(d_reg, XMM_SIZE);
+      cdg.emit(m_xdu, &l, nullptr, &d);
       clear_upper(cdg, d_reg);// clear upper 128 bits of ymm1
       return MERR_OK;
     }
@@ -618,7 +626,9 @@ struct ida_local AVXLifter : microcode_filter_t {
       store_operand_hack(cdg, 0, mop_t(l_reg, data_size));
     } else {
       // op1 -- r32/r64
-      cdg.emit(m_mov, new mop_t(l_reg, data_size), nullptr, new mop_t(reg2mreg(cdg.insn.Op1.reg), data_size));
+      mop_t l = mop_t(l_reg, data_size);
+      mop_t d = mop_t(reg2mreg(cdg.insn.Op1.reg), data_size);
+      cdg.emit(m_mov, &l, nullptr, &d);
       // TODO: the intel manual doesn't make it entierly clear here
       // if the upper bits of a r32 operation need to be cleared ?
     }
@@ -642,7 +652,14 @@ struct ida_local AVXLifter : microcode_filter_t {
         l_reg = reg2mreg(cdg.insn.Op2.reg);
       }
       mreg_t d_reg = reg2mreg(cdg.insn.Op1.reg); // op1 -- xmmX/ymmX
-      cdg.emit(m_mov, new mop_t(l_reg, op_size), nullptr, new mop_t(d_reg, op_size));
+      mop_t l = mop_t(l_reg, op_size);
+      mop_t d = mop_t(d_reg, op_size);
+      if ( op_size > XMM_SIZE )
+      {
+        l.set_udt();
+        d.set_udt();
+      }
+      cdg.emit(m_mov, &l, nullptr, &d);
       if (op_size == XMM_SIZE)
         clear_upper(cdg, d_reg);
       return MERR_OK;
@@ -700,18 +717,26 @@ struct ida_local AVXLifter : microcode_filter_t {
     }
     mreg_t d_reg = reg2mreg(cdg.insn.Op1.reg);
     //cdg.emit(mcode_op, op_size, reg2mreg(cdg.insn.Op2.reg), r_reg, d_reg, -1); // INTERR(50801); // wrong FPINSN mark
+#if IDA_SDK_VERSION <= 920
     if (op_size > XMM_SIZE) {
       // dirty hack to avoid INTERR(50757) - bad operand size
       // WRONG SIZED pseudocode will be produced as result of this hack
-      // I've no idea why XMM_SIZE is ok, but YMM_SIZE isn't ok. Is it probly bug in hex-rays mop_t::verify()?
-      // set_udt() for l,r & d - helps to pass over this call cdg.emit() but later happens INTERR(50757) 
+      // set_udt() for l,r & d - helps to pass over this call cdg.emit() but later happens INTERR(50757) on IDA ver <= 9.2
 			Log(llWarning, "%a warning: 128bit operation is displayed instead of %dbit\n" , cdg.insn.ea, op_size * 8);
       op_size = XMM_SIZE;
     }
-    mop_t* l = new mop_t(reg2mreg(cdg.insn.Op2.reg), op_size);
-    mop_t* r = new mop_t(r_reg, op_size); 
-    mop_t* d = new mop_t(d_reg, op_size); 
-    cdg.emit(mcode_op, l, r, d);
+#endif //IDA_SDK_VERSION <= 920
+    mop_t l = mop_t(reg2mreg(cdg.insn.Op2.reg), op_size);
+    mop_t r = mop_t(r_reg, op_size);
+    mop_t d = mop_t(d_reg, op_size);
+#if IDA_SDK_VERSION > 920
+		if (op_size > XMM_SIZE) {
+			l.set_udt();
+			r.set_udt();
+			d.set_udt();
+		}
+#endif //IDA_SDK_VERSION > 920
+    cdg.emit(mcode_op, &l, &r, &d);
     if (op_size == XMM_SIZE)
       clear_upper(cdg, d_reg);
     return MERR_OK;
@@ -812,7 +837,7 @@ struct ida_local AVXLifter : microcode_filter_t {
     }
 
     qstring intrinsic_name;
-    intrinsic_name.cat_sprnt(fmt, op_size == YMM_SIZE ? "256" : "");
+    intrinsic_name.nowarn_sprnt(fmt, op_size == YMM_SIZE ? "256" : "");
     AVXIntrinsic avx_intrinsic(&cdg, intrinsic_name.c_str());
 
     uint32 bit_size = op_size * 8;

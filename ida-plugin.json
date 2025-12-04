@@ -3,7 +3,7 @@
   "plugin": {
     "name": "hrtng",
     "entryPoint": "hrtng",
-    "version": "3.7.74",
+    "version": "3.7.75",
     "idaVersions": ">=7.3",
     "categories": ["decompilation", "deobfuscation", "malware-analysis"],
     "description" : "IDA Pro plugin with a rich set of features: decryption, deobfuscation, patching, lib code recognition and various pseudocode transformations",

@@ -153,11 +153,11 @@ void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 
 		conv_offsetof_reincasts_t(cfunc_t *cfunc) : ctree_parentee_t(true), func(cfunc) { bDoRestart = false;}
 
-		//converts 
+		//converts
 		//	"x + n"
-		//to 
+		//to
 		//  "&((struc*)x)->member.submemb1.submemb2" or "(char*)&((struc*)x)->member + remainder"
-		// or 
+		// or
 		//  "&(reinterpret_cast<struc*>x)->member.submemb1.submemb2" "(char*)&(reinterpret_cast<struc*>x)->member + remainder"
 		//where "n" - can be zero
 		cexpr_t* convert(cexpr_t *x, uint64 n, tid_t strucId, ea_t ea, bool reinterpret, bool chkXptrSz)
@@ -189,8 +189,8 @@ void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 			if (reinterpret) {
 				carglist_t* arglist = new carglist_t();
 				carg_t& arg = arglist->push_back();
-				arg.assign(*x); 
-				tinfo_t t; t.create_simple_type(BTF_VOID); 
+				arg.assign(*x);
+				tinfo_t t; t.create_simple_type(BTF_VOID);
 				arg.formal_type = make_pointer(t);
 				cast = call_helper(ti_cast_to, arglist, "%s<%s*>", reincast_HELPERNAME, struc_name.c_str());
 				cast->x->ea = ea; //save anchor for delete_reinterpret_cast
@@ -202,9 +202,13 @@ void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 			res->ea = ea;
 
 			if (trace.size() <= 1) {
-				res->type = cast->type;//make_pointer(create_typedef(num->nf.type_name.c_str()));
 				res->m = (uint32_t)n;
 				res->ptrsize = static_cast<decltype(res->ptrsize)>(res->type.get_size()); //is it need?
+#if 0
+				res->type = cast->type;//make_pointer(create_typedef(num->nf.type_name.c_str()));
+#else
+				res->calc_type(false);
+#endif
 			} else {
 				for (size_t i = 0; i < trace.size(); i++) {
 #if IDA_SDK_VERSION < 850
@@ -326,7 +330,7 @@ void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 			}
 
 			//casted = new cexpr_t(var->v.mba,  vars->at(var->v.idx)); //IDABUG: this constructor declared but doesnt exist
-			//IDABUG: manually copy var becouse cexpr_t::assign() (and copy constructor) does 
+			//IDABUG: manually copy var becouse cexpr_t::assign() (and copy constructor) does
 			//casted->type = var->type; //IDABUG: "typeinfo leak detected and fixed" causes heap corruption
 			cexpr_t *res = convert(x, n, cast_to, exp->ea, true, chkXptrSz);
 			if (!res)
@@ -457,7 +461,7 @@ public:
 	bool disabled;
 
 	negative_cast_t(void)
-	{		
+	{
 		cast_to = BADNODE;
 		from = 0;
 		diff = 0;
@@ -530,13 +534,13 @@ bool can_be_n_recast(vdui_t *vu)
 
 	if(var->op != cot_var || num->op != cot_num)
 		return false;
-	
+
 	if(e->op == cot_idx) {
 		tinfo_t vartype = var->type;
 		if (!vartype.is_ptr())
 			return false;
 	}
-	return true;	
+	return true;
 }
 
 struct ida_local nc_memb_t {
@@ -556,7 +560,7 @@ void convert_negative_offset_casts(cfunc_t *cfunc)
 		bool bDoRestart;
 		cfunc_t *func;
 		ea_t insideHelper;
-		
+
 		nc_converter_t(cfunc_t *cfunc) : ctree_parentee_t(true), func(cfunc) { bDoRestart = false; insideHelper = BADADDR; }
 
 		void cache_var_asgn_memb(cexpr_t * asg)
@@ -594,7 +598,7 @@ void convert_negative_offset_casts(cfunc_t *cfunc)
 		{
 			if (e->op != cot_sub && e->op != cot_add /*&& e->op != cot_idx*/)
 				return false;
-			
+
 			cexpr_t *var = skipCast(e->x);
 			cexpr_t * num = e->y;
 			if(var->op != cot_var || num->op != cot_num)
@@ -616,7 +620,7 @@ void convert_negative_offset_casts(cfunc_t *cfunc)
 			uint32 from_off;
 			tid_t cast_to;
 
-			negative_cast_t cache; 
+			negative_cast_t cache;
 			if (find_cached_cast(num->ea, &cache)) {
 				if (cache.disabled) {
 #if DEBUG_NEG_CAST
@@ -640,7 +644,7 @@ void convert_negative_offset_casts(cfunc_t *cfunc)
 				}
 				cast_to = it->second.strucId;
 				add_cached_cast(num->ea, cast_to, from_off, diff);
-			}			
+			}
 
 			qstring struc_name = get_struc_name(cast_to);
 			tinfo_t ti_cast_to = make_pointer(create_typedef(struc_name.c_str()));
@@ -664,7 +668,7 @@ void convert_negative_offset_casts(cfunc_t *cfunc)
 			carg_t * arg2 = new carg_t();
 			print_struct_member_name(cast_to, from_off, &member_text);
 			tinfo_t t2 = make_pointer(create_typedef("base_struct_member"));
-			arg2->consume_cexpr( create_helper(true, t2, member_text.c_str()));
+			arg2->consume_cexpr( create_helper(true, t2, "%s", member_text.c_str()));
 			arglist->push_back(*arg2);
 
 			cexpr_t * call = call_helper(ti_cast_to, arglist, "%s", HELPERNAME);
@@ -690,7 +694,7 @@ void convert_negative_offset_casts(cfunc_t *cfunc)
 		}
 
 		//modify expression on leave to avoid recursion
-		int idaapi leave_expr(cexpr_t *e) 
+		int idaapi leave_expr(cexpr_t *e)
 		{
 			if (e->op == cot_call && e->x->op == cot_helper && insideHelper == e->ea)
 				insideHelper = BADADDR;
@@ -784,7 +788,7 @@ ACT_DEF(use_CONTAINER_OF_callback)
 
 		if (e->op != cot_sub && e->op != cot_add && e->op != cot_idx)
 			return 0;
-	
+
 		cexpr_t * cast = 0;
 		cexpr_t *var = e->x;
 		if (var->op == cot_cast) {
@@ -795,7 +799,7 @@ ACT_DEF(use_CONTAINER_OF_callback)
 		cexpr_t * num = e->y;
 		if(var->op != cot_var || num->op != cot_num)
 			return 0;
-		
+
 		int32 offset = (int32)num->numval();
 		if (e->op == cot_sub)
 			offset = -offset;
@@ -818,7 +822,7 @@ ACT_DEF(use_CONTAINER_OF_callback)
 			tinfo_t t = cast->type;
 			t.remove_ptr_or_array();
 			offset *= (int32)t.get_size();
-		} 
+		}
 
 
 	qstring definition;
@@ -853,7 +857,7 @@ ACT_DEF(use_CONTAINER_OF_callback)
 		} else if(!get_member_offset_by_fullname(&struc, &memboff, definition.c_str())) {
 			Log(llDebug, "no such struct member: '%s'\n", definition.c_str());
 			continue;
-		} 
+		}
 
 		if (offset > 0 || -offset <= (int32)memboff)
 			break;
@@ -861,7 +865,7 @@ ACT_DEF(use_CONTAINER_OF_callback)
 		Log(llDebug, "struct member's '%s' offset 0x%x is less then subtract 0x%x", definition.c_str(), (uint32)memboff, -offset);
 		if(e->op == cot_idx)
 			LogTail(llDebug, ", try to 'reset pointer type' for base variable\n");
-		else 
+		else
 			LogTail(llDebug, "\n");
 	} while(1);
 

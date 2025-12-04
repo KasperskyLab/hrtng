@@ -124,7 +124,7 @@ asize_t struct_get_member(tid_t strId, asize_t offset, tid_t* last_member, tidve
 		}
 	}
 
-	member_t * member = get_member(str, offset);	
+	member_t * member = get_member(str, offset);
 	if (!member)
 		return offset + adjust;
 	*last_member = member->id;
@@ -216,7 +216,7 @@ asize_t struct_get_member(tid_t strId, asize_t offset, tid_t* last_member, tidve
 #endif //IDA_SDK_VERSION < 850
 
 bool struct_has_member(tid_t strId, asize_t offset)
-{	
+{
 	tid_t last_member = BADNODE;
 	return struct_get_member(strId, offset, &last_member) == 0 && last_member != BADNODE;
 }
@@ -378,7 +378,7 @@ int which_struct_matches_here(uval_t idx1, uval_t begin, uval_t end)
 		return 0;
 
 	asize_t size = last + get_member_size(get_member(struc, last)) - begin;
-	matched_structs_t m;	
+	matched_structs_t m;
 	for(uval_t idx = get_first_struc_idx(); idx!=BADNODE; idx=get_next_struc_idx(idx)) {
 		tid_t id = get_struc_by_idx(idx);
 		struc_t * struc_candidate = get_struc(id);
@@ -391,7 +391,7 @@ int which_struct_matches_here(uval_t idx1, uval_t begin, uval_t end)
 		if(compare_structs(struc, begin, struc_candidate))
 			m.list.push_back(id);
 	}
-	ssize_t choosed = m.choose();	
+	ssize_t choosed = m.choose();
 	if(choosed >= 0)
 		open_structs_window(m.list[choosed], 0);
 	return 0;
@@ -429,9 +429,9 @@ int unpack_this_member(uval_t idx, uval_t offset)
 			opinfo_t mt;
 			retrieve_member_info(&mt, member);
 
-			asize_t size = get_member_size(member);			
+			asize_t size = get_member_size(member);
 			add_struc_member(struc, name.c_str(), off + delta, member->flag, &mt, size);
-			
+
 			tinfo_t type;
 			if(get_or_guess_member_tinfo(&type, member))
 			{
@@ -803,8 +803,13 @@ int create_VT(tid_t parent, ea_t VT_ea, bool autoScan/*= false*/)
 		return 0;
 	}
 
-	tid_t mtid = BADADDR;
+	// vtblType is a type of the fist member of the parent struct
+	// there is may be:
+	// - an arbitrary type, when the first vtbl is adding
+	// - already added vtable, when adding second
+	// - union of already added vtables, when adding third and more
 	tinfo_t vtblType;
+	tid_t mtid = BADADDR;
 	eavec_t eav;
 #if IDA_SDK_VERSION < 850
 	member_t* vtbl = get_member(struc, 0);
@@ -943,7 +948,7 @@ int create_VT(tid_t parent, ea_t VT_ea, bool autoScan/*= false*/)
 		Log(llError, "adding to union VTBLs type error %d %s\n", err, tinfo_errstr(err));
 		return 0;
 	}
-	
+
 	//create or update first VTBL
 	tinfo_t type = type_by_tid(vt_struc_id);
 	add_vt_member(struc, 0, VTBL_MEMNAME, make_pointer(type), VT_ea);

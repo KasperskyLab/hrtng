@@ -950,7 +950,7 @@ struct ida_local sBBGrpMatcher {
 			for(j++; j != src.end(); ) {
 				if ((*i)->match(*j)) {
 					g.add(*j);
-					j = src.erase(j); 
+					j = src.erase(j);
 				}	else {
 					j++;
 				}
@@ -1237,7 +1237,7 @@ struct ida_local sBBGrpMatcher {
 		for (auto p = samePaths.begin(); p != samePaths.end(); p++)
 			printPathStr(p->first, "%d (%d)", idx++, (int)p->second.size());
 #endif
-		//make results 
+		//make results
 		for (auto p = samePaths.begin(); p != samePaths.end(); p++) {
 			assert(p->second.size());
 			paths_t &grp = p->second;
@@ -1458,7 +1458,7 @@ struct ida_local sBBGrpMatcher {
 							sz = ea_size;
 						}
 						int reg = mreg2reg(*ur, sz);
-						if (reg == -1 || 
+						if (reg == -1 ||
 							(sz == PH.segreg_size && (PH.reg_first_sreg <= reg && reg <= PH.reg_last_sreg)))// || (reg == PH.reg_code_sreg || reg == PH.reg_data_sreg)))
 							continue; // ignore bad and segment registers
 
@@ -1510,7 +1510,7 @@ struct ida_local sBBGrpMatcher {
 
 					MSG_DI2(("[hrt] callinfo: %s\n", ci->dstr()));
 					call->d._make_callinfo(ci);
-					
+
 
 					headb->flags &= ~MBL_CALL; // necessary if remove a call from the block
 					//headb->flags |= MBL_CALL;
@@ -1577,7 +1577,7 @@ struct ida_local sBBGrpMatcher {
 			}
 			for(auto rbi = removeBlocks.begin(); rbi != removeBlocks.end(); rbi++)
 				mba->remove_block(*rbi); //causes blocks renumbering, so after this point all my 'bb->idx' are incorrect
-			
+
 		mba->mark_chains_dirty();
 		mba->dump_mba(true, "[hrt] after replaceInlines");
 		return cm_changed;
@@ -1632,7 +1632,7 @@ struct ida_local sBBGrpMatcher {
 		for(auto i = inlines.begin(); i != inlines.end(); i++) {
 			const paths_t& grp = i->second;
 			Log(llDebug, "inline%d %s (%d)\n", idx++, i->first.c_str(), (int)grp.size());
-			for(auto j = grp.begin(); j != grp.end(); j++) 
+			for(auto j = grp.begin(); j != grp.end(); j++)
 				j->second.print("  ");
 		}
 	}
@@ -1643,7 +1643,7 @@ struct ida_local sBBGrpMatcher {
 	void printInlines() {}
 #endif //DEBUG_DI
 
-	bool deinline(mbl_array_t *mba) 
+	bool deinline(mbl_array_t *mba)
 	{
 		allBBs.makeCFG(mba);
 		selection2inline(mba);
@@ -1803,14 +1803,14 @@ bool ren_inline(vdui_t *vu)
 		if (matcher->inlines.find(newname) == matcher->inlines.end() && !inlinesLib.has(newname.c_str()))
 			break;
 		Log(llError, "inline '%s' already exist\n", newname.c_str());
-	} 
+	}
 
 	for (auto pi = ii->second.begin(); pi != ii->second.end(); pi++) {
 		const path_t& p = pi->second;
 		citem_t *item = vu->cfunc->body.find_closest_addr(p.front()->bgn);
 		if (item && item->op == cot_call && static_cast<cexpr_t*>(item)->x->op == cot_helper) {
 			cexpr_t* call = static_cast<cexpr_t*>(item);
-			cexpr_t* newHlp = create_helper(false, call->x->type, newname.c_str());
+			cexpr_t* newHlp = create_helper(false, call->x->type, "%s", newname.c_str());
 			if (newHlp)
 				call->x->replace_by(newHlp);
 		}
@@ -1841,7 +1841,7 @@ int deinline_hint(vdui_t *vu, qstring *result_hint, int *implines)
 	const path_t* path = getInlPath(vu, name);
 	if (!path)
 		return 0;
-	
+
 	rangevec_t ranges;
 //	if (path->front()->bgn < path->exit->bgn) {
 //		ranges.push_back(range_t(path->front()->bgn, path->exit->bgn));
