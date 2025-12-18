@@ -773,7 +773,7 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 	return newid;
 }
 
-int create_VT(tid_t parent, ea_t VT_ea, bool autoScan/*= false*/)
+int create_VT(tid_t parent, ea_t VT_ea, bool autoScan/*= false*/, const char *topStructName /*= nullptr*/)
 {
 	qstring name;
 	uval_t vtstruc_idx = 0;
@@ -834,6 +834,12 @@ int create_VT(tid_t parent, ea_t VT_ea, bool autoScan/*= false*/)
 						return 0;
 			}
 		}
+	}
+
+	// use topmost struct name on adding vtables of derived classes
+	// left name_VT as base class union name
+	if(topStructName && *topStructName && eav.size() > 0) {
+		name = topStructName;
 	}
 
 	tid_t vt_struc_id = create_VT_struc(VT_ea, name.c_str(), vtstruc_idx, NULL, autoScan);
@@ -1001,7 +1007,21 @@ void auto_create_vtbls(cfunc_t *cfunc)
 			if(tid == BADADDR)
 				return 0; //classType.force_tid()
 
-			create_VT(tid, vtea, true);
+			qstring topName;
+			cexpr_t *membacc = left->x;
+			cexpr_t *top = nullptr;
+			while ((membacc->op == cot_memptr || membacc->op == cot_memref) && membacc->m == 0) {
+				top = membacc;
+				membacc = membacc->x;
+			}
+			if(top) {
+				tinfo_t topXType = top->x->type;
+				topXType.remove_ptr_or_array();
+				if(topXType.is_struct() && topXType.get_type_name(&topName))
+					Log(llDebug, "Top struct name for create_VT: %s\n", topName.c_str());
+			}
+
+			create_VT(tid, vtea, true, topName.c_str());
 			return 0; // ignore type changes (?)
 			//return create_VT(tid, vtea, true);
 		}
