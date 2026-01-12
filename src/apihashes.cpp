@@ -24,6 +24,7 @@
 
 #include <map>
 #include "helpers.h"
+#include "structures.h"
 
 //IDA stores 32bit values in 64bit sign extended form, so store hashes the same way
 typedef int64 hash_t;
@@ -285,15 +286,9 @@ static ssize_t idaapi make_code_callback(va_list va)
 	return 0;
 }
 
-static ssize_t idaapi make_data_callback(va_list va)
+static void chkDataHash(ea_t base_ea, asize_t sz, ea_t ea)
 {
-
-	ea_t	ea = va_arg(va, ea_t);
-	(void)va_arg(va, flags64_t);
-	(void)va_arg(va, tid_t);
-	asize_t	sz = va_arg(va, asize_t);
 	hash_t	opValue;
-
 	switch(sz)
 	{
 	case 4:
@@ -303,19 +298,59 @@ static ssize_t idaapi make_data_callback(va_list va)
 		opValue = get_qword(ea);
 		break;
 	default:
-		return 0;
+		return;
 	}
-	if ( opValue == 0 )
-		return 0;
+	if(opValue == 0)
+		return;
 
 	auto it = hashes.find(opValue);
 	if(it != hashes.end()) {
 		Log(llInfo, "%a: Found API hash for %s\n", ea, it->second.c_str());
-		if (!set_name(ea, it->second.c_str(), SN_NOCHECK | SN_NOWARN | SN_FORCE)) {
-			set_cmt(ea, it->second.c_str(), true);
+		if(base_ea == ea) {
+			if(!set_name(ea, it->second.c_str(), SN_NOCHECK | SN_NOWARN | SN_FORCE))
+				set_cmt(ea, it->second.c_str(), true);
+		} else {
+			qstring cmt;
+			if(has_extra_cmts(get_flags(base_ea))) {
+				get_extra_cmt(&cmt, base_ea, E_PREV);
+				cmt.append('\n');
+			}
+			cmt.append(it->second);
+			add_extra_cmt(base_ea, 1, "%" FMT_64 "Xh => '%s'", opValue, it->second.c_str());
 		}
 	}
+}
 
+static void hashInStruct(ea_t base_ea, const tinfo_t& s, ea_t ea)
+{
+	udt_type_data_t td;
+	if(!s.get_udt_details(&td) || td.is_union)
+		return;
+	for (size_t i = 0; i < td.size(); ++i) {
+		const udm_t& m = td.at(i);
+		if(m.size / 8 >= 4) {
+			if(m.type.is_struct())
+				hashInStruct(base_ea, m.type, ea + m.offset / 8);
+			else
+				chkDataHash(base_ea, m.size / 8, ea + m.offset / 8);
+		}
+	}
+}
+
+static ssize_t idaapi make_data_callback(va_list va)
+{
+	ea_t ea = va_arg(va, ea_t);
+	flags64_t flg = va_arg(va, flags64_t);
+	tid_t tid = va_arg(va, tid_t);
+	asize_t	sz = va_arg(va, asize_t);
+
+	if(is_struct(flg)) {
+		tinfo_t t = type_by_tid(tid);
+		if(t.is_struct())
+			hashInStruct(ea, t, ea);
+		return 0;
+	}
+	chkDataHash(ea, sz, ea);
 	return 0;
 }
 
