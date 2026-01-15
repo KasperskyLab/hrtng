@@ -35,7 +35,7 @@ or one more project:
 // 1 - errors only
 // 0 - final results
 #define DEBUG_UF 0
-#if DEBUG_UF > 3 
+#if DEBUG_UF > 3
 #define MSG_UF1(msg_) msg msg_
 #define MSG_UF2(msg_) msg msg_
 #define MSG_UF3(msg_) msg msg_
@@ -52,7 +52,7 @@ or one more project:
 #define MSG_UF2(msg_) msg msg_
 #define MSG_UF3(msg_)
 #define MSG_UF4(msg_)
-#elif DEBUG_UF > 0 
+#elif DEBUG_UF > 0
 #define MSG_UF1(msg_) msg msg_
 #define MSG_UF2(msg_)
 #define MSG_UF3(msg_)
@@ -109,8 +109,8 @@ struct ida_local JZInfo
 	// 2) The constant values used in the comparisons are sufficiently entropic.
 	bool ShouldBlacklist()
 	{
-		// This check is pretty weak. I thought I could set the minimum number to 
-		// 6, but the pattern deobfuscators might eliminate some of them before 
+		// This check is pretty weak. I thought I could set the minimum number to
+		// 6, but the pattern deobfuscators might eliminate some of them before
 		// this function gets called.
 		if (nSeen < MIN_NUM_COMPARISONS) {
 			MSG_UF3(("[I] Blacklisting due to lack of JZ/JG comparisons %s (%d < minimum of %d)\n", op->dstr(), nSeen, MIN_NUM_COMPARISONS));
@@ -152,7 +152,7 @@ struct ida_local JZInfo
 };
 
 // This class looks for jz/jg comparisons against constant values. For each
-// thing being compared, we use a JZInfo structure to collect the number of 
+// thing being compared, we use a JZInfo structure to collect the number of
 // times it's been used in a comparison, and a list of the values it was
 // compared against.
 struct ida_local JZCollector : public minsn_visitor_t
@@ -258,7 +258,7 @@ typedef int32 Key_t;
 typedef std::map<Key_t, int> KeyToBlock_t;
 typedef intvec_t JTargetBlocks_t;
 
-bool getKeyFromValranges(mblock_t* blk, mop_t *var, Key_t* key)
+static bool getKeyFromValranges(mblock_t* blk, mop_t *var, Key_t* key)
 {
 	valrng_t vr;
 	uvlr_t v;
@@ -333,7 +333,7 @@ struct ida_local JcMapper
 			if (getKeyFromValranges(targBlk, m_CompareVar, &keyVal))
 				map = &KeyToBlockJz;
 		}
-		
+
 		// ignore lastJnz if it pure goto dispatch
 		if (!map) {
 			minsn_t* tail = targBlk->tail;
@@ -410,7 +410,7 @@ struct ida_local JcMapper
 			}
 #endif
 		} else {
-			QASSERT(100505, nextComp && brComp); 
+			QASSERT(100505, nextComp && brComp);
 			// shortening checks path, may be skipped
 			if (curins->opcode == m_jg || curins->opcode == m_jle) {
 				MSG_UF3(("[I] %a: Skip short path, key %d (0x%X) at %d\n", blk->start, (int32)keyVal, (int32)keyVal, blk->serial));
@@ -445,7 +445,7 @@ struct ida_local JcMapper
 			mblock_t* blk = mba->get_mblock(bn);      // block that uses the instruction
 			minsn_t* ins = blk->head;
 
-			//walk all instructions in block to be sure our Use of cmpVar has not been redefined before compare 
+			//walk all instructions in block to be sure our Use of cmpVar has not been redefined before compare
 			for (minsn_t* p = ins; p != NULL && !list.empty(); p = p->next) {
 				mlist_t use = blk->build_use_list(*p, MUST_ACCESS); // things used by the insn
 				mlist_t def = blk->build_def_list(*p, MUST_ACCESS); // things defined by the insn
@@ -576,10 +576,10 @@ static array_of_bitsets *ComputeDominators(mbl_array_t *mba)
 			bChanged |= bsBefore != bsCurr; // If this process changed the dataflow information, we're going to need another iteration
 		}
 	} while (bChanged);
-	
+
 
 	// The dominator information has been computed. Now we're going to derive some information from it. Namely, the current representation tells us,
-	// for each block, which blocks dominate it. We want to know, instead, for each block, which blocks are dominated by it. This is a simple 
+	// for each block, which blocks dominate it. We want to know, instead, for each block, which blocks are dominated by it. This is a simple
 	// transformation; for each block b and dominator d, update the information for d to indicate that it dominates b.
 	array_of_bitsets *domInfoOutput = new array_of_bitsets;
 	domInfoOutput->resize(iNumBlocks);
@@ -609,7 +609,7 @@ struct ida_local CFFlattenInfo
 	~CFFlattenInfo() { if(jcm) delete jcm; }
 
 	// This function finds the "first" block immediately before the control flow flattening dispatcher begins. The logic is simple; start at the beginning
-	// of the function, keep moving forward until the next block has more than one predecessor. As it happens, this is where the assignment to the switch 
+	// of the function, keep moving forward until the next block has more than one predecessor. As it happens, this is where the assignment to the switch
 	// dispatch variable takes place, and that's mostly why we want it.
 	mblock_t* GetFirstBlock(mbl_array_t* mba)
 	{
@@ -697,7 +697,7 @@ struct ida_local CFFlattenInfo
 				opMaxMoreLikely = opMaxSub = NULL;
 				for (minsn_t* p = mb_dispatch->tail; p != NULL; p = p->prev) {
 					//mlist_t def = mb_dispatch->build_def_list(*p, MAY_ACCESS | FULL_XDSU);
-					//if ((def.includes(ml) || 
+					//if ((def.includes(ml) ||
 					if (isRegOvar(p->l.t) && p->l.equal_mops(*op, EQ_IGNSIZE)) {
 						if (isUfJc(p->opcode))
 							opMaxMoreLikely = op;
@@ -717,7 +717,7 @@ struct ida_local CFFlattenInfo
 			opMax = opMaxMoreLikely;
 		}
 
-		// Get all variables assigned to numbers in the first block. If we find the comparison variable in there, then the assignment and comparison 
+		// Get all variables assigned to numbers in the first block. If we find the comparison variable in there, then the assignment and comparison
 		// variables are the same. If we don't, then there are two separate variables. The "first" block sometimes doesn't contain the assignment to
 		// the comparison variable. So I modified to trace back from the block to the beginning (called first blocks)
 		BlockInsnAssignNumberExtractor fbe;
@@ -737,7 +737,7 @@ struct ida_local CFFlattenInfo
 		}
 
 		mop_t *localOpAssigned = NULL; // This is the "assignment" variable, whose value is updated by the switch case code
-		
+
 		if (bFound && mb_dispatch->head != NULL && mb_dispatch->head->opcode != m_and) {
 			// If the "comparison" variable was assigned a number in the first block, then the function is only using one variable, not two, for dispatch.
 			localOpAssigned = opMax;
@@ -825,7 +825,7 @@ struct ida_local CFFlattenInfo
 		array_of_bitsets *ab = ComputeDominators(mba);
 		// Compute some more information from the dominators. Basically, once the control flow dispatch switch has transferred
 		// control to the function's code, there might be multiple basic blocks that can execute before control goes back to the
-		// switch statement. For all of those blocks, we want to know the "first" block as part of that region of the graph, 
+		// switch statement. For all of those blocks, we want to know the "first" block as part of that region of the graph,
 		// i.e., the one targeted by a jump out of the control flow dispatch switch.
 
 		// array mapping each basic block to the block that dominates it and was targeted by the control flow switch.
@@ -854,7 +854,7 @@ struct ida_local MovInfo
 typedef qvector<MovInfo> MovChain;
 
 // For a block that ends in a conditional jump, extract the integer block numbers for the "taken" and "not taken" cases.
-bool getJccDests(mblock_t *blk, mblock_t *&endsWithJcc, int &jccDest, int &jccFallthrough)
+static bool getJccDests(mblock_t *blk, mblock_t *&endsWithJcc, int &jccDest, int &jccFallthrough)
 {
 	if (!blk->tail || !is_mcode_jcond(blk->tail->opcode))
 		return false;
@@ -865,9 +865,9 @@ bool getJccDests(mblock_t *blk, mblock_t *&endsWithJcc, int &jccDest, int &jccFa
 	return true;
 }
 
-// For a block with two predecessors, figure out if one of them ends in a jcc instruction. 
+// For a block with two predecessors, figure out if one of them ends in a jcc instruction.
 // Return the block that ends in a jcc and the one that doesn't. Also return the integer numbers of those blocks.
-bool SplitMblocksByJccEnding(mblock_t *pred1, mblock_t *pred2, mblock_t *&endsWithJcc, mblock_t *&nonJcc, int &jccDest, int &jccFallthrough)
+static bool SplitMblocksByJccEnding(mblock_t *pred1, mblock_t *pred2, mblock_t *&endsWithJcc, mblock_t *&nonJcc, int &jccDest, int &jccFallthrough)
 {
 	endsWithJcc = NULL;
 	nonJcc = NULL;
@@ -885,7 +885,7 @@ bool SplitMblocksByJccEnding(mblock_t *pred1, mblock_t *pred2, mblock_t *&endsWi
 	return true;
 }
 
-void AppendGoto(mblock_t *blk, int iBlockDest)
+static void AppendGoto(mblock_t *blk, int iBlockDest)
 {
 	minsn_t* newGoto;
 	if (blk->tail)
@@ -898,8 +898,9 @@ void AppendGoto(mblock_t *blk, int iBlockDest)
 	MSG_UF3(("[I] %a: AppendGoto %d -> %d\n", blk->start, blk->serial, iBlockDest));
 }
 
-#if IDA_SDK_VERSION < 760
-void DeleteBlock(mblock_t *mb)
+//#if IDA_SDK_VERSION < 760
+// use own implementation just to show warning message
+static void DeleteBlock(mblock_t *mb)
 {
 	mbl_array_t *mba = mb->mba;
 	for (int j = 0; j < mb->nsucc(); ++j)
@@ -912,20 +913,22 @@ void DeleteBlock(mblock_t *mb)
 	minsn_t *pCurr = mb->head, *pNext = NULL;
 	while (pCurr != NULL) {
 		pNext = pCurr->next;
-		if(!pCurr->is_assert())
+		if(!pCurr->is_assert() && !pCurr->is_like_move() && pCurr->opcode != m_nop && pCurr->opcode != m_goto && !isUfJc(pCurr->opcode))
 			++cnt;
 		delete pCurr;
 		pCurr = pNext;
 	}
 	mb->head = NULL;
 	mb->tail = NULL;
-	MSG_UF3(("[I] %a: DeleteBlock %d (%d insns)\n", mb->start, mb->serial, cnt));
+	MSG_UF3(("[I] %a: DeleteBlock %d\n", mb->start, mb->serial));
+	if(cnt)
+		Log(llWarning, "%a unflat: Deleted practical code block at %a (%d insns)\n", mba->entry_ea, mb->start, cnt);
 }
 
 // The goto-to-goto elimination and unflattening remove edges in the control flow graph.
 // As a result, certain blocks might no longer be reachable anymore in the graph.
 // Thus, they can be deleted with no ill-effects.
-// In theory, we could wait for Hex-Rays to remove these blocks, which it eventually will, sometime after MMAT_GLBOPT2. 
+// In theory, we could wait for Hex-Rays to remove these blocks, which it eventually will, sometime after MMAT_GLBOPT2.
 // Originally, I just let Hex-Rays remove the blocks. However, it turned out that the blocks were removed too late,
 // which hampered other optimizations that Hex-Rays otherwise would have been able to perform had the blocks been
 // eliminated earlier. Thus, I wrote this function to remove the unreachable blocks immediately after unflattening,
@@ -934,7 +937,7 @@ void DeleteBlock(mblock_t *mb)
 // At the time of writing, I'm still coordinating with Hex-Rays to see if I can
 // make use of internal decompiler machinery to perform elimination. If I can,
 // we'll use that instead of this function. For now, we prune manually.
-int PruneUnreachable(mbl_array_t *mba)
+static int PruneUnreachable(mbl_array_t *mba)
 {
 	bitset_t visited;
 
@@ -951,7 +954,7 @@ int PruneUnreachable(mbl_array_t *mba)
 		for (auto iSucc : mba->get_mblock(iCurr)->succset)
 			worklist.push_back(iSucc);
 	}
-	
+
 	qvector<mblock_t*> brem;
 	for (int i = 0; i < mba->qty - 1; ++i) {
 		if (!visited.has(i)) {
@@ -962,20 +965,20 @@ int PruneUnreachable(mbl_array_t *mba)
 		}
 	}
 	for (auto b : brem)
-		mba->remove_block(b); //causes blocks renumbering, so after this point all my 'bb->idx' are incorrect
+		mba->remove_block(b); //causes blocks renumbering
 
 	return (int)brem.size();
 }
-#endif
+//#endif
 
 #define NO_GOTO -1
 // This function eliminates transfers to blocks with a single goto on them.
-// Either if a given block has a goto at the end of it, where the destination is a block with a single goto on it, 
+// Either if a given block has a goto at the end of it, where the destination is a block with a single goto on it,
 // or if the block doesn't end in a goto, but simply falls through to a block with a single goto on it.
-// Also, this process happens recursively; i.e., if A goes to B, and B goes to C, and C goes to D, 
+// Also, this process happens recursively; i.e., if A goes to B, and B goes to C, and C goes to D,
 // then after we've done our tranformations, A will go to D.
 //bes: also dial with jc blocks
-bool RemoveSingleGotos(mbl_array_t* mba)
+static bool RemoveSingleGotos(mbl_array_t* mba)
 {
 	intvec_t goto_targets;
 	goto_targets.resize(mba->qty);
@@ -1066,12 +1069,13 @@ struct ida_local DeferredGraphModifier
 	mbl_array_t* mba;
 	qvector<std::pair<int, int> > m_RemoveEdges;
 	qvector<std::pair<int, int> > m_AddEdges;
+	int fixEntryBlock;
 
-	DeferredGraphModifier(mbl_array_t* _mba) : mba(_mba) {}
+	DeferredGraphModifier(mbl_array_t* _mba) : mba(_mba), fixEntryBlock(0) {}
 
 	void Remove(int src, int dest) {
 		if (dest == mba->qty - 1)
-			dest = -1; 
+			dest = -1;
 		MSG_UF3(("[I] DGM Del %d->%d\n", src, dest));
 		auto it = m_AddEdges.find(std::pair<int, int>(src, dest));
 		if (it != m_AddEdges.end()) {
@@ -1079,6 +1083,20 @@ struct ida_local DeferredGraphModifier
 		} else {
 			m_RemoveEdges.push_back(std::pair<int, int>(src, dest));
 		}
+	}
+
+	bool isRemoved(int src, int dest) {
+		auto it = m_RemoveEdges.find(std::pair<int, int>(src, dest));
+		if(it != m_RemoveEdges.end())
+			return true;
+		return false;
+	}
+
+	int getAddedSucc(int src) {
+		for(auto ae : m_AddEdges)
+			if(ae.first == src)
+				return ae.second;
+		return -1;
 	}
 
 	void Add(int src, int dest) {
@@ -1091,18 +1109,6 @@ struct ida_local DeferredGraphModifier
 	void Replace(int src, int oldDest, int newDest) {
 		Remove(src, oldDest);
 		Add(src, newDest);
-	}
-
-	bool getDest(int src, int* dst) { //FIXME: there may be more then one dest
-		for (auto p = m_AddEdges.begin(); p != m_AddEdges.end(); ++p) {
-			if (p->first == src) {
-				*dst = p->second;
-				if(*dst == -1)
-					*dst = mba->qty - 1;
-				return true;
-			}
-		}
-		return false;
 	}
 
 	mblock_t* GetBlk(int serial) {
@@ -1128,6 +1134,12 @@ struct ida_local DeferredGraphModifier
 		// Iterate through the edges slated for addition
 		for (auto ae : m_AddEdges) {
 			mblock_t *mSrc = mba->get_mblock(ae.first);
+			if(!mSrc->serial) {
+				MSG_UF3(("[I] DGM Skip Add edge 0->%d\n", ae.second));
+				fixEntryBlock = ae.second;
+				continue;
+			}
+
 			mblock_t *mDst = GetBlk(ae.second);
 			// Add the source as a predecessor for dest, and vice versa
 			MSG_UF3(("[I] DGM Added edge %d->%d (%a->%a)\n", mSrc->serial, mDst->serial, mSrc->start, mDst->start));
@@ -1135,7 +1147,7 @@ struct ida_local DeferredGraphModifier
 			if (!mSrc->succset.has(mDst->serial)) {
 				mSrc->succset.add(mDst->serial);
 			} else {
-				// The case when jc target is next block (hexrays raize INTERR(50860) becise outs.add_unique(tail->d.b); 
+				// The case when jc target is next block (hexrays raize INTERR(50860) becise outs.add_unique(tail->d.b);
 				// or INTERR(50856) when I trying also use add_unique (one out edge instead two equal)
 				if (mSrc->tail && is_mcode_jcond(mSrc->tail->opcode)) {
 					MSG_UF3(("[I] %a: DGM Blk %d Erasing '%s'\n", mSrc->tail->ea, mSrc->serial, mSrc->tail->dstr()));
@@ -1147,19 +1159,52 @@ struct ida_local DeferredGraphModifier
 			}
 			++iChanged;
 		}
+		if(fixEntryBlock > 0) {
+			//remove old link 0->1, because it became 0->2 on 1st block insertion
+			mblock_t *mSrc = mba->get_mblock(0);
+			mblock_t *mDst = GetBlk(1);
+			mSrc->succset.del(mDst->serial);
+			mDst->predset.del(mSrc->serial);
+			MSG_UF3(("[I] DGM Removed edge %d->%d (%a->%a)\n", mSrc->serial, mDst->serial, mSrc->start, mDst->start));
+
+			mblock_t* gotoBlk = mba->insert_block(1);
+			// all blocks below renumbered after this point
+			++fixEntryBlock;
+			gotoBlk->type = BLT_1WAY;
+			gotoBlk->flags |= MBL_FAKE;
+			ea_t ea = mba->last_prolog_ea;
+			if (ea == BADADDR)
+				ea = mba->mbr.start();
+			gotoBlk->start = ea;
+			AppendGoto(gotoBlk, fixEntryBlock);
+
+			//create new edge 0->1
+			mDst = gotoBlk;
+			mDst->predset.add_unique(mSrc->serial);
+			mSrc->succset.add_unique(mDst->serial);
+			MSG_UF3(("[I] DGM Added edge %d->%d (%a->%a)\n", mSrc->serial, mDst->serial, mSrc->start, mDst->start));
+
+			// 1->fixEntryBlock
+			mSrc = gotoBlk;
+			mDst = GetBlk(fixEntryBlock);
+			mDst->predset.add_unique(mSrc->serial);
+			mSrc->succset.add_unique(mDst->serial);
+			MSG_UF3(("[I] DGM MakeGoto2EntryBlock %d->%d (%a->%a)\n", mSrc->serial, mDst->serial, mSrc->start, mDst->start));
+			++iChanged;
+		}
 		return iChanged;
 	}
 
-	// Either change the destination of an existing goto, or add a new goto onto the end of the block to the destination. 
+	// Either change the destination of an existing goto, or add a new goto onto the end of the block to the destination.
 	// Also, plan to modify the graph structure later to reflect these changes.
 	void ChangeGoto(mblock_t *blk, int iOld, int iNew)
 	{
 		MSG_UF3(("[I] %a: ChangeGoto %d->%d (was %d)\n", blk->start, blk->serial, iNew, iOld));
-		if (blk->tail != NULL && is_mcode_jcond(blk->tail->opcode))
+		if (blk->tail && is_mcode_jcond(blk->tail->opcode))
 			blk->tail->d.b = iNew;
 		else if (blk->tail && blk->tail->opcode == m_goto)
 			blk->tail->l.b = iNew;
-		else
+		else if(blk->serial) // do not append anything to entry block
 			AppendGoto(blk, iNew);
 
 		if (iOld != -1)
@@ -1168,10 +1213,17 @@ struct ida_local DeferredGraphModifier
 			Add(blk->serial, iNew);
 		blk->mark_lists_dirty();
 	}
+
+	// care about already removed and added edges
+	void ChangeGotoChkRem(mblock_t *blk, int iOld, int iNew)
+	{
+		if(!isRemoved(blk->serial, iOld))
+			ChangeGoto(blk, iOld, iNew);
+	}
 };
 
 // dirty hack to append reg or stkvar into mlist
-bool mop2list(mop_t* mop, mlist_t* ml, mbl_array_t* mba)
+static bool mop2list(mop_t* mop, mlist_t* ml, mbl_array_t* mba)
 {
 	if (!isRegOvar(mop->t))
 		return false;
@@ -1191,14 +1243,13 @@ struct ida_local CFUnflattener
 {
 	CFFlattenInfo cfi;
 	MovChain m_DeferredErasuresLocal;
-	//MovChain m_PerformedErasuresGlobal
 
 	// Find the block that dominates iDispPred, and which is one of the targets of the control flow flattening switch.
 	mblock_t *GetDominatedClusterHead(mbl_array_t *mba, int iDispPred, int &iClusterHead)
 	{
 		mblock_t *mbClusterHead = NULL;
-		// Find the block that is targeted by the dispatcher, and that dominates the block we're currently looking at. 
-		// This logic won't work for the first block (since it wasn't targeted by the control 
+		// Find the block that is targeted by the dispatcher, and that dominates the block we're currently looking at.
+		// This logic won't work for the first block (since it wasn't targeted by the control
 		// flow dispatch switch, so it doesn't have an entry in the dominated cluster information), so we special-case it.
 		if (iDispPred == cfi.iFirst) {
 			//iClusterHead = cfi.iFirst;
@@ -1206,7 +1257,7 @@ struct ida_local CFUnflattener
 			mbClusterHead = mba->get_mblock(iClusterHead);
 
 		} else {
-			// If it wasn't the first block, look up its cluster head block 
+			// If it wasn't the first block, look up its cluster head block
 			iClusterHead = cfi.m_DominatedClusters[iDispPred];
 			if (iClusterHead < 0) {
 				return NULL;
@@ -1240,8 +1291,8 @@ struct ida_local CFUnflattener
 	// * If my_find_def_backwards identifies a definition of the variable "op" which is an assignment from another variable,
 	//   this function then continues looking for numeric assignments to that var (and recursively so, if that var is assigned from another var).
 	// * It keeps a list of all the assignment instructions it finds along the way, storing them in the vector passed as the "chain" argument.
-	// * It has support for traversing more than one basic block in a graph, if the bRecursive argument is true. 
-	// * It won't traverse into blocks with more than one successor if bAllowMultiSuccs is false. 
+	// * It has support for traversing more than one basic block in a graph, if the bRecursive argument is true.
+	// * It won't traverse into blocks with more than one successor if bAllowMultiSuccs is false.
 	// * In any case, it will never traverse past the block numbered iBlockStop, if that parameter is non-negative.
 	bool FindNumericDefBackwards(mblock_t* blk, mop_t* op, mop_t*& opNum, MovChain& chain, bool bRecursive, bool bAllowMultiSuccs, int iBlockStop)
 	{
@@ -1262,7 +1313,7 @@ struct ida_local CFUnflattener
 				mDef = my_find_def_backwards(blk, ml, mStart);
 			if (mDef != NULL) {
 				// Ensure that it's kind of a mov instruction we want
-				if (mDef->opcode != m_mov && mDef->opcode != m_xdu && mDef->opcode != m_xds && 
+				if (mDef->opcode != m_mov && mDef->opcode != m_xdu && mDef->opcode != m_xds &&
 					!(bFirst && cfi.bPtrAssign && mDef->opcode == m_stx)) {
 					MSG_UF1(("[E] %a: FindNumericDef found '%s' in blk %d\n", mDef->ea, mDef->dstr(), blk->serial));
 					return false;
@@ -1278,7 +1329,7 @@ struct ida_local CFUnflattener
 					return true;
 				}
 
-				// Otherwise, if it was not a numeric assignment, then try to track whatever was assigned to it. 
+				// Otherwise, if it was not a numeric assignment, then try to track whatever was assigned to it.
 				ml.clear();
 				if (cfi.bPtrAssign && mDef->l.t == mop_a) { //is it addr of?
 					// InsertOp() doesnt work in that case becouse &var use all memory
@@ -1320,16 +1371,16 @@ struct ida_local CFUnflattener
 	}
 
 	// This function attempts to locate the numeric assignment to a given variable "what" starting from the end of the block "mb".
-	// It follows definitions backwards, even across blocks, until it either reaches the block "mbClusterHead", or, 
+	// It follows definitions backwards, even across blocks, until it either reaches the block "mbClusterHead", or,
 	// if the boolean "bAllowMultiSuccs" is false, it will stop the first time it reaches a block with more than one successor.
 	// If it finds an assignment whose source is a stack variable, then it will not be able to continue in the backwards direction,
-	// because intervening memory writes will make the definition information useless. 
+	// because intervening memory writes will make the definition information useless.
 	int FindBlockTargetOrLastCopy(mblock_t *mb, mblock_t *mbClusterHead, mop_t *what, bool bAllowMultiSuccs, bool bRecursive)
 	{
 		int iClusterHead = mbClusterHead->serial;
 		MovChain local;
 		mop_t *opNum = NULL;
-		// Search backwards looking for a numeric assignment to "what". We may or may not find a numeric assignment, 
+		// Search backwards looking for a numeric assignment to "what". We may or may not find a numeric assignment,
 		// but we might find intervening assignments where "what" is copied from other variables.
 		bool bFound = FindNumericDefBackwards(mb, what, opNum, local, bRecursive, bAllowMultiSuccs, iClusterHead);
 		if (local.empty())
@@ -1388,7 +1439,7 @@ struct ida_local CFUnflattener
 			return false;
 		}
 
-		// Call the previous function to locate the numeric definition of the 
+		// Call the previous function to locate the numeric definition of the
 		// variable that is used to update the assignment variable if the jcc is not taken.
 		actualDfltTarget = FindBlockTargetOrLastCopy(endsWithJcc, mbClusterHead, opCopy, false, true);
 		if (actualDfltTarget > 0) {
@@ -1507,7 +1558,7 @@ struct ida_local CFUnflattener
 		}
 		dgm.ChangeGoto(mb, oldTarget, actualDfltTarget);
 
-		// this is not flattened if-statement blocks. Abort. 
+		// this is not flattened if-statement blocks. Abort.
 		if (actualDfltTarget == actualNonJccTarget) {
 			MSG_UF2(("[W] %a: PostHandleTwoPreds: actualDfltTarget is matched with actualNonJccTarget in the dispatcher predecessor %d.\n", mb->start, mb->serial));
 			return;
@@ -1523,7 +1574,7 @@ struct ida_local CFUnflattener
 		}
 	}
 
-	// ida changes number of stopBlk on inserting new block (CopyMblock), renumbers sucessors/predecessors of moved block 
+	// ida changes number of stopBlk on inserting new block (CopyMblock), renumbers sucessors/predecessors of moved block
 	// but not changes microcode to correlate changed sucessors
 	void CorrectStopBlockPreds(DeferredGraphModifier& dgm, mbl_array_t* mba)
 	{
@@ -1583,22 +1634,20 @@ struct ida_local CFUnflattener
 			nonJcc = mba->get_mblock(iCurrent);
 			if (!is_mcode_jcond(nonJcc->tail->opcode)) {
 				actualJccTarget = FindBlockTargetOrLastCopy(nonJcc, nonJcc, opCopy, false, false);
-				if (actualJccTarget > 0 && actualGotoTarget > 0) {
+				if (actualJccTarget > 0 && actualGotoTarget > 0 && endsWithJcc == mba->get_mblock(nonJcc->pred(0))) {
 					// actual endsWithJcc is the pred of nonJcc
-					endsWithJcc = mba->get_mblock(nonJcc->pred(0));
 					return true;
 				}
 			}
 		}
 
-		// handle case then first block assing additional variable
+		// handle case then first block assign additional variable
 		return actualGotoTarget > 0 && endsWithJcc->serial == first;
 	}
 
 	// Erase the now-superfluous chain of instructions that were used to copy a numeric value into the assignment variable.
 	void ProcessErasures(mbl_array_t *mba)
 	{
-		//m_PerformedErasuresGlobal.insert(m_PerformedErasuresGlobal.end(), m_DeferredErasuresLocal.begin(), m_DeferredErasuresLocal.end());
 		for (auto erase : m_DeferredErasuresLocal) {
 			if (erase.insMov->opcode == m_mov && erase.insMov->l.t == mop_n && !erase.insMov->d.equal_mops(cfi.opAssigned, EQ_IGNSIZE)) {
 				//such assignment may be used more then once (proc 0040C090 in 80B5FD4217C76DBBA3F05A97A27ED762)
@@ -1663,7 +1712,7 @@ struct ida_local CFUnflattener
 				mbClusterHead = mb;
 			}
 
-			// Try to find a numeric assignment to the assignment variable, but pass false for the last parameter so that the search stops if it 
+			// Try to find a numeric assignment to the assignment variable, but pass false for the last parameter so that the search stops if it
 			// reaches a block with more than one successor. This ought to succeed if the flattened control flow region only has one destination,
 			// rather than two destinations for flattening of if-statements.
 			m_DeferredErasuresLocal.clear();
@@ -1776,7 +1825,7 @@ struct ida_local CFUnflattener
 								"pred index %d block number %d, actualDfltTarget from endsWithJcc = %d, actualNonJccTarget from nonJcc = %d\n",
 								mb->serial, i, pred->serial, actualDfltTarget, actualNonJccTarget));
 							// copy and connect #1: copied mb to each pred
-							//FIXME: 	if (!mbOrigUsed) ... 
+							//FIXME: 	if (!mbOrigUsed) ...
 							int iCopied = CopyBlocksAndConnectPredNDest(dgm, mb, pred, cfi.iDispatch);
 							if (iCopied != -1) {
 								mblock_t* mbCopy = mba->get_mblock(iCopied);
@@ -1829,22 +1878,44 @@ struct ida_local CFUnflattener
 						continue;
 					}
 
-					// dispatcher predecessor -> endsWithJcc
 					MSG_UF3(("[I] first blocks: The dispatcher predecessor %d, endsWithJcc = %d & actualDfltTarget = %d, nonJcc = %d & actualNonJccTarget = %d\n",
 									 mb->serial, endsWithJcc->serial, actualDfltTarget, nonJcc->serial, actualNonJccTarget));
-					dgm.ChangeGoto(mb, cfi.iDispatch, endsWithJcc->serial);
+
+					//fix old successor of nonJcc block became unreachable and old predecessors links of endsWithJcc block
+					//just connect endsWithJcc predecessors with nonJcc successor, care about already removed and added edges
+					int nonJccSucc0 = dgm.getAddedSucc(nonJcc->serial);
+					if(nonJccSucc0 <= 0)
+						nonJccSucc0 = nonJcc->succ(0);
+					for(int p = 0; p < endsWithJcc->npred(); ++p)
+						dgm.ChangeGotoChkRem(mba->get_mblock(endsWithJcc->pred(p)), endsWithJcc->serial, nonJccSucc0);
+					bool changed;
+					do {
+						changed = false;
+						for(auto ae : dgm.m_AddEdges) {
+							if(ae.second == endsWithJcc->serial) {
+								dgm.ChangeGotoChkRem(mba->get_mblock(ae.first), endsWithJcc->serial, nonJccSucc0);
+								changed = true;
+							}
+						}
+					} while (changed);
+
+					// dispatcher predecessor -> endsWithJcc
+					dgm.ChangeGotoChkRem(mb, cfi.iDispatch, endsWithJcc->serial);
 
 					// endsWithJcc true case -> actualDfltTarget
-					int JccTrueSerial = endsWithJcc->succ(0) == nonJcc->serial ? endsWithJcc->succ(1) : endsWithJcc->succ(0);
-					dgm.ChangeGoto(endsWithJcc, JccTrueSerial, actualDfltTarget);
+					int JccTrueSerial = dgm.getAddedSucc(endsWithJcc->serial);
+					if(JccTrueSerial <= 0)
+						JccTrueSerial = endsWithJcc->succ(0) == nonJcc->serial ? endsWithJcc->succ(1) : endsWithJcc->succ(0); // AFAIR it must be succ(1)
+					dgm.ChangeGotoChkRem(endsWithJcc, JccTrueSerial, actualDfltTarget);
 					// nonJcc -> actualNonJccTarget
-					dgm.ChangeGoto(nonJcc, nonJcc->succ(0), actualNonJccTarget);
+					dgm.ChangeGotoChkRem(nonJcc, nonJccSucc0, actualNonJccTarget);
+
 					ProcessErasures(mba);
 					++iFixed;
 					continue;
 				}
 
-				// look for key somwhere in Valranges
+				// look for key in Valranges
 				Key_t keyVal;
 				if (getKeyFromValranges(mb, opCopy, &keyVal)) {
 					int iDestNo = cfi.jcm->FindBlockByKey(keyVal);
@@ -1852,7 +1923,7 @@ struct ida_local CFUnflattener
 						MSG_UF3(("[I] Valranges for %s: The dispatcher predecessor %d, destination = %d\n", opCopy->dstr(), iDispPred, iDestNo));
 						dgm.ChangeGoto(mb, cfi.iDispatch, iDestNo);
 						//FIXME: erasures can contain garbage from above call FindJccInFirstBlocks, can find real assinment for opCopy with help of use-def chain
-						m_DeferredErasuresLocal.clear(); //ProcessErasures(mba); 
+						m_DeferredErasuresLocal.clear(); //ProcessErasures(mba);
 						++iFixed;
 						continue;
 					}
@@ -1868,7 +1939,7 @@ struct ida_local CFUnflattener
 			qstring tmpc; cfi.opCompared.print(&tmpc); tag_remove(&tmpc);
 			qstring tmpa; cfi.opAssigned.print(&tmpa); tag_remove(&tmpa);
 			mblock_t *dispBlk = mba->get_mblock(cfi.iDispatch);
-			Log(llNotice, "%a: unflat '%s': '%s' cmp, '%s' asgn; disp at %a ; %d jc, %d targets; %d dispatch predecessors: %d resolved + %d skipped + %d failed\n",
+			Log(llNotice, "%a unflat '%s': '%s' cmp, '%s' asgn; disp at %a ; %d jc, %d targets; %d dispatch predecessors: %d resolved + %d skipped + %d failed\n",
 			    mba->entry_ea, get_short_name(mba->entry_ea).c_str(),
 			    tmpc.c_str(), tmpa.c_str(),
 			    dispBlk->start,
@@ -1876,22 +1947,22 @@ struct ida_local CFUnflattener
 			    (int)(cfi.jcm->JTargetBlocks.size()),
 			    (int)dispBlk->predset.size(), iFixed, skippedPreds, iFail);
 			if (iFail) {
-				Log(llNotice, "unflat: not all predecessors were resolved, pseudocode may be incorrect\n");
+				Log(llWarning, "%a unflat: not all predecessors were resolved, pseudocode may be incorrect\n", mba->entry_ea);
 			}
 		}
 
 		// fix/append jump in the pred of the last block to pass control correctly
 		CorrectStopBlockPreds(dgm, mba);
 		int defChanged = dgm.Apply();// apply the deferred modifications to the graph structure.
+
 #if DEBUG_UF >= 3
-	ShowMicrocodeExplorer(mba, "beforePruneUnreachable");
-	mba->verify(true);
+		ShowMicrocodeExplorer(mba, "beforePruneUnreachable");
+		mba->verify(true);
 #endif
 
-#if 1
 		if (defChanged != 0) {
 			mba->dump_mba(true, "[hrt] before PruneUnreachable");
-#if IDA_SDK_VERSION < 760
+#if 1 // use own implementation to show warning if practical code has been removed //IDA_SDK_VERSION < 760
 			const int nRemoved = PruneUnreachable(mba);
 			defChanged += nRemoved;
 			MSG_UF3(("[I] Removed unreachable %d blocks\n", nRemoved));
@@ -1899,7 +1970,6 @@ struct ida_local CFUnflattener
 			mba->remove_empty_and_unreachable_blocks();
 #endif //IDA_SDK_VERSION < 760
 		}
-#endif
 
 		if ((defChanged + iFixed) != 0) {
 			mba->mark_chains_dirty();

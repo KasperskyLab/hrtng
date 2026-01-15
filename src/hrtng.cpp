@@ -392,7 +392,7 @@ static ea_t idaapi get_call_dst(cfunc_t* cfunc, cexpr_t *call)
 			if(is_func(get_flags(dst_ea)))
 				return dst_ea;
 		}
-		return BADADDR;
+		// fall down to "last hope"
 	}
 
 	// jump to address in struct member-to-proc-xref (or by VT/comment/name)
@@ -5732,7 +5732,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.7.77";
+	addon.version = "3.7.78";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {
