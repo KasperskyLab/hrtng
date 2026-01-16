@@ -20,7 +20,7 @@
 #define MSG_DO(msg_)
 #endif
 
-// For microinstructions with two or more operands (in l and r), check to see if one of them is numeric and the other one isn't. 
+// For microinstructions with two or more operands (in l and r), check to see if one of them is numeric and the other one isn't.
 // If this is the case, return pointers to the operands in the appropriately-named argument variables and return true. Otherwise, return false.
 bool ExtractNumAndNonNum(minsn_t* insn, mop_t*& numOp, mop_t*& otherOp)
 {
@@ -272,7 +272,7 @@ bool InsertOp(mblock_t* mb, mlist_t& ml, mop_t* op)
 	return true;
 }
 
-// Walks backwards through a block, looking at what each instruction defines. 
+// Walks backwards through a block, looking at what each instruction defines.
 // It stops when it finds definitions for everything in the mlist_t, or when it hits the beginning of the block.
 minsn_t* my_find_def_backwards(mblock_t* mb, mlist_t& ml, minsn_t* start)
 {
@@ -402,9 +402,9 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 // it extracts the term that is being subtracted by 1.
 	int pat_AddSub(minsn_t* ins, mblock_t* blk)
 	{
-		// We're looking for following expressions where 'a' and 'b' are numeric 
+		// We're looking for following expressions where 'a' and 'b' are numeric
 		// (x-a)+b or (x+a)+b --> x+(b-a) or x+(b+a)
-		// (x-a)-b or (x+a)-b --> x-(b+a) or x-(b-a) 
+		// (x-a)-b or (x+a)-b --> x-(b+a) or x-(b-a)
 		if (ins->opcode != m_add /* && ins->opcode != m_sub*/)
 			return 0;
 

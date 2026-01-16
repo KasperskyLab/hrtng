@@ -1092,11 +1092,17 @@ struct ida_local DeferredGraphModifier
 		return false;
 	}
 
+	// returns 0 if not found
 	int getAddedSucc(int src) {
-		for(auto ae : m_AddEdges)
-			if(ae.first == src)
-				return ae.second;
-		return -1;
+		for(auto ae : m_AddEdges) {
+			if(ae.first == src) {
+				if(ae.second ==  -1)
+					return mba->qty - 1;
+				else
+					return ae.second;
+			}
+		}
+		return 0;
 	}
 
 	void Add(int src, int dest) {
@@ -1884,7 +1890,7 @@ struct ida_local CFUnflattener
 					//fix old successor of nonJcc block became unreachable and old predecessors links of endsWithJcc block
 					//just connect endsWithJcc predecessors with nonJcc successor, care about already removed and added edges
 					int nonJccSucc0 = dgm.getAddedSucc(nonJcc->serial);
-					if(nonJccSucc0 <= 0)
+					if(!nonJccSucc0)
 						nonJccSucc0 = nonJcc->succ(0);
 					for(int p = 0; p < endsWithJcc->npred(); ++p)
 						dgm.ChangeGotoChkRem(mba->get_mblock(endsWithJcc->pred(p)), endsWithJcc->serial, nonJccSucc0);
@@ -1904,7 +1910,7 @@ struct ida_local CFUnflattener
 
 					// endsWithJcc true case -> actualDfltTarget
 					int JccTrueSerial = dgm.getAddedSucc(endsWithJcc->serial);
-					if(JccTrueSerial <= 0)
+					if(!JccTrueSerial)
 						JccTrueSerial = endsWithJcc->succ(0) == nonJcc->serial ? endsWithJcc->succ(1) : endsWithJcc->succ(0); // AFAIR it must be succ(1)
 					dgm.ChangeGotoChkRem(endsWithJcc, JccTrueSerial, actualDfltTarget);
 					// nonJcc -> actualNonJccTarget

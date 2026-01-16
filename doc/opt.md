@@ -1,6 +1,8 @@
 ## Microcode optimizers
 
-### "Magic" call replacement. 
+### "Magic" call replacement.
+> ⚠️ Consider using [outlined function](https://hex-rays.com/blog/igors-tip-of-the-week-106-outlined-functions) is appeared in IDA 8.0.
+
 C++ optimizing compiler may reuse code of simple class methods like `member_t* CMyClass::GetMember() { return &member;}` for different classes.
 So in a usual way the reverser should create union for the classes were used to call this method and apply it to the `this` argument of the call and one more union for all possible returning types.  
 However the such a simply call might be replaced to micro-code that directly access class member, so type casting of argument and return value will be automatically resolved by the decompiler.  
