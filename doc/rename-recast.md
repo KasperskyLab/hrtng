@@ -10,4 +10,4 @@
 - Rename VTBL method proc when VTBL struct member is renamed : When user renames member of structure which is VTBL description, corresponding proc is renamed too. 
 - Inverse: Rename VTBL struct member when related proc is renamed by user.
 - Change type of VTBL struct member when corresponding proc type is changed.
-- Change return type of constructor proc when it renamed to `className::ctor` . When you are see a constructor proc you can rename it to something like `MyClass::ctor`, the return type of this proc be automatically changed to `MyClass*`
+- Change return type of constructor proc when it renamed to `className::ctor` or `className::className`. When you are see a constructor proc you can rename it to something like `MyClass::ctor`, the return type of this proc be automatically changed to `MyClass*`

@@ -10,7 +10,7 @@ The first thing I've seen very annoying when begins reverse a lot - I spend too 
 	- call to procedure with following name (`A`/`W` letters and additions like `_2` in the end of proc name are ignored):
 		+ `GetLastError` produce name `err`
 		+ function with name contains `get` substring. Example: `SomeClass::getSomething()` or `SomeClass::get_Something()` produce name: `Something`
-		+ function with name contains `::ctor` substring. Example: `SomeClass::ctor_copy()` produce name: `SomeClass`
+		+ function with name contains `::ctor` substring or methodname equal classname. Example: `SomeClass::ctor_copy()` and `SomeClass::SomeClass` produce name: `SomeClass`
 		+ `LoadLibrary(LibName)`, `GetModuleHandle(LibName)` and `dlopen(LibName)` produce name: `hLibName`
 		+ `GetProcAddress(hMod, ProcName)` and `dlsym(hMod, ProcName)` produce name: `ProcName`
 		+ `strdup(Arg)`, `wcsdup(Arg)` produce name: `Arg`

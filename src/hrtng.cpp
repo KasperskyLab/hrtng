@@ -957,10 +957,13 @@ ACT_DEF(rename_func)
 	if(fti.size()) {
 		tinfo_t argt;
 		lvar_t *var = nullptr;
-		if(is_arg_var(vu, &var))
+		if(vu->item.citype == VDI_FUNC && is_arg_var(vu, &var)) {
+			//if cursor is on argument, selected arg type name is used as prefix
 			argt = var->tif.get_pointed_object();
-		else
+		} else {
+			// select arg0 type as prefix by default
 			argt = fti[0].type.get_pointed_object();
+		}
 		if(argt.is_struct() && argt.get_type_name(&newName))
 			newName.append("::");
 	}
@@ -968,9 +971,11 @@ ACT_DEF(rename_func)
 	qstring oldname = get_short_name(vu->cfunc->entry_ea);
 	qstring highlight;
 	uint32 hlflg;
-	if(vu->item.citype != VDI_FUNC && !is_arg_var(vu) && get_highlight(&highlight, ctx->widget, &hlflg))
+	if(get_highlight(&highlight, ctx->widget, &hlflg)) {
+		if(newName.empty() && get_name_ea(BADADDR, highlight.c_str()) != BADADDR)
+			mk_name_w(highlight);
 		newName.append(highlight);
-	else if(has_user_name(get_flags(vu->cfunc->entry_ea)))
+	} else if(has_user_name(get_flags(vu->cfunc->entry_ea)))
 		newName.append(oldname);
 
 	while (1) {
@@ -4977,7 +4982,7 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 			//case CMAT_CASTED:
 			//	break;
 			case CMAT_FINAL:
-				auto_create_vtbls(cfunc); //before all, virtual calls may appear as result of vtbl creation when constructor is inlined into caller proc
+				auto_vtbls(cfunc); //before all, virtual calls may appear as result of vtbl creation when constructor is inlined into caller proc
 				apihashes_scan(cfunc);// before autorename_n_pull_comments: so comments be used for renaming
 				if(!cfg.disable_autorename)
 					autorename_n_pull_comments(cfunc);
@@ -5525,8 +5530,8 @@ MY_DECLARE_LISTENER(idb_callback)
 #endif
 
 			if(is_func(ea_fl)) {
-				const char* ctor = qstrstr(new_name, "::ctor");
-				if(ctor) {
+				qstring className;
+				if(get_class_name(new_name, &className)) {
 					tinfo_t tif;
 					uint32 haveType = TINFO_GUESSED;
 					if(get_tinfo(&tif, ea))
@@ -5535,13 +5540,12 @@ MY_DECLARE_LISTENER(idb_callback)
 						break;
 					func_type_data_t fi;
 					if(tif.is_decl_func() && tif.get_func_details(&fi)) {
-						qstring retTname(new_name, ctor - new_name);
-						fi.rettype = make_pointer(create_typedef(retTname.c_str()));
+						fi.rettype = make_pointer(create_typedef(className.c_str()));
 						tinfo_t newFType;
 						if(newFType.create_func(fi) && apply_tinfo(ea, newFType, haveType))
-							Log(llInfo, "%a: '%s' ret type changed to \"%s*\"\n", ea, new_name, retTname.c_str());
+							Log(llInfo, "%a: '%s' ret type changed to \"%s*\"\n", ea, new_name, className.c_str());
 						else
-							Log(llWarning, "%a: '%s' fail ret type change to \"%s*\"\n", ea, new_name, retTname.c_str());
+							Log(llWarning, "%a: '%s' fail ret type change to \"%s*\"\n", ea, new_name, className.c_str());
 					}
 				}
 
@@ -5732,7 +5736,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.7.79";
+	addon.version = "3.7.80";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

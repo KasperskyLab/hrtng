@@ -280,6 +280,34 @@ qstring good_smember_name(const struc_t* sptr, ea_t offset, const char *format, 
 }
 #endif //IDA_SDK_VERSION < 850
 
+void mk_name_w(qstring& name)
+{
+	bool already_w = false;
+	size_t w = name.length() - 1;
+	if(name[w] == 'w') {
+		while (name[w] == 'w' && w > 0) --w;
+		if(name[w] == '_') {
+			name.append('w');
+			already_w = true;
+		}
+	}
+	if(!already_w)
+		name.append("_w");
+}
+
+//returns true if constructor
+bool get_class_name(const char* fullName, qstring *classname)
+{
+	const char* div = qstrstr(fullName, "::");
+	if(div && div != fullName && qstrlen(div) > 2) {
+		qstring cname(fullName, div - fullName);
+		if(classname)
+			*classname = cname;
+		if(!strncmp(div + 2, "ctor", 4) || !qstrcmp(cname.c_str(), div + 2))
+			return true;
+	}
+	return false;
+}
 
 void patch_str(ea_t ea, const char *str, sval_t len, bool bZeroTerm)
 {

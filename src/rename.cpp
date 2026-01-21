@@ -161,12 +161,8 @@ static bool getCallName(cfunc_t *func, cexpr_t* call, qstring* name)
 		return true;
 	}
 
-	size_t ctor = funcname.find("::ctor");
-	if(ctor != qstring::npos && ctor != 0) {
-		if(name)
-			*name = funcname.substr(0, ctor);
+	if(get_class_name(funcname.c_str(), name))
 		return true;
-	}
 
 	carglist_t &args = *call->a;
 	if (args.size() == 0 && funcname == "GetLastError") {
@@ -1109,17 +1105,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 					if (newName.size() > MAX_NAME_LEN - 2)
 						newName.resize(MAX_NAME_LEN - 2);
 					if(validate_name(&newName, VNT_IDENT)) {
-						bool already_w = false;
-						size_t w = newName.length() - 1;
-						if(newName[w] == 'w') {
-							while (newName[w] == 'w' && w > 0) --w;
-							if(newName[w] == '_') {
-								newName.append('w');
-								already_w = true;
-							}
-						}
-						if(!already_w)
-							newName.append("_w");
+						mk_name_w(newName);
 						if(set_name(func->entry_ea, newName.c_str(), SN_AUTO | SN_NOWARN | SN_FORCE)) {
 							make_name_auto(func->entry_ea);
 							Log(llInfo, "'%s' was renamed to '%s'\n", funcname.c_str(), newName.c_str());

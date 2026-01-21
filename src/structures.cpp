@@ -866,7 +866,7 @@ int create_VT(tid_t parent, ea_t VT_ea, bool autoScan/*= false*/, const char *to
 				else
 					udm.type = type_by_tid(vt_struc_id);
 				if(udm.type.get_type_name(&udm.name))
-					udm.name.append('_');
+					udm.name.append('_'); //be careful, exactly this name is used in vtbl_locator_t::selectVT()
 				else
 					udm.name.cat_sprnt("VT_%a", i == 0 ? eav.front(): VT_ea);
 				size_t sz = udm.type.get_size();
@@ -961,12 +961,13 @@ int create_VT(tid_t parent, ea_t VT_ea, bool autoScan/*= false*/, const char *to
 	return 1;
 }
 
-void auto_create_vtbls(cfunc_t *cfunc)
+void auto_vtbls(cfunc_t *cfunc)
 {
-	struct ida_local vtbl_assign_locator_t : public ctree_visitor_t
+	struct ida_local vtbl_locator_t : public ctree_visitor_t
 	{
-		vtbl_assign_locator_t(): ctree_visitor_t(CV_FAST){}
-		int idaapi visit_expr(cexpr_t * asg)
+		cfunc_t *func;
+		vtbl_locator_t(cfunc_t *cfunc): ctree_visitor_t(CV_FAST), func(cfunc){}
+		int assignVT(cexpr_t * asg)
 		{
 			if(asg->op != cot_asg)
 				return 0;
@@ -1018,15 +1019,74 @@ void auto_create_vtbls(cfunc_t *cfunc)
 				tinfo_t topXType = top->x->type;
 				topXType.remove_ptr_or_array();
 				if(topXType.is_struct() && topXType.get_type_name(&topName))
-					Log(llDebug, "Top struct name for create_VT: %s\n", topName.c_str());
+					Log(llDebug, "%a: Top struct name for create_VT: %s\n", asg->ea, topName.c_str());
 			}
 
 			create_VT(tid, vtea, true, topName.c_str());
 			return 0; // ignore type changes (?)
 			//return create_VT(tid, vtea, true);
 		}
+		int selectVT(cexpr_t *call)
+		{
+			if(call->op != cot_call || call->x->op != cot_memref )
+				return 0;
+			cexpr_t *method = call->x;
+			if(method->x->op != cot_memptr)
+				return 0;
+			cexpr_t *vtbl = method->x;
+			if(vtbl->x->op != cot_memref || vtbl->m != 0) //auto-change only first union member is selected by Hex-Rays by default
+				return 0;
+			cexpr_t *vtUnion = vtbl->x;
+			if(vtUnion->x->op != cot_memptr || vtUnion->m != 0) // must be the first member of the class
+				return 0;
+			tinfo_t unionType = vtUnion->type.get_pointed_object();
+			if(!unionType.is_union())
+				return 0;
+			intvec_t path;
+			if(func->get_user_union_selection(vtbl->ea, &path)) {
+				Log(llDebug, "%a selectVT: skip user selected union member\n", call->ea);
+				return 0;
+			}
+			cexpr_t *memb = vtUnion->x;
+			cexpr_t *top = nullptr;
+			while ((memb->op == cot_memptr || memb->op == cot_memref) && memb->m == 0) {
+				top = memb;
+				memb = memb->x;
+			}
+			if(!top) {
+				Log(llWarning, "%a selectVT: no top???\n", call->ea);
+				return 0;
+			}
+			qstring topName;
+			tinfo_t topXType = remove_pointer(top->x->type);
+			if(!topXType.is_struct() || !topXType.get_type_name(&topName)) {
+				Log(llWarning, "%a selectVT: not named struct???\n", call->ea);
+				return 0;
+			}
+			topName += VTBL_SUFFIX "_"; //exactly this name should be set in create_VT()
+			udm_t m;
+			m.name = topName;
+			int midx = unionType.find_udm(&m, STRMEM_NAME);
+			if(midx < 0 || static_cast<decltype(vtbl->m)>(midx) == vtbl->m) {// not found or nothing to change
+				Log(llDebug, "%a selectVT: %s not found or already %d\n", call->ea, topName.c_str(), vtbl->m);
+				return 0;
+			}
+			// dynamically change (don't save selection) vtbl union member and type of expression
+			vtbl->m = midx;
+			vtbl->type = m.type;
+			Log(llNotice, "%a: auto-selected VT: %s\n", call->ea, topName.c_str());
+			return 0; // recalc_parent_type ?
+		}
+		int idaapi visit_expr(cexpr_t *e)
+		{
+			if(e->op == cot_asg)
+				return assignVT(e);
+			if(e->op == cot_call && e->x->op == cot_memref)
+				return selectVT(e);
+			return 0;
+		}
 	};
-	vtbl_assign_locator_t l;
+	vtbl_locator_t l(cfunc);
 	l.apply_to_exprs(&cfunc->body, nullptr);
 }
 

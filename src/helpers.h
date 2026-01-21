@@ -125,7 +125,7 @@ template <typename T> bool safe_advance(T & iter, const T & end, uval_t count)
 	{
 		if (iter == end)
 			return false;
-		iter++;		
+		iter++;
 	}
 	if (iter == end)
 			return false;
@@ -162,6 +162,8 @@ qstring good_udm_name(const tinfo_t &struc, uint64 offInBits, const char *format
 #if IDA_SDK_VERSION < 850
 qstring good_smember_name(const struc_t* sptr, ea_t offset, const char *format, ...);
 #endif
+void mk_name_w(qstring& name);
+bool get_class_name(const char* fullName, qstring *classname);
 
 void patch_str(ea_t ea, const char *str, sval_t len, bool forceZeroTerm = false);
 void patch_wstr(ea_t ea, const char *str, sval_t len);
