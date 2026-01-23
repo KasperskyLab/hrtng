@@ -428,8 +428,11 @@ static ea_t idaapi get_call_dst(cfunc_t* cfunc, cexpr_t *call)
 	if(dst_ea == BADADDR) {
 		//last hope, jump to name
 		qstring callname;
-		if(getExpName(cfunc, callee, &callname))
+		if(getExpName(cfunc, callee, &callname)) {
 			dst_ea = get_name_ea(BADADDR, callname.c_str());
+			if(dst_ea == BADADDR && callname.replace("__", "::")) // from some version (9.??) IDA disables "::" in Var and Member names, and "::" is replaced it with "__"
+				dst_ea = get_name_ea(BADADDR, callname.c_str());
+		}
 	}
 	return dst_ea;
 }
@@ -5736,7 +5739,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.7.80";
+	addon.version = "3.7.81";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

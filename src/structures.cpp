@@ -961,6 +961,23 @@ int create_VT(tid_t parent, ea_t VT_ea, bool autoScan/*= false*/, const char *to
 	return 1;
 }
 
+// returns derivedClassThis in expressions like:
+// derivedClassThis->baseClass2.baseClass1.baseClassMember
+// derivedClassThis.baseClass2.baseClass1.baseClassMember
+bool topClassThis(cexpr_t** e)
+{
+	bool res = false;
+	while((*e)->op == cot_memref && (*e)->m == 0) {
+		*e = (*e)->x;
+		res = true;
+	}
+	if((*e)->op == cot_memptr && (*e)->m == 0) {
+		(*e) = (*e)->x;
+		res = true;
+	}
+	return res;
+}
+
 void auto_vtbls(cfunc_t *cfunc)
 {
 	struct ida_local vtbl_locator_t : public ctree_visitor_t
@@ -1028,16 +1045,16 @@ void auto_vtbls(cfunc_t *cfunc)
 		}
 		int selectVT(cexpr_t *call)
 		{
-			if(call->op != cot_call || call->x->op != cot_memref )
+			if(call->op != cot_call)
 				return 0;
-			cexpr_t *method = call->x;
-			if(method->x->op != cot_memptr)
+			cexpr_t *method = skipCast(call->x);
+			if(method->op != cot_memref)
 				return 0;
 			cexpr_t *vtbl = method->x;
-			if(vtbl->x->op != cot_memref || vtbl->m != 0) //auto-change only first union member is selected by Hex-Rays by default
+			if(vtbl->op != cot_memptr)
 				return 0;
 			cexpr_t *vtUnion = vtbl->x;
-			if(vtUnion->x->op != cot_memptr || vtUnion->m != 0) // must be the first member of the class
+			if(vtUnion->op != cot_memref)
 				return 0;
 			tinfo_t unionType = vtUnion->type.get_pointed_object();
 			if(!unionType.is_union())
@@ -1047,41 +1064,68 @@ void auto_vtbls(cfunc_t *cfunc)
 				Log(llDebug, "%a selectVT: skip user selected union member\n", call->ea);
 				return 0;
 			}
-			cexpr_t *memb = vtUnion->x;
-			cexpr_t *top = nullptr;
-			while ((memb->op == cot_memptr || memb->op == cot_memref) && memb->m == 0) {
-				top = memb;
-				memb = memb->x;
-			}
-			if(!top) {
-				Log(llWarning, "%a selectVT: no top???\n", call->ea);
+			cexpr_t* thisExpr = vtUnion->x;
+			if(!topClassThis(&thisExpr)) {
+				Log(llWarning, "%a selectVT: no 'this' found, direct vtbl usage?\n", call->ea);
 				return 0;
 			}
-			qstring topName;
-			tinfo_t topXType = remove_pointer(top->x->type);
-			if(!topXType.is_struct() || !topXType.get_type_name(&topName)) {
+			qstring vtblName;
+			tinfo_t thisExprType = remove_pointer(thisExpr->type);
+			if(!thisExprType.is_struct() || !thisExprType.get_type_name(&vtblName)) {
 				Log(llWarning, "%a selectVT: not named struct???\n", call->ea);
 				return 0;
 			}
-			topName += VTBL_SUFFIX "_"; //exactly this name should be set in create_VT()
+			vtblName += VTBL_SUFFIX "_"; //exactly this name should be set in create_VT()
 			udm_t m;
-			m.name = topName;
+			m.name = vtblName;
 			int midx = unionType.find_udm(&m, STRMEM_NAME);
 			if(midx < 0 || static_cast<decltype(vtbl->m)>(midx) == vtbl->m) {// not found or nothing to change
-				Log(llDebug, "%a selectVT: %s not found or already %d\n", call->ea, topName.c_str(), vtbl->m);
+				Log(llDebug, "%a selectVT: %s %s\n", call->ea, vtblName.c_str(), midx < 0 ? "not found" : "already selected");
 				return 0;
 			}
 			// dynamically change (don't save selection) vtbl union member and type of expression
 			vtbl->m = midx;
 			vtbl->type = m.type;
-			Log(llNotice, "%a: auto-selected VT: %s\n", call->ea, topName.c_str());
-			return 0; // recalc_parent_type ?
+
+			m.offset = method->m;
+			if(vtbl->type.find_udm(&m, STRMEM_AUTO) >= 0) {
+				method->type = m.type;
+				tinfo_t ftype = remove_pointer(method->type);
+				if(!(call->a->flags & CFL_FINAL) && ftype.is_func())
+					call->a->functype = ftype;
+
+				// fix 'this' argument of the call has been previously set to base class
+				if(call->a->size()) {
+					carg_t &arg0 = call->a->at(0);
+					func_type_data_t fti;
+					if(ftype.get_func_details(&fti, GTD_NO_ARGLOCS) && fti.size() && arg0.type != fti.at(0).type) {
+#if 1
+						//check if `this` argument matches pattern `&derivedClassThis->baseClass2.baseClass1.baseClass0`, and replace it with `derived`
+						cexpr_t* thisExp = arg0.x;
+						if(arg0.op == cot_ref && topClassThis(&thisExp)) {
+								arg0.consume_cexpr(new cexpr_t(*thisExp));
+#else
+						// or simply replace it to thisExpr has been found before
+						if(thisExpr->type == fti.at(0).type) {
+							arg0.consume_cexpr(new cexpr_t(*thisExpr));
+#endif
+						} else {
+#if IDA_SDK_VERSION > 820
+							Log(llDebug, "%a selectVT: arg0 %s %s must be %s, thisExpr %s %s\n", call->ea, arg0.type.dstr(), arg0.dstr(), fti.at(0).type.dstr(), thisExpr->type.dstr(), thisExpr->dstr());
+#endif // IDA_SDK_VERSION > 820
+						}
+					}
+				}
+			}
+
+			Log(llNotice, "%a: auto-selected VT: %s\n", call->ea, vtblName.c_str());
+			return 0; // recalc_parent_types does not help
 		}
 		int idaapi visit_expr(cexpr_t *e)
 		{
 			if(e->op == cot_asg)
 				return assignVT(e);
-			if(e->op == cot_call && e->x->op == cot_memref)
+			if(e->op == cot_call)
 				return selectVT(e);
 			return 0;
 		}
