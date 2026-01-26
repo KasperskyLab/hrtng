@@ -87,7 +87,7 @@ void new_struct_view_unreg_act()
 //---------------------------------------------------------------------------
 ACT_DEF(remove_one)
 {
-	new_struc_place_t * place; 
+	new_struc_place_t * place;
 	place = (new_struc_place_t *)get_custom_viewer_place(ctx->widget, false, NULL, NULL);
 	if(!place || !fi.flip_enabled_status(place->idx, place->subtype))
 		return 0;
@@ -96,11 +96,11 @@ ACT_DEF(remove_one)
 
 ACT_DEF(insert_one)
 {
-	new_struc_place_t * place; 
+	new_struc_place_t * place;
 	place = (new_struc_place_t *)get_custom_viewer_place(ctx->widget, false, NULL, NULL);
 	if(!place)
 		return 0;
-	
+
 	sval_t offset = fi.max_adjustments[fi.current_offset];
 	auto b = fi.begin();
 	if(fi.size() > place->idx) {
@@ -123,7 +123,7 @@ ACT_DEF(insert_one)
 
 static bool idaapi adjust_substruct(TWidget *vi, bool add, bool fine)
 {
-	new_struc_place_t * place; 
+	new_struc_place_t * place;
 	place = (new_struc_place_t *)get_custom_viewer_place(vi, false, NULL, NULL);
 	if(!place)
 		return false;
@@ -148,7 +148,7 @@ static bool idaapi adjust_substruct(TWidget *vi, bool add, bool fine)
 		if(add)
 			++iter->second.nesting_counter;
 		else
-			--iter->second.nesting_counter;	
+			--iter->second.nesting_counter;
 		if(fine)
 			break;
 		++iter;
@@ -160,7 +160,7 @@ static bool idaapi adjust_substruct(TWidget *vi, bool add, bool fine)
 
 static bool idaapi set_current_offset(TWidget *vi)
 {
-	new_struc_place_t * place; 
+	new_struc_place_t * place;
 	place = (new_struc_place_t *)get_custom_viewer_place(vi, false, NULL, NULL);
 	if(!place)
 		return false;
@@ -181,7 +181,7 @@ static bool idaapi ct_keyboard(TWidget * /*v*/, int key, int shift, void *ud)
 	//if ( shift == 0 )
 	{
 		TWidget *vi = (TWidget *)ud;
-		switch ( key )    
+		switch ( key )
 		{
 		case IK_ADD:
 		//case '+':
@@ -192,7 +192,7 @@ static bool idaapi ct_keyboard(TWidget * /*v*/, int key, int shift, void *ud)
 			return set_current_offset(vi);
 			break;
 
-		case IK_SUBTRACT:  
+		case IK_SUBTRACT:
 		//case '-':
 			return adjust_substruct(vi, false, shift != 0);
 			break;
@@ -217,26 +217,6 @@ static bool idaapi ct_keyboard(TWidget * /*v*/, int key, int shift, void *ud)
 }
 
 //----------------------------------------------------------------------------------------------------
-struct ida_local function_list_t : public chooser_t
-{
-	eavec_t functions;
-	static const int widths[];
-	static const char* const header[];
-
-	function_list_t(const char* title) : chooser_t(CH_KEEP | CH_MODAL, 2, widths, header, title) {}
-	virtual size_t idaapi get_count() const { return functions.size(); }
-	virtual void idaapi get_row(qstrvec_t* cols, int* icon_, chooser_item_attrs_t* attrs, size_t n) const
-	{
-		qstrvec_t& cols_ = *cols;
-		ea_t ea = functions[n];
-		cols_[0].sprnt("%a", ea);
-		cols_[1] = get_short_name(ea);
-
-		func_t* f = get_func(ea);
-		if (f)
-			get_func_cmt(&cols_[2], f, true);
-	}
-};
 const int function_list_t::widths[] = { CHCOL_HEX | 8, 32, 32 };
 const char* const function_list_t::header[] = { "Address", "Function name", "Comment" };
 
@@ -271,7 +251,7 @@ struct ida_local glob_vars_locator_t : public ctree_visitor_t
 		if(e->op == cot_obj && is_our(e->obj_ea)) {
 			found_expr = e;
 			return 1;
-		}			
+		}
 		return 0;
 	}
 	glob_vars_locator_t(field_info_t * fi) : ctree_visitor_t(0), fields(fi), found_expr(NULL)
@@ -313,7 +293,7 @@ ACT_DEF(jump_to_next_function_cb)
 		else
 			Log(llDebug, "function @ %08a has different arguments count\n", argnum->first);
 	}
-	
+
 	//jump to global variable
 	if(fi.global_pointers.size() > 0) {
 		glob_vars_locator_t locator(&fi);
@@ -334,17 +314,15 @@ ACT_DEF(jump_to_next_function_cb)
 					}
 				}
 			}
-			
 		}
 	}
-	
 	return 1;
 }
 
 //---------------------------------------------------------------------------
 ACT_DEF(change_item_type_cb)
 {
-	new_struc_place_t * place; 
+	new_struc_place_t * place;
 	place = (new_struc_place_t *)get_custom_viewer_place(ctx->widget, false, NULL, NULL);
 	if(!place)
 		return 0;
@@ -355,11 +333,11 @@ ACT_DEF(change_item_type_cb)
 	auto b = fi.begin();
 	if(!safe_advance(b, fi.end(), place->idx))
 		return 0;
-	
+
 	typevec_t& types = b->second.types;
 	if(!types.size())
 		return 0;
-	
+
 	auto iter1 = types.begin();
 	if(!safe_advance(iter1, types.end(), place->subtype))
 		return 0;
@@ -373,7 +351,7 @@ ACT_DEF(change_item_type_cb)
 			declaration.append(';');
 		if(parse_decl(&type, NULL, NULL, declaration.c_str(), PT_VAR)) {
 			iter1->type = type;
-			return 1;			
+			return 1;
 		}
 	}
 	return 0;
@@ -382,7 +360,7 @@ ACT_DEF(change_item_type_cb)
 //---------------------------------------------------------------------------
 ACT_DEF(make_array_cb)
 {
-	new_struc_place_t * place; 
+	new_struc_place_t * place;
 	place = (new_struc_place_t *)get_custom_viewer_place(ctx->widget, false, NULL, NULL);
 	if(!place)
 		return 0;
@@ -393,7 +371,7 @@ ACT_DEF(make_array_cb)
 	field_info_t::iterator b = fi.begin();
 	if(!safe_advance(b, fi.end(), place->idx))
 		return 0;
-	
+
 	b->second.is_array = !b->second.is_array;
 	return 1;
 }
@@ -401,7 +379,7 @@ ACT_DEF(make_array_cb)
 //---------------------------------------------------------------------------
 ACT_DEF(pack_cb)
 {
-	new_struc_place_t * place; 
+	new_struc_place_t * place;
 	place = (new_struc_place_t *)get_custom_viewer_place(ctx->widget, false, NULL, NULL);
 	if(!place)
 		return 0;
@@ -411,7 +389,7 @@ ACT_DEF(pack_cb)
 
 	auto b = fi.begin();
 	if(!safe_advance(b, fi.end(), place->idx))
-		return 0;	
+		return 0;
 
 	uint32 cnt = b->second.nesting_counter;
 	auto last = b;
@@ -419,7 +397,7 @@ ACT_DEF(pack_cb)
 		last = b;
 		--b;
 	}
-	
+
 	b = last;
 	auto e = b;
 	while(e != fi.end() && e->second.nesting_counter == cnt)
@@ -500,7 +478,7 @@ const char * new_struc_view_form = "[hrt] new structure";
 //---------------------------------------------------------------------------
 // Create a custom view window
 bool show_new_struc_view()
-{	
+{
 	if (!fi.size())
 		return false;
 
@@ -510,7 +488,7 @@ bool show_new_struc_view()
 		return true;
 	}
 	// create two place_t objects: for the minimal and maximal locations
-	new_struc_place_t s1;  
+	new_struc_place_t s1;
 	new_struc_place_t s2((uval_t)fi.size() - 1);
 	stBld = create_custom_viewer(new_struc_view_form, &s1, &s2, &s1, 0, &fi, NULL, NULL);
 

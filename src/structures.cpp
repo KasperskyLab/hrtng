@@ -1089,30 +1089,32 @@ void auto_vtbls(cfunc_t *cfunc)
 
 			m.offset = method->m;
 			if(vtbl->type.find_udm(&m, STRMEM_AUTO) >= 0) {
-				method->type = m.type;
-				tinfo_t ftype = remove_pointer(method->type);
-				if(!(call->a->flags & CFL_FINAL) && ftype.is_func())
-					call->a->functype = ftype;
+				tinfo_t ftype = remove_pointer(m.type);
+				if(ftype.is_func()) {
+					method->type = m.type;
+					if(!(call->a->flags & CFL_FINAL))
+						call->a->functype = ftype;
 
-				// fix 'this' argument of the call has been previously set to base class
-				if(call->a->size()) {
-					carg_t &arg0 = call->a->at(0);
-					func_type_data_t fti;
-					if(ftype.get_func_details(&fti, GTD_NO_ARGLOCS) && fti.size() && arg0.type != fti.at(0).type) {
+					// fix 'this' argument of the call has been previously set to base class
+					if(call->a->size()) {
+						carg_t &arg0 = call->a->at(0);
+						func_type_data_t fti;
+						if(ftype.get_func_details(&fti, GTD_NO_ARGLOCS) && fti.size() && arg0.type != fti.at(0).type) {
 #if 1
-						//check if `this` argument matches pattern `&derivedClassThis->baseClass2.baseClass1.baseClass0`, and replace it with `derived`
-						cexpr_t* thisExp = arg0.x;
-						if(arg0.op == cot_ref && topClassThis(&thisExp)) {
+							//check if `this` argument matches pattern `&derivedClassThis->baseClass2.baseClass1.baseClass0`, and replace it with `derived`
+							cexpr_t* thisExp = arg0.x;
+							if(arg0.op == cot_ref && topClassThis(&thisExp)) {
 								arg0.consume_cexpr(new cexpr_t(*thisExp));
 #else
-						// or simply replace it to thisExpr has been found before
-						if(thisExpr->type == fti.at(0).type) {
-							arg0.consume_cexpr(new cexpr_t(*thisExpr));
+							// or simply replace it to thisExpr has been found before
+							if(thisExpr->type == fti.at(0).type) {
+								arg0.consume_cexpr(new cexpr_t(*thisExpr));
 #endif
-						} else {
+							} else {
 #if IDA_SDK_VERSION > 820
-							Log(llDebug, "%a selectVT: arg0 %s %s must be %s, thisExpr %s %s\n", call->ea, arg0.type.dstr(), arg0.dstr(), fti.at(0).type.dstr(), thisExpr->type.dstr(), thisExpr->dstr());
+								Log(llDebug, "%a selectVT: arg0 %s %s must be %s, thisExpr %s %s\n", call->ea, arg0.type.dstr(), arg0.dstr(), fti.at(0).type.dstr(), thisExpr->type.dstr(), thisExpr->dstr());
 #endif // IDA_SDK_VERSION > 820
+							}
 						}
 					}
 				}
