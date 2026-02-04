@@ -25,11 +25,13 @@
 #include "warn_on.h"
 
 #include "helpers.h"
+#include "opt.h"
 #include "deob.h"
 
 #define DEBUG_DO 0
 
 #if DEBUG_DO
+#include "MicrocodeExplorer.h"
 #define MSG_DO(msg_) msg msg_;
 #else
 #define MSG_DO(msg_)
@@ -42,79 +44,229 @@ static ushort dflags = DF_PATCH | DF_FAST | DF_FUNC;
 
 static bool deob = false;
 static bool final_pass = false;
-static rangeset_t unreachBlocks;
+static rangeset_t unreachBlocks; // blocks with trash should be excluded
 
-#if 0 //TODO: not completed
-static bool unpackInterlockedExchange(mba_t* mba, mop_t *op)
+qstring gen_disasm(ea_t ea, asize_t len)
 {
-	if (!op->is_insn(m_call))
-		return false;
-	if (!op->d->is_helper("_InterlockedExchange64"))
-		return false;
-	mcallinfo_t &fi = *op->d->d.f;
-	if (fi.args.size() != 2)
-		return false;
+	qstring res;
+	ea_t dea = ea;
+	while (dea < ea + len) {
+		qstring tmp;
+		if (!generate_disasm_line(&tmp, dea, GENDSM_REMOVE_TAGS))
+			break;
+		if (!res.empty())
+			res.append('\n');
+		res.append(tmp);
+		dea = next_not_tail(dea);
+		if (dea == BADADDR)
+			break;
+	}
+	return res;
+}
 
-	mreg_t tmpReg = mba->alloc_kreg(op->size);
-	minsn_t* ins1 = new minsn_t(op->d->ea);
-	ins1->opcode = m_mov;
-	ins1->d.make_reg(tmpReg, op->size);
-	ins1->l = fi.args[0];
-	minsn_t* ins2 = new minsn_t(op->d->ea);
-	ins2->opcode = m_mov;
-	ins2->d = fi.args[0];
-	ins2->l = fi.args[1];
-	minsn_t* ins3 = new minsn_t(op->d->ea);
-	ins3->opcode = m_mov;
-	ins3->d = fi.args[1];
-	ins3->l.make_reg(tmpReg, op->size);
-	mba->free_kreg(tmpReg, op->size);
+asize_t extraSpaceForPatch(ea_t ea)
+{
+	ea_t end = ea;
+	if (is_align(get_flags(ea)))
+		end = next_not_tail(ea);
 
-	//TODO: replace/insert
+	// put more checks here
 
+	if (end == BADADDR)
+		return 0;
+	Log(llDebug, "extraSpaceForPatch(%a) => %d\n", end - ea);
+	return end - ea;
+}
+
+static bool patch_jmp(ea_t from, ea_t to, ea_t endOfBlk)
+{
+	if (!isX86()) {
+		Log(llWarning, "FIXME: patch_jmp is x86 specific\n");
+		return false;
+	}
+	adiff_t dist = to - (from + 2);
+	asize_t patchLen = (dist >= -128 && dist <= 127) ? 2 : 5;
+	asize_t maxLen = endOfBlk - from;
+	if (maxLen < patchLen && maxLen + extraSpaceForPatch(endOfBlk) < patchLen) {
+		Log(llWarning, "%a: no space for jmp patch\n", from);
+		return false;
+	}
+
+	qstring cmt;
+	cmt.sprnt("; patched %d bytes:\n", patchLen);//';' in first position prevents comment be copyed to pseudocode
+	cmt.append(gen_disasm(from, patchLen));
+	del_items(from, DELIT_EXPAND); //Important here!!!
+
+	if (patchLen == 2) {
+		patch_byte(from, 0xeb);
+		patch_byte(from + 1, uint64(dist));
+	} else {
+		patch_byte(from, 0xe9);
+		patch_dword(from + 1, uint64(dist - 3));
+	}
+	create_insn(from);
+	add_extra_cmt(from, true, cmt.c_str());
+	Log(llInfo, "%a: patched %d bytes (jmp %a)\n", from, patchLen, to);
 	return true;
 }
+
+static bool patch_cond_jmp(ea_t ea, mcode_t op, ea_t trueDest, ea_t falseDest, ea_t endOfBlk)
+{
+	if (!isX86()) {
+		Log(llWarning, "FIXME: patch_cond_jmp is x86 specific\n");
+		return false;
+	}
+
+	adiff_t tdist = trueDest - (ea + 2);
+	asize_t tlen = (tdist >= -128 && tdist <= 127) ? 2 : 6;
+	adiff_t fdist = falseDest - (ea + tlen + 2 );
+	asize_t flen = (fdist == 0) ? 0 : (fdist >= -128 && fdist <= 127) ? 2 : 5;
+	asize_t maxLen = endOfBlk - ea;
+	if (maxLen < tlen + flen) {
+		Log(llWarning, "%a: no space for cond jmp patch\n", ea);
+		return false;
+	}
+
+#if 1
+	asize_t patchLen = maxLen;
+#else
+	asize_t patchLen = tlen + flen;
 #endif
 
-static int bswap_const_to_const(mop_t *op, minsn_t *call)
-{
-	if (!call->is_bswap())
-		return 0;
-	if (!call->is_helper("_byteswap_ulong"))
-		return 0;
-	mcallinfo_t &fi = *call->d.f;
-	if (fi.args.empty())
-		return 0;
-	uint64 val;
-	if (!fi.args.front().is_constant(&val))
-		return 0;
-	val = swap32((uint32)val);
-	op->make_number(val, op->size);
-	return 1;
+	qstring cmt;
+	cmt.sprnt("; patched %d bytes:\n", patchLen);//';' in first position prevents comment be copyed to pseudocode
+	cmt.append(gen_disasm(ea, patchLen));
+	del_items(ea, 0 /*DELIT_EXPAND*/, patchLen);
+
+	if (tlen == 2) {
+		switch (op) {
+		case m_jnz: patch_byte(ea, 0x75); break;
+		case m_jz:  patch_byte(ea, 0x74); break;
+		case m_jae: patch_byte(ea, 0x73); break;
+		case m_jb:  patch_byte(ea, 0x72); break;
+		case m_ja:  patch_byte(ea, 0x77); break;
+		case m_jbe: patch_byte(ea, 0x76); break;
+		case m_jg:  patch_byte(ea, 0x7f); break;
+		case m_jge: patch_byte(ea, 0x7d); break;
+		case m_jl:  patch_byte(ea, 0x7c); break;
+		case m_jle: patch_byte(ea, 0x7e); break;
+		default:
+			Log(llWarning, "FIXME: patch_cond_jmp unk short op\n");
+			return false;
+		}
+		patch_byte(ea + 1, uint64(tdist));
+	} else {
+		switch (op) {
+		case m_jnz: patch_word(ea, 0x850f); break;
+		case m_jz:  patch_word(ea, 0x840f); break;
+		case m_jae: patch_word(ea, 0x830f); break;
+		case m_jb:  patch_word(ea, 0x820f); break;
+		case m_ja:  patch_word(ea, 0x870f); break;
+		case m_jbe: patch_word(ea, 0x860f); break;
+		case m_jg:  patch_word(ea, 0x8f0f); break;
+		case m_jge: patch_word(ea, 0x8d0f); break;
+		case m_jl:  patch_word(ea, 0x8c0f); break;
+		case m_jle: patch_word(ea, 0x8e0f); break;
+		default:
+			Log(llWarning, "FIXME: patch_cond_jmp unk near op\n");
+			return false;
+		}
+		patch_dword(ea + 2, uint64(tdist - 4));
+	}
+
+	if (!flen) {
+		; // do nothing, already here
+	} else if(flen == 2) {
+		patch_byte(ea + tlen, 0xeb);
+		patch_byte(ea + tlen + 1, uint64(fdist));
+	}	else {
+		patch_byte(ea + tlen, 0xe9);
+		patch_dword(ea + tlen + 1, uint64(fdist - 3));
+	}
+
+	create_insn(ea);
+	if(flen)
+		create_insn(ea + tlen);
+
+	//fill tail
+	if (tlen + flen < patchLen) {
+		for (asize_t i = tlen + flen; i < patchLen; i++)
+			patch_byte(ea + i, 0xcc);
+		if (!create_align(ea + tlen + flen, patchLen - (tlen + flen), 0))
+			create_data(ea + tlen + flen, byte_flag(), patchLen - (tlen + flen), BADNODE);
+	}
+
+	add_extra_cmt(ea, true, cmt.c_str());
+	Log(llInfo, "%a: patched %d bytes (cond jmp)\n", ea, patchLen);
+	return true;
 }
 
+//blocks may be reordered at early stages
+mblock_t* get_next_mblock(mbl_array_t* mba, int from, ea_t ea)
+{
+	for (; from < mba->qty && from >= 0; ++from) {
+		mblock_t* blk = mba->get_mblock(from);
+		//if (blk->flags & MBL_FAKE)
+		//	continue;
+		if (blk->start == ea)
+			return blk;
+	}
+	return NULL;
+}
+
+struct ida_local ijmp_0way_op_visitor_t : mop_visitor_t
+{
+	mop_t *glbaddr = nullptr;
+	mop_t *set = nullptr;
+	int visit_mop(mop_t *op, const tinfo_t *type, bool is_target)
+	{
+		if(op->is_glbaddr())
+			glbaddr = op;
+		else if (op->is_insn() && is_mcode_set(op->d->opcode))
+			set = op;
+		return 0;
+	}
+};
+
+#if 0
 struct ida_local deob_op_visitor_t : mop_visitor_t
 {
 	int visit_mop(mop_t *op, const tinfo_t *type, bool is_target)
 	{
-		if (op->is_insn(m_call))
-			return bswap_const_to_const(op, op->d);
 		return 0;
 	}
 };
+#endif
 
-struct ida_local deob_instr_visitor_t : minsn_visitor_t
+//icall  cs.2, ($off_1400197B8.8+#0x44927437A5E3AB1C.8)
+static int callOrJmp2InitedVar(minsn_t* ins, mblock_t* blk)
 {
-	int visit_minsn()
-	{
-		switch (curins->opcode) {
-		case m_ret:
-			//return insert_ret_addr_catcher(curins);
-			break;
-		}
+	mop_t* off;
+	if (ins->opcode == m_ijmp)
+		off = &ins->d;
+	else if (ins->opcode == m_icall)
+		off = &ins->r;
+	else
 		return 0;
+	if (!off->is_insn() || !is_mcode_addsub(off->d->opcode))
+		return 0;
+	ea_t ea = ins->ea; // it possible too small space for near jmp patch // if use `ins->d.d->ea` patch may overwrite significant instuctions
+	mop_t *num, *gvar;
+	if (!ExtractNumAndNonNum(off->d, num, gvar))
+		return 0;
+
+	if(!replaceReadOnlyInitedVar2Val(gvar))
+		return 0;
+	blk->optimize_insn(ins); // original 'ins' is probably not valid after this line
+
+	if (blk->tail) {
+		ins = blk->tail;
+		MSG_DO((" -> callOrJmp2InitedVar: %s\n", ins->dstr()));
+		if ((dflags & DF_PATCH) != 0 && ea != BADADDR && blk->end != BADADDR && ins->opcode == m_goto && ins->l.t == mop_v)
+			patch_jmp(ea, ins->l.g, blk->end);
 	}
-};
+	return 1;
+}
 
 struct ida_local deobfuscation_optimizer_t : public optinsn_t
 {
@@ -126,33 +278,28 @@ struct ida_local deobfuscation_optimizer_t : public optinsn_t
 	{
 		int res = 0;
 		//check only top level instructions here (ins)
-		if (ins->opcode == m_ret && blk) {
-			//res = insert_ret_addr_catcher(blk, ins);
+		switch (ins->opcode) {
+		case m_icall:
+		case m_ijmp:
+			res += callOrJmp2InitedVar(ins, blk);
 		}
 
+#if 0
 		if (!res) {
 			//check operands of inst and subinsts
 			deob_op_visitor_t vo;
 			res = ins->for_all_ops(vo);
 		}
-		if (!res) {
-			//check inst and subinsts
-			deob_instr_visitor_t vi;
-			res = ins->for_all_insns(vi);
-		}
-		if (res) {
-			MSG_DO(("[hrt] %a deobfuscation: %s\n", ins->ea, ins->dstr()));
-			//ins->optimize_solo();
-			if (blk) {
+#endif
+		if (res && blk) {
 				blk->mark_lists_dirty();
-				blk->mba->verify(true);
-			}
+				blk->mba->verify(false);
 		}
 		return res;
 	}
 };
 
-mblock_t *pass_goto_chain(mbl_array_t *mba, int i)
+static mblock_t *pass_goto_chain(mbl_array_t *mba, int i)
 {
 	intvec_t visited;
 	mblock_t *b = NULL;
@@ -170,7 +317,7 @@ mblock_t *pass_goto_chain(mbl_array_t *mba, int i)
 
 struct ida_local optblock_optimizer_t : public optblock_t
 {
-	/*
+/*
 replace1:
 	1: jcnd   cond, @4
 	2: jcnd   lnot(cond), @4 //has only one predecessor
@@ -298,11 +445,150 @@ to:
 		//mba->verify(false);
 		return true;
 	}
+
+/*
+replace:
+	ijmp   cs.2{16}, ([ds.2{16}:((xdu.8((xdu.4((rdx.8 == #1.8)) <<l #7.1))+&($qword_1400184E0).8)+#0xC0.8)].8-#0x1260EC9986F965C0.8)
+to
+	1: j_cond (rdx.8 == #1.8), @3
+	2: ijmp   cs.2{16}, ([ds.2{16}:((xdu.8((xdu.4(0) <<l #7.1))+&($qword_1400184E0).8)+#0xC0.8)].8-#0x1260EC9986F965C0.8)
+	3: ijmp   cs.2{16}, ([ds.2{16}:((xdu.8((xdu.4(1) <<l #7.1))+&($qword_1400184E0).8)+#0xC0.8)].8-#0x1260EC9986F965C0.8)
+*/
+	bool ijmp_0way(mblock_t *blk) const
+	{
+		minsn_t *ijmp = blk->tail;
+		if(blk->type != BLT_0WAY || !ijmp || ijmp->opcode != m_ijmp)
+			return false;
+		blk->mba->dump_mba(true, "[hrt] ijmp at %a: %s, mat: %d\n", ijmp->ea, ijmp->d.dstr(), blk->mba->maturity);
+		MSG_DO(("[hrt] ijmp at %a: %s, mat: %d\n", ijmp->ea, ijmp->d.dstr(), blk->mba->maturity));
+
+		ijmp_0way_op_visitor_t v;
+		ijmp->d.for_all_ops(v);
+		MSG_DO(("[hrt] glbaddr: %s, set: %s\n", v.glbaddr ? v.glbaddr->dstr() : "-" , v.set ? v.set->dstr() : "-"));
+
+		if(v.glbaddr != nullptr && v.set != nullptr) {
+			QASSERT(100402, v.set->is_insn());
+			ea_t setEa = v.set->d->ea;
+			minsn_t* jcnd = new minsn_t(*v.set->d);
+			jcnd->opcode = set2jcnd(v.set->d->opcode);
+
+			//true block first, it will be shifted down on false block insertion
+			mblock_t* copy1 = blk->mba->insert_block(blk->serial + 1);
+			//copy1->flags = blk->flags;
+			copy1->start = ijmp->ea;
+			copy1->end = ijmp->ea + 1; //make block small for callOrJmp2InitedVar cant patch this jmp
+			copy1->type = blk->type;
+			v.set->make_number(1, v.set->size);
+			copy1->insert_into_block(new minsn_t(*ijmp), nullptr);  // copy ijmp with m_setX is replaced to '0'
+			copy1->mark_lists_dirty();
+			copy1->optimize_insn(copy1->tail, OPTI_ADDREXPRS | OPTI_MINSTKREF | OPTI_COMBINSNS);
+
+			// false is direct successor of blk
+			mblock_t* copy0 = blk->mba->insert_block(blk->serial + 1);
+			//copy0->flags = blk->flags;
+			copy0->start = ijmp->ea;
+			copy0->end = ijmp->ea + 1;//make block small for callOrJmp2InitedVar cant patch this jmp
+			copy0->type = blk->type;
+			v.set->make_number(0, v.set->size);
+			copy0->insert_into_block(new minsn_t(*ijmp), nullptr); // copy ijmp with m_setX is replaced to '0'
+			copy0->mark_lists_dirty();
+			copy0->optimize_insn(copy0->tail, OPTI_ADDREXPRS | OPTI_MINSTKREF | OPTI_COMBINSNS);
+
+			jcnd->d._make_blkref(copy1->serial);
+			jcnd->d.size = NOSIZE; //avoid INTERR(50754)
+			ijmp->swap(*jcnd);
+			delete jcnd;
+
+			blk->type = BLT_2WAY;
+			blk->mark_lists_dirty();
+
+			blk->succset.clear();
+			blk->succset.add(copy0->serial);
+			blk->succset.add(copy1->serial);
+			copy0->predset.add(blk->serial);
+			copy1->predset.add(blk->serial);
+
+			MSG_DO(("[hrt] ijmp at %a converted to:\n", ijmp->ea));
+			MSG_DO(("[hrt]   %d: %s\n", blk->serial, blk->tail->dstr()));
+			MSG_DO(("[hrt]   %d: %s\n", copy0->serial, copy0->tail->dstr()));
+			MSG_DO(("[hrt]   %d: %s\n", copy1->serial, copy1->tail->dstr()));
+			//blk->mba->optimize_local(0);
+			blk->mba->mark_chains_dirty();
+			if((dflags & DF_PATCH) != 0 && setEa != BADADDR && blk->end != BADADDR
+				&& copy0->tail->opcode == m_goto && copy0->tail->l.t == mop_v
+				&& copy1->tail->opcode == m_goto && copy1->tail->l.t == mop_v) {
+				patch_cond_jmp(setEa, blk->tail->opcode, copy1->tail->l.g, copy0->tail->l.g, blk->end);
+			}
+#if DEBUG_DO
+			//ShowMicrocodeExplorer(blk->mba, "ijmp_0way at %a", ijmp->ea);
+#endif
+			blk->mba->verify(true);
+			return true;
+		}
+		return false;
+	}
+
+	//convert artifacts left by ijmp_0way to extern block jump
+	// 0WAY-BLOCK
+	// goto   $loc_14000821C
+	bool goto_0way(mblock_t *blk) const
+	{
+		minsn_t *migoto = blk->tail;
+		if(blk->type != BLT_0WAY || !migoto || migoto->opcode != m_goto || migoto->l.t != mop_v)
+			return false;
+
+		ea_t targ_ea = migoto->l.g;
+		if(blk->mba->range_contains(targ_ea)) {
+			for (int i = 0; i < blk->mba->qty; i++) {
+				const mblock_t* bi = blk->mba->get_mblock(i);
+				if (bi->start == targ_ea) {
+					MSG_DO(("[hrt] %a: 0way goto to %a has target block. FIXME\n", migoto->ea, targ_ea));
+					return false;
+				}
+			}
+			MSG_DO(("[hrt] %a: 0way goto to %a is in scope, but no mblock. Has it marked to keep?\n", migoto->ea, targ_ea));
+			return false;
+		}
+
+		if(blk->tail == blk->head) {
+			MSG_DO(("[hrt] %a: 0way goto -> xtern blk %a\n", migoto->ea, targ_ea));
+			blk->type = BLT_XTRN;
+			blk->start = targ_ea;
+			blk->end = blk->start;// + 1;
+			blk->remove_from_block(migoto);
+#if DEBUG_DO
+			//ShowMicrocodeExplorer(blk->mba, "goto_0way %a", migoto->ea);
+#endif
+			blk->mba->verify(true);
+			delete migoto;
+			return true;
+		}
+
+		MSG_DO(("[hrt] %a: 0way goto -> jump to xtern %a\n", migoto->ea, targ_ea));
+		mblock_t* xtrn = blk->mba->insert_block(blk->mba->qty - 1);
+		//xtrn->flags =
+		xtrn->type = BLT_XTRN;
+		xtrn->start = targ_ea;
+		xtrn->end = xtrn->start;// + 1;
+		xtrn->predset.add(blk->serial);
+
+		blk->type = BLT_1WAY;
+		blk->succset.add(xtrn->serial);
+		migoto->l.make_blkref(xtrn->serial);
+		migoto->l.size = NOSIZE;
+#if DEBUG_DO
+			//ShowMicrocodeExplorer(blk->mba, "goto_0way %a", migoto->ea);
+#endif
+		blk->mba->verify(true);
+		return true;
+	}
 	virtual int idaapi func(mblock_t *blk)
 	{
-		if (handle_dbl_jc(blk))
-			return 1;
-		return 0;
+		int changes = 0;
+		changes += handle_dbl_jc(blk);
+		changes += ijmp_0way(blk);
+		changes += goto_0way(blk);
+		return changes;
 	}
 };
 
@@ -326,33 +612,29 @@ void deob_done()
 	}
 }
 
-void deob_preprocess(mbl_array_t *mba)
+bool catchRetAddr_preprocess(mbl_array_t* mba)
 {
-	if (!deob)
-		return;
-
 	if (!isX86()) {
-		Log(llWarning, "FIXME: deob_preprocess is x86 specific\n");
-		return ;
+		Log(llWarning, "FIXME: catchRetAddr_preprocess is x86 specific\n");
+		return false;
 	}
 
 	bool changed = false;
-
 	for (int i = 0; i < mba->qty; i++) {
-		mblock_t *blk = mba->get_mblock(i);
+		mblock_t* blk = mba->get_mblock(i);
 		if (blk->flags & MBL_FAKE)
 			continue;
 		if (!blk->tail || blk->tail->opcode != m_ijmp)
 			continue;
-		minsn_t *ijmp = blk->tail;
-		minsn_t *mov_cs_seg = ijmp->prev;
+		minsn_t* ijmp = blk->tail;
+		minsn_t* mov_cs_seg = ijmp->prev;
 		if (!mov_cs_seg)
 			continue;
 		if (mov_cs_seg->opcode == m_add) //optional: add esp, #const, esp
 			mov_cs_seg = mov_cs_seg->prev;
 		if (!mov_cs_seg || mov_cs_seg->opcode != m_mov)
 			continue;
-		minsn_t *pop_eoff = mov_cs_seg->prev;
+		minsn_t* pop_eoff = mov_cs_seg->prev;
 		if (!pop_eoff || pop_eoff->opcode != m_pop)
 			continue;
 		if (pop_eoff->prev && pop_eoff->prev->opcode == m_nop) //skip optional nop
@@ -366,7 +648,7 @@ void deob_preprocess(mbl_array_t *mba)
 			if (!xb.next_from()) { //no more any other references from here allowed
 				bFirstPass = false;
 				//replace 'ret' ijmp to jmp, don't forget to balance stack
-				minsn_t *jmp = new minsn_t(ijmp->ea);
+				minsn_t* jmp = new minsn_t(ijmp->ea);
 				jmp->opcode = m_goto;
 				jmp->l._make_gvar(dest);
 				blk->insert_into_block(jmp, ijmp);
@@ -375,33 +657,22 @@ void deob_preprocess(mbl_array_t *mba)
 			}
 		}
 
-
 		if (bFirstPass) {//first pass: add retaddr catcher before 'ret'
-		//FIXME: allocate temporol register instead eip
-		//FIXME: x86 specific
+			//FIXME: allocate temporal register instead eip
+			//FIXME: x86 specific
 			mreg_t eip = 0x58;
 			mreg_t ss = reg2mreg(R_ss);
 			mreg_t esp = reg2mreg(R_sp);
 			for (mreg_t i = 0; i < 0x100; i += 4) {
 				mop_t op;
 				op._make_reg(i);
-				Log(llFlood, "reg_%x  %s\n", i, op.dstr());
+				//Log(llFlood, "reg_%x  %s\n", i, op.dstr());
 				if (!qstrcmp("eip", op.dstr())) {
 					eip = i;
-#if 1
 					break;
 				}
-#else
 			}
-				if (!qstrcmp("ss", op.dstr())) {
-					ss = i;
-				}
-				if (!qstrcmp("esp", op.dstr())) {
-					esp = i;
-				}
-#endif
-			}
-			minsn_t *pc = new minsn_t(ijmp->ea);
+			minsn_t* pc = new minsn_t(ijmp->ea);
 			pc->opcode = m_ldx;
 			pc->l._make_reg(ss, 2);
 			pc->r._make_reg(esp, ea_size);
@@ -411,7 +682,7 @@ void deob_preprocess(mbl_array_t *mba)
 			minsn_t* call = new minsn_t(pc->ea);
 			call->opcode = m_call;
 			call->l.make_helper("ret_addr");
-			mcallinfo_t *ci = new mcallinfo_t();
+			mcallinfo_t* ci = new mcallinfo_t();
 			ci->cc = CM_CC_SPECIAL;
 			mcallarg_t arg;
 			arg._make_reg(eip, ea_size);
@@ -425,61 +696,24 @@ void deob_preprocess(mbl_array_t *mba)
 			changed = true;
 		}
 	}
-	if (changed)
-		mba->dump_mba(false, "[hrt] after deob_preprocess");
+	return changed;
 }
 
-static bool patch_jmp(ea_t from, ea_t to, asize_t maxLen)
+void deob_preprocess(mbl_array_t *mba)
 {
-	if (!isX86()) {
-		Log(llWarning, "FIXME: patch_jmp is x86 specific\n");
-		return false;
-	}
-	qstring cmt(";patched: ");//';' in first position prevents comment be copyed to pseudocode
-	qstring tmp;
-	print_insn_mnem(&tmp, from);
-	cmt += tmp;
-	print_operand(&tmp, from, 0, GETN_NODUMMY);
-	cmt += ' ';
-	cmt += tmp;
-	tag_remove(&cmt);
+	if (!deob)
+		return;
 
-	del_items(from, DELIT_EXPAND); //Important here!!!
-
-	adiff_t dist = to - from - 2;
-	if (dist >= -128 && dist <= 127) {
-		if (maxLen < 2) {
-			Log(llWarning, "%a: no space for patch\n", from);
-			return false;
-		}
-		patch_byte(from, 0xeb);
-		//int64 dist64 = dist;
-		patch_byte(from + 1, uint64(dist));
-	} else {
-		if (maxLen < 6) {
-			Log(llWarning, "%a: no space for patch\n", from);
-			return false;
-		}
-		patch_word(from, 0xe990); //prepend with 'nop' to be same size as 'jc'
-		patch_dword(from + 2, uint64(dist - 4));
+#if IDA_SDK_VERSION >= 760
+	// mark all blocks non-removable to keep unreachable blocks until connection
+	for (int i = 0; i < mba->qty; i++) {
+		mblock_t* bi = mba->get_mblock(i);
+		bi->flags |= MBL_KEEP;
 	}
-	create_insn(from);
-	set_cmt(from, cmt.c_str(), false);//FIXME: doesnt work, why????
-	Log(llInfo, "%a: %s\n", from, cmt.c_str());
-	return true;
-}
+#endif //IDA_SDK_VERSION >= 760
 
-//blocks may be reordered at early stages
-mblock_t *get_next_mblock(mbl_array_t *mba, int from, ea_t ea)
-{
-	for (; from < mba->qty && from >= 0; ++from) {
-		mblock_t *blk = mba->get_mblock(from);
-		//if (blk->flags & MBL_FAKE)
-		//	continue;
-		if (blk->start == ea)
-			return blk;
-	}
-	return NULL;
+	if (catchRetAddr_preprocess(mba))
+		mba->dump_mba(false, "[hrt] after catchRetAddr_preprocess");
 }
 
 /*
@@ -539,7 +773,7 @@ static bool patch_dbl_jc(mbl_array_t *mba, mblock_t *b1, blocksset_t* removeBlk)
 	delete jmp2;
 
 	if ((dflags & DF_PATCH) != 0) {
-		patch_jmp(jc1->ea, destB1, b1->end - jc1->ea);
+		patch_jmp(jc1->ea, destB1, b1->end);
 		unreachBlocks.add(b2->start, b2->end); //do not mark b2 as unreach if no patch becouse next pass will not see jc pair
 	}
 	removeBlk->insert(b2);
@@ -750,10 +984,10 @@ bool disasm_dbl_jc(ea_t ea)
 		ea_t dest2 = (insn2.ops[0].type == o_near) ? insn2.ops[0].addr : BADADDR;
 		if (dest1 == dest2 && dest1 != BADADDR) {
 			if ((dflags & DF_PATCH) != 0) {
-				patch_jmp(insn1.ea, dest1, insn1.size);
+				patch_jmp(insn1.ea, dest1, insn1.ea + insn1.size);
 				if (get_first_fcref_to(insn2.ea) == BADADDR) {
 					unreachBlocks.add(insn2.ea, insn2.ea + insn2.size); //do not mark b2 as unreach if no patch
-					//patch_jmp(insn2.ea, dest2, insn2.size);
+					//patch_jmp(insn2.ea, dest2, insn2.ea + insn2.size);
 				}
 			} else if (get_first_fcref_to(insn2.ea + insn2.size) == BADADDR) {
 				unreachBlocks.add(insn2.ea + insn2.size, insn2.ea + insn2.size + 1);
@@ -973,6 +1207,8 @@ int decompile_obfuscated(ea_t eaBgn)
 			return 0;
 		if(del_func(eaBgn)) {
 			MSG_DO(("[hrt] func at %a deleted\n", eaBgn));
+			if(get_screen_ea() != eaBgn)
+				jumpto(eaBgn, -1, UIJMP_IDAVIEW);
 		}
 		func = NULL;
 	}
@@ -1003,6 +1239,7 @@ int decompile_obfuscated(ea_t eaBgn)
 	deob_init();
 	bool bChanged;
 	ea_t stuck_ea;
+	int cnt = 0;
 	do {
 		stuck_ea = BADADDR;
 		bChanged = false;
@@ -1025,7 +1262,7 @@ int decompile_obfuscated(ea_t eaBgn)
 			bChanged = false;
 		}
 
-		replace_wait_box("[hrt] Analyzing %d ranges...", ranges.nranges());
+		replace_wait_box("[hrt] Analyzing step %d (%d ranges)...", ++cnt, ranges.nranges());
 
 		const rangevec_t *rv;
 		rangevec_t rvTmp;
@@ -1038,11 +1275,10 @@ int decompile_obfuscated(ea_t eaBgn)
 			rv = &rvTmp;
 		}
 
-		if (dflags & DF_FUNC) {
-			func = remake_func(eaBgn, ranges);
-		}
+		if (dflags & DF_FUNC)
+			remake_func(eaBgn, ranges);
 
-		MSG_DO(("[hrt] gen_microcode %d ranges\n", rv->size()));
+		MSG_DO(("[hrt] gen_microcode step %d (%d ranges)\n", cnt, rv->size()));
 		hexrays_failure_t hf;
 		mba_ranges_t mbr(*rv);
 		mbl_array_t *mba = gen_microcode(mbr, &hf, NULL, DECOMP_NO_WAIT | DECOMP_NO_CACHE | DECOMP_NO_FRAME | DECOMP_WARNINGS | DECOMP_ALL_BLKS, MMAT_GLBOPT3);
@@ -1062,6 +1298,9 @@ int decompile_obfuscated(ea_t eaBgn)
 			}
 		}
 		deob_postprocess(mba, &new_dests);
+#if DEBUG_DO
+		//ShowMicrocodeExplorer(mba, "deob %d", cnt);
+#endif
 		delete mba;
 
 		for (auto newaddr : new_dests) {
@@ -1100,6 +1339,7 @@ int decompile_obfuscated(ea_t eaBgn)
 	hide_wait_box();
 	if (func) {
 		COMPAT_open_pseudocode_REUSE_ACTIVE(eaBgn);
+		deob_done();
 	} else {
 		hexrays_failure_t hf;
 		cfuncptr_t cf = decompile_snippet(ranges.as_rangevec(), &hf, DECOMP_NO_CACHE | DECOMP_NO_FRAME | DECOMP_WARNINGS | DECOMP_ALL_BLKS);

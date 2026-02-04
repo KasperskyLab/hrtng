@@ -330,9 +330,9 @@ static void hashInStruct(ea_t base_ea, const tinfo_t& s, ea_t ea)
 		const udm_t& m = td.at(i);
 		if(m.size / 8 >= 4) {
 			if(m.type.is_struct())
-				hashInStruct(base_ea, m.type, ea + m.offset / 8);
+				hashInStruct(base_ea, m.type, ea + ea_t(m.offset / 8));
 			else
-				chkDataHash(base_ea, m.size / 8, ea + m.offset / 8);
+				chkDataHash(base_ea, asize_t(m.size / 8), ea + ea_t(m.offset / 8));
 		}
 	}
 }

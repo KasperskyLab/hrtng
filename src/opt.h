@@ -4,4 +4,5 @@ void opt_done();
 
 bool InsertOp(mblock_t* mb, mlist_t& ml, mop_t* op);
 minsn_t* my_find_def_backwards(mblock_t* mb, mlist_t& ml, minsn_t* start);
-
+bool ExtractNumAndNonNum(minsn_t* insn, mop_t*& numOp, mop_t*& otherOp);
+bool replaceReadOnlyInitedVar2Val(mop_t* op);

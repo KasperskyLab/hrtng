@@ -460,7 +460,7 @@ struct ida_local refac_t {
 			}
 			for(size_t i = 0; i < lines.size(); i++) {
 				if(match(lines[i]))
-					add(lines[i].c_str(), eRF_notepad, i);
+					add(lines[i].c_str(), eRF_notepad, (ea_t)i);
 			}
 		}
 		return true;

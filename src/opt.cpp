@@ -285,7 +285,7 @@ minsn_t* my_find_def_backwards(mblock_t* mb, mlist_t& ml, minsn_t* start)
 }
 
 // This function traces the operand until getting the instruction with it
-bool FindInsWithTheOp(mblock_t* blk, mop_t* op, minsn_t* start, minsn_t*& ins, mcode_t opcode, mopt_t opt = 0)
+static bool FindInsWithTheOp(mblock_t* blk, mop_t* op, minsn_t* start, minsn_t*& ins, mcode_t opcode, mopt_t opt = 0)
 {
 	mlist_t ml;
 	if (!InsertOp(blk, ml, op))
@@ -323,7 +323,7 @@ bool FindInsWithTheOp(mblock_t* blk, mop_t* op, minsn_t* start, minsn_t*& ins, m
 }
 
 // This function traces 2 operands separately for x and y in y * (x - 1)
-bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub, minsn_t* start)
+static bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub, minsn_t* start)
 {
 	minsn_t* insMov, * insSub;
 
@@ -344,47 +344,47 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 	return false;
 }
 
-	// This function simplifies microinstruction patterns that look like
-	// either: (x & 1) | (y & 1) ==> (x | y) & 1
-	// or:     (x & 1) ^ (y & 1) ==> (x ^ y) & 1
-	// Though it may not seem like much of an "obfuscation" or "deobfuscation"
-	// technique on its own, getting rid of the "&1" terms helps reveal other
-	// patterns so they can be deobfuscated.
-	int pat_LogicAnd1(minsn_t* ins, mblock_t* /*blk*/)
-	{
-		if (ins->opcode != m_or && ins->opcode != m_xor)
-			return 0;
-		if (ins->l.t != mop_d || ins->r.t != mop_d)
-			return 0;
+// This function simplifies microinstruction patterns that look like
+// either: (x & 1) | (y & 1) ==> (x | y) & 1
+// or:     (x & 1) ^ (y & 1) ==> (x ^ y) & 1
+// Though it may not seem like much of an "obfuscation" or "deobfuscation"
+// technique on its own, getting rid of the "&1" terms helps reveal other
+// patterns so they can be deobfuscated.
+static bool pat_LogicAnd1(minsn_t* ins, mblock_t* /*blk*/)
+{
+	if (ins->opcode != m_or && ins->opcode != m_xor)
+		return false;
+	if (ins->l.t != mop_d || ins->r.t != mop_d)
+		return false;
 
-		minsn_t* insLeft, * insRight;
-		mop_t* opLeft, * opRight;
+	minsn_t* insLeft, * insRight;
+	mop_t* opLeft, * opRight;
 
-		// Get rid of & 1. bLeft1 is true if there was an &1.
-		bool bLeft1 = TunnelThroughAnd1(ins->l.d, insLeft, true, &opLeft);
-		if (!bLeft1)
-			return 0;
+	// Get rid of & 1. bLeft1 is true if there was an &1.
+	bool bLeft1 = TunnelThroughAnd1(ins->l.d, insLeft, true, &opLeft);
+	if (!bLeft1)
+		return false;
 
-		// Same for right-hand side
-		bool bRight1 = TunnelThroughAnd1(ins->r.d, insRight, true, &opRight);
-		if (!bRight1)
-			return 0;
-		MSG_DO(("[I] pat_LogicAnd1: '%s'", ins->dstr()));
+	// Same for right-hand side
+	bool bRight1 = TunnelThroughAnd1(ins->r.d, insRight, true, &opRight);
+	if (!bRight1)
+		return false;
+	MSG_DO(("[I] pat_LogicAnd1: '%s'", ins->dstr()));
 
-		// If we get here, then the pattern matched.
-		// Move the logical operation (OR or XOR) to the left-hand side,
-		// with the operands that have the &1 removed.
-		ins->l.d->opcode = ins->opcode;
-		ins->l.d->l.swap(*opLeft);
-		ins->l.d->r.swap(*opRight);
+	// If we get here, then the pattern matched.
+	// Move the logical operation (OR or XOR) to the left-hand side,
+	// with the operands that have the &1 removed.
+	ins->l.d->opcode = ins->opcode;
+	ins->l.d->l.swap(*opLeft);
+	ins->l.d->r.swap(*opRight);
 
-		// Change the top-level instruction from OR or XOR to AND, and set the
-		// right-hand side to the 1-bit constant value 1.
-		ins->opcode = m_and;
-		ins->r.make_number(1, 1);
+	// Change the top-level instruction from OR or XOR to AND, and set the
+	// right-hand side to the 1-bit constant value 1.
+	ins->opcode = m_and;
+	ins->r.make_number(1, 1);
 
-		return 1;
-	}
+	return true;
+}
 
 // move constanst on rigth side and force constant arithmetic be together
 
@@ -400,702 +400,720 @@ bool TraceAndExtractOpsMovAndSubBy1(mblock_t* blk, mop_t*& opMov, mop_t*& opSub,
 // the decompiled output as 2+(eax+ecx)-3. This function, then, determines
 // when Hex-Rays has represented the subtraction as just mentioned. If so,
 // it extracts the term that is being subtracted by 1.
-	int pat_AddSub(minsn_t* ins, mblock_t* blk)
-	{
-		// We're looking for following expressions where 'a' and 'b' are numeric
-		// (x-a)+b or (x+a)+b --> x+(b-a) or x+(b+a)
-		// (x-a)-b or (x+a)-b --> x-(b+a) or x-(b-a)
-		if (ins->opcode != m_add /* && ins->opcode != m_sub*/)
-			return 0;
+static bool pat_AddSub(minsn_t* ins, mblock_t* blk)
+{
+	// We're looking for following expressions where 'a' and 'b' are numeric
+	// (x-a)+b or (x+a)+b --> x+(b-a) or x+(b+a)
+	// (x-a)-b or (x+a)-b --> x-(b+a) or x-(b-a)
+	if (ins->opcode != m_add /* && ins->opcode != m_sub*/)
+		return false;
 
-		// Extract b and (x-a)
-		mop_t* b = NULL, * xa = NULL;
-		if (!ExtractNumAndNonNum(ins, b, xa))
-			return 0;
+	// Extract b and (x-a)
+	mop_t* b = NULL, * xa = NULL;
+	if (!ExtractNumAndNonNum(ins, b, xa))
+		return false;
 
-		// Ensure that the purported (x-a) term actually is a subtraction
-		if (xa->t != mop_d || (xa->d->opcode != m_sub && xa->d->opcode != m_add))
-			return 0;
+	// Ensure that the purported (x-a) term actually is a subtraction
+	if (xa->t != mop_d || (xa->d->opcode != m_sub && xa->d->opcode != m_add))
+		return false;
 
-		// Extract x and a. ExtractNumAndNonNum fixed to check only rhs in case of sub
-		mop_t* a = NULL, * x = NULL;
-		if (!ExtractNumAndNonNum(xa->d, a, x))
-			return 0;
+	// Extract x and a. ExtractNumAndNonNum fixed to check only rhs in case of sub
+	mop_t* a = NULL, * x = NULL;
+	if (!ExtractNumAndNonNum(xa->d, a, x))
+		return false;
 
-		MSG_DO(("[I] pat_AddSub: '%s'", ins->dstr()));
-		//convert (x-a)+b --> x+(b-a)
-		xa->d->l.swap(*b); //xa->d is m_sub or m_add
-		ins->l.swap(ins->r);// 'x' now in 'b', just swap 'l' and 'r' to place const on right hand
-		if(ins->opcode == m_sub) {
-			//convert: (x-a)-b or (x+a)-b --> x-(b+a) or x-(b-a)
-			//at the moment we have           x-(b-a) or x-(b+a),
-			//invert operation in brackers
-			if (xa->d->opcode == m_sub)
-				xa->d->opcode = m_add;
-			else
-				xa->d->opcode = m_sub;
-		}
-
-		return 1;
+	MSG_DO(("[I] pat_AddSub: '%s'", ins->dstr()));
+	//convert (x-a)+b --> x+(b-a)
+	xa->d->l.swap(*b); //xa->d is m_sub or m_add
+	ins->l.swap(ins->r);// 'x' now in 'b', just swap 'l' and 'r' to place const on right hand
+	if(ins->opcode == m_sub) {
+		//convert: (x-a)-b or (x+a)-b --> x-(b+a) or x-(b-a)
+		//at the moment we have           x-(b-a) or x-(b+a),
+		//invert operation in brackers
+		if (xa->d->opcode == m_sub)
+			xa->d->opcode = m_add;
+		else
+			xa->d->opcode = m_sub;
 	}
 
-	// This function performs the following pattern-substitution:
-	// (x * (x-1)) & 1 ==> 0
-	int pat_MulSub(minsn_t* andIns, mblock_t* blk)
-	{
-		// Topmost term has to be &1. The 1 is not required to be 1-byte large.
-		minsn_t* ins = andIns;
-		if (!TunnelThroughAnd1(ins, ins, false))
-			return 0;
+	return true;
+}
 
-		// Looking for multiplication terms
-		if (ins->opcode != m_mul)
-			return 0;
+// This function performs the following pattern-substitution:
+// (x * (x-1)) & 1 ==> 0
+static bool pat_MulSub(minsn_t* andIns, mblock_t* blk)
+{
+	// Topmost term has to be &1. The 1 is not required to be 1-byte large.
+	minsn_t* ins = andIns;
+	if (!TunnelThroughAnd1(ins, ins, false))
+		return false;
 
-		// We have two different mechanisms for determining if there is a subtraction by 1.
-		bool bWasSubBy1 = false;
+	// Looking for multiplication terms
+	if (ins->opcode != m_mul)
+		return false;
 
-		// Ultimately, we need to find thse things:
-		minsn_t* insSub;    // Subtraction instruction x-1
-		mop_t* opMulNonSub; // Operand of multiply that isn't a subtraction
-		mop_t* subNonNum = NULL;   // x from the x-1 instruction
+	// We have two different mechanisms for determining if there is a subtraction by 1.
+	bool bWasSubBy1 = false;
 
-		// Try first method for locating subtraction by 1, i.e., simply subtraction by the constant number 1.
-		do {
-			// Find the subtraction subterm of the multiplication
-			if (!ExtractByOpcodeType(ins, m_sub, insSub, opMulNonSub))
-				break;
+	// Ultimately, we need to find thse things:
+	minsn_t* insSub;    // Subtraction instruction x-1
+	mop_t* opMulNonSub; // Operand of multiply that isn't a subtraction
+	mop_t* subNonNum = NULL;   // x from the x-1 instruction
 
-			mop_t* subNum;
-			// Find the numeric part of the subtraction. ExtractNumAndNonNum fixed to check only rhs in case of sub
-			if (!ExtractNumAndNonNum(insSub, subNum, subNonNum))
-				break;
-
-			// Ensure that the subtraction amount is 1.
-			if (subNum->nnn->value != 1)
-				break;
-
-			// Indicate that we successfully found the subtraction.
-			bWasSubBy1 = true;
-		} while (0);
-
-
-		// If both methods failed, bail.
-		if (!bWasSubBy1) {
-			// data flow tracking for each y and (x - 1) operands
-			if (blk == NULL || !TraceAndExtractOpsMovAndSubBy1(blk, opMulNonSub, subNonNum, ins))
-				return 0;
-		}
-
-		//for pairs like::
-		// -- ldx (smth) size 1
-		// and
-		// -- low (ldx (smth) size 4) size 1
-		// strip "low"
-		if (subNonNum->size == 1 && opMulNonSub->size == 1) {
-			if (opMulNonSub->is_insn(m_low))
-				opMulNonSub = &opMulNonSub->d->l;
-			if (subNonNum->is_insn(m_low))
-				subNonNum = &subNonNum->d->l;
-		}
-
-		// We know we're dealing with (x-1) * y. ensure x==y.
-		if (!subNonNum->equal_mops(*opMulNonSub, EQ_IGNSIZE))
-			return 0;
-
-		MSG_DO(("[I] pat_MulSub: '%s'", andIns->dstr()));
-		// If we get here, the pattern matched.
-		// Replace the whole multiplication instruction by 0.
-		ins->l.make_number(0, ins->l.size);
-		return 1;
-	}
-
-	// check y * (x - 1) and extract the operands
-	// mop_t *opMulNonSub; // Operand y of multiply that isn't a subtraction
-	// mop_t *subNonNum;   // Operand x from the x-1 instruction
-	bool CheckAndExtractOpsSubBy1(minsn_t* ins, mop_t*& opMulNonSub, mop_t*& subNonNum)
-	{
-		minsn_t* insSub;    // Subtraction instruction x-1
-
+	// Try first method for locating subtraction by 1, i.e., simply subtraction by the constant number 1.
+	do {
 		// Find the subtraction subterm of the multiplication
 		if (!ExtractByOpcodeType(ins, m_sub, insSub, opMulNonSub))
-			return false;
+			break;
 
 		mop_t* subNum;
 		// Find the numeric part of the subtraction. ExtractNumAndNonNum fixed to check only rhs in case of sub
 		if (!ExtractNumAndNonNum(insSub, subNum, subNonNum))
-			return false;
+			break;
 
 		// Ensure that the subtraction amount is 1.
 		if (subNum->nnn->value != 1)
-			return false;
+			break;
 
-		return true;
+		// Indicate that we successfully found the subtraction.
+		bWasSubBy1 = true;
+	} while (0);
+
+
+	// If both methods failed, bail.
+	if (!bWasSubBy1) {
+		// data flow tracking for each y and (x - 1) operands
+		if (blk == NULL || !TraceAndExtractOpsMovAndSubBy1(blk, opMulNonSub, subNonNum, ins))
+			return false;
 	}
 
-	// This function performs the following pattern-substitution:
-	// ~(x * (x - 1)) | -2 ==> -1
-	int pat_MulSub2(minsn_t* orIns, mblock_t* blk)
+	//for pairs like::
+	// -- ldx (smth) size 1
+	// and
+	// -- low (ldx (smth) size 4) size 1
+	// strip "low"
+	if (subNonNum->size == 1 && opMulNonSub->size == 1) {
+		if (opMulNonSub->is_insn(m_low))
+			opMulNonSub = &opMulNonSub->d->l;
+		if (subNonNum->is_insn(m_low))
+			subNonNum = &subNonNum->d->l;
+	}
+
+	// We know we're dealing with (x-1) * y. ensure x==y.
+	if (!subNonNum->equal_mops(*opMulNonSub, EQ_IGNSIZE))
+		return false;
+
+	MSG_DO(("[I] pat_MulSub: '%s'", andIns->dstr()));
+	// If we get here, the pattern matched.
+	// Replace the whole multiplication instruction by 0.
+	ins->l.make_number(0, ins->l.size);
+	return true;
+}
+
+// check y * (x - 1) and extract the operands
+// mop_t *opMulNonSub; // Operand y of multiply that isn't a subtraction
+// mop_t *subNonNum;   // Operand x from the x-1 instruction
+static bool CheckAndExtractOpsSubBy1(minsn_t* ins, mop_t*& opMulNonSub, mop_t*& subNonNum)
+{
+	minsn_t* insSub;    // Subtraction instruction x-1
+
+	// Find the subtraction subterm of the multiplication
+	if (!ExtractByOpcodeType(ins, m_sub, insSub, opMulNonSub))
+		return false;
+
+	mop_t* subNum;
+	// Find the numeric part of the subtraction. ExtractNumAndNonNum fixed to check only rhs in case of sub
+	if (!ExtractNumAndNonNum(insSub, subNum, subNonNum))
+		return false;
+
+	// Ensure that the subtraction amount is 1.
+	if (subNum->nnn->value != 1)
+		return false;
+
+	return true;
+}
+
+// This function performs the following pattern-substitution:
+// ~(x * (x - 1)) | -2 ==> -1
+static bool pat_MulSub2(minsn_t* orIns, mblock_t* blk)
+{
+	// Topmost term has to be |-2.
+	minsn_t* ins = orIns;
+	if (!TunnelThroughOrMinus2(ins, ins, false))
+		return false;
+	if (ins->opcode != m_xdu)
+		return false;
+
+	// extract the subinstructions
+	minsn_t* insBnot, * insMul;
+	if (!ins->l.is_insn(m_bnot))
+		return false;
+	insBnot = ins->l.d;
+	if (!insBnot->l.is_insn(m_mul)) {
+		mop_t* op = &insBnot->l;
+		// data flow tracking #1 for y * (x - 1) instruction
+		if (blk == NULL || !FindInsWithTheOp(blk, op, insBnot, insMul, m_mul))
+			return false;
+	} else {
+		insMul = insBnot->l.d; // m_mul
+	}
+
+	// get y *(x-1)
+	mop_t* opMulNonSub; // Operand y of multiply that isn't a subtraction
+	mop_t* subNonNum;   // Operand x from the x-1 instruction
+	if (!CheckAndExtractOpsSubBy1(insMul, opMulNonSub, subNonNum)) {
+		if (blk == NULL)
+			return false;
+		// data flow tracking #2: both of the operands are not extracted due to lack of nested sub instruction
+		MSG_DO(("[I] pat_MulSub2: tracking #2 OR ins %#a at %#a\n", orIns->ea, blk->mba->entry_ea));
+		if (!TraceAndExtractOpsMovAndSubBy1(blk, opMulNonSub, subNonNum, insMul))
+			return false;
+	}
+
+	// ensure x==y
+	if (!subNonNum->equal_mops(*opMulNonSub, EQ_IGNSIZE))
 	{
-		// Topmost term has to be |-2.
-		minsn_t* ins = orIns;
-		if (!TunnelThroughOrMinus2(ins, ins, false))
-			return 0;
-		if (ins->opcode != m_xdu)
-			return 0;
-
-		// extract the subinstructions
-		minsn_t* insBnot, * insMul;
-		if (!ins->l.is_insn(m_bnot))
-			return 0;
-		insBnot = ins->l.d;
-		if (!insBnot->l.is_insn(m_mul))
-		{
-			mop_t* op = &insBnot->l;
-			// data flow tracking #1 for y * (x - 1) instruction
-			if (blk == NULL || !FindInsWithTheOp(blk, op, insBnot, insMul, m_mul))
-				return 0;
-		}
-		else
-			insMul = insBnot->l.d; // m_mul
-
-		// get y *(x-1)
-		mop_t* opMulNonSub; // Operand y of multiply that isn't a subtraction
-		mop_t* subNonNum;   // Operand x from the x-1 instruction
-		if (!CheckAndExtractOpsSubBy1(insMul, opMulNonSub, subNonNum))
-		{
-			if (blk == NULL)
-				return 0;
-			// data flow tracking #2: both of the operands are not extracted due to lack of nested sub instruction
-			MSG_DO(("[I] pat_MulSub2: tracking #2 OR ins %#a at %#a\n", orIns->ea, blk->mba->entry_ea));
-			if (!TraceAndExtractOpsMovAndSubBy1(blk, opMulNonSub, subNonNum, insMul))
-				return 0;
-		}
-
-		// ensure x==y
+		if (blk == NULL)
+			return false;
+		// data flow tracking #3: both of the operands are extracted but different due to assignment to registers
+		MSG_DO(("[I] pat_MulSub2: tracking #3 OR ins %#a at %#a\n", orIns->ea, blk->mba->entry_ea));
+		minsn_t* insMov;
+		if (opMulNonSub->t != mop_v && FindInsWithTheOp(blk, opMulNonSub, insMul, insMov, m_mov))
+			opMulNonSub = &insMov->l;
+		if (subNonNum->t != mop_v && FindInsWithTheOp(blk, subNonNum, insMul, insMov, m_mov))
+			subNonNum = &insMov->l;
 		if (!subNonNum->equal_mops(*opMulNonSub, EQ_IGNSIZE))
-		{
-			if (blk == NULL)
-				return 0;
-			// data flow tracking #3: both of the operands are extracted but different due to assignment to registers
-			MSG_DO(("[I] pat_MulSub2: tracking #3 OR ins %#a at %#a\n", orIns->ea, blk->mba->entry_ea));
-			minsn_t* insMov;
-			if (opMulNonSub->t != mop_v && FindInsWithTheOp(blk, opMulNonSub, insMul, insMov, m_mov))
-				opMulNonSub = &insMov->l;
-			if (subNonNum->t != mop_v && FindInsWithTheOp(blk, subNonNum, insMul, insMov, m_mov))
-				subNonNum = &insMov->l;
-			if (!subNonNum->equal_mops(*opMulNonSub, EQ_IGNSIZE))
-				return 0;
-		}
-
-		MSG_DO(("[I] pat_MulSub2: '%s'", orIns->dstr()));
-		// If we get here, the pattern matched.
-		// Replace the whole multiplication instruction by 0.
-		//ins->l.make_number(0, ins->l.size);
-		insBnot->l.make_number(2, insBnot->l.size); // m_bnot operand to be modified with 2
-		return 1;
+			return false;
 	}
 
+	MSG_DO(("[I] pat_MulSub2: '%s'", orIns->dstr()));
+	// If we get here, the pattern matched.
+	// Replace the whole multiplication instruction by 0.
+	//ins->l.make_number(0, ins->l.size);
+	insBnot->l.make_number(2, insBnot->l.size); // m_bnot operand to be modified with 2
+	return true;
+}
+
+// This function checks whether the operand is a global variable unchanged since the initialization
+// and replaces op with variable value
+bool replaceReadOnlyInitedVar2Val(mop_t* op)
+{
+	if(op->t != mop_v || !is_mapped(op->g)) // mapped global variable?
+		return false;
+
+	// The variable is in a writable section? (e.g., .data section)
+	segment_t* s = getseg(op->g);
+	if(!s || s->perm != (SEGPERM_READ | SEGPERM_WRITE)) // TODO: section with IMAGE_SCN_CNT_INITIALIZED_DATA?
+		return false;
+
+	// The variable doesn't have xrefsTo with write access?
+	xrefblk_t xb;
+	for (bool ok = xb.first_to(op->g, XREF_DATA); ok; ok = xb.next_to())
+		if (xb.type == dr_W)
+			return false;
+
+	uint64 val;
+	switch(op->size) {
+	case 1: val = get_byte(op->g); break;
+	case 2: val = get_word(op->g); break;
+	case 4: val = get_dword(op->g); break;
+	case 8: val = get_qword(op->g); break;
+	default:
+		return false;
+	}
+
+	MSG_DO(("[I] replaceReadOnlyInitedVar2Val: '%s'", op->dstr()));
+	op->make_number(val, op->size);
+	return true;
+}
+
+// This function replaces read-only initialized global variable patterns with 0 in m_setl/m_jl/m_jge, m_seto (MMAT_CALLS or later only)
+// either: dword_73FBB588 >= immediate value (e.g., 10, 9)
+// or:     dword_73FBB588 < immediate value (e.g., 10, 9)
+static bool pat_InitedVarCondImm(minsn_t*& ins, mblock_t* blk)
+{
 #if RO_GVAR
-	// This function checks whether the operand is a global variable unchanged since the initialization
-	bool IsReadOnlyInitedVar(mop_t* op)
+	if (ins->opcode == m_seto && (blk == NULL || blk->mba->maturity <= MMAT_LOCOPT))
+		return false;
+
+	mop_t* condNum;
+	mop_t* condNonNum;
+	if (!ExtractNumAndNonNum(ins, condNum, condNonNum))
+		return false;
+
+	if (condNum->nnn->value != 10 && condNum->nnn->value != 9)
+		return false;
+
+	if(replaceReadOnlyInitedVar2Val(condNonNum))
+		return true;
+
+	if (blk == NULL)
+		return false;
+	// data flow tracking
+	minsn_t* insOut;
+	if (!FindInsWithTheOp(blk, condNonNum, ins, insOut, m_mov, mop_v))
+		return false;
+	return replaceReadOnlyInitedVar2Val(&insOut->l);
+#else
+	return false;
+#endif
+}
+
+// This function replaces read-only initialized global variable patterns with 0 in m_sets (MMAT_CALLS or later only)
+// either: dword_73FBB588 - 10 >= 0
+// or:     dword_10020CE4 - 10 < 0
+static bool pat_InitedVarSubImmCond0(minsn_t* ins, mblock_t* blk)
+{
+#if RO_GVAR
+	if (blk == NULL || blk->mba->maturity <= MMAT_LOCOPT)
+		return false;
+
+	minsn_t* insSub;
+	if (!ins->l.is_insn(m_sub))
+		return false;
+	insSub = ins->l.d;
+
+	int ret = pat_InitedVarCondImm(insSub, blk);
+	if (ret && insSub->opcode == m_nop)
 	{
-		if (op->t != mop_v) // global variable?
-			return false;
-
-		// The variable is in a writable section? (e.g., .data section)
-		segment_t* s = getseg(op->g);
-		if (s == NULL)
-			return false;
-		if (s->perm != (SEGPERM_READ | SEGPERM_WRITE))
-			return false;
-		// TODO: section with IMAGE_SCN_CNT_INITIALIZED_DATA?
-
-		// The variable doesn't have a byte value?
-		if (!is_mapped(op->g))
-			return false;
-		// The variable doesn't have xrefsTo with write access?
-		xrefblk_t xb;
-		for (bool ok = xb.first_to(op->g, XREF_DATA); ok; ok = xb.next_to())
-			if (xb.type == dr_W)
-				return false;
-
+		ins->opcode = m_mov;
+		ins->l.make_number(1, 1);
 		return true;
 	}
 #endif
+	return false;
+}
 
-	// This function replaces read-only initialized global variable patterns with 0 in m_setl/m_jl/m_jge, m_seto (MMAT_CALLS or later only)
-	// either: dword_73FBB588 >= immediate value (e.g., 10, 9)
-	// or:     dword_73FBB588 < immediate value (e.g., 10, 9)
-	int pat_InitedVarCondImm(minsn_t*& ins, mblock_t* blk)
-	{
-#if RO_GVAR
-		if (ins->opcode == m_seto && (blk == NULL || blk->mba->maturity <= MMAT_LOCOPT))
-			return 0;
-
-		mop_t* condNum;
-		mop_t* condNonNum;
-		if (!ExtractNumAndNonNum(ins, condNum, condNonNum))
-			return 0;
-
-		if (condNum->nnn->value != 10 && condNum->nnn->value != 9)
-			return 0;
-
-		if (condNonNum->t == mop_v) {
-			if (!IsReadOnlyInitedVar(condNonNum))
-				return 0;
-		} else {
-			if (blk == NULL)
-				return 0;
-			// data flow tracking
-			minsn_t* insOut;
-			if (!FindInsWithTheOp(blk, condNonNum, ins, insOut, m_mov, mop_v))
-				return 0;
-			if (!IsReadOnlyInitedVar(&insOut->l))
-				return 0;
-			//else { MSG_DO(("[I] pat_InitedVarCondImm: tracked ins %a at %a\n", ins->ea, blk->mba->entry_ea));}
-		}
-
-		// Replace the global variable with 0
-		if (ins->l.equal_mops(*condNonNum, EQ_IGNSIZE))
-			ins->l.make_number(0, ins->l.size);
-		else
-			ins->r.make_number(0, ins->r.size);
-		return 1;
+// This function replaces read-only initialized global variable patterns with its value
+// e.g.,
+// v10 = dword_73FBB590;
+static bool pat_InitedVarMov(minsn_t* ins)
+{
+#if 0 // too dangerous hack
+	return getReadOnlyInitedVarVal(&ins->l);
 #else
-		return 0;
+	return false;
 #endif
-	}
+}
 
-	// This function replaces read-only initialized global variable patterns with 0 in m_sets (MMAT_CALLS or later only)
-	// either: dword_73FBB588 - 10 >= 0
-	// or:     dword_10020CE4 - 10 < 0
-	int pat_InitedVarSubImmCond0(minsn_t* ins, mblock_t* blk)
-	{
-#if RO_GVAR
-		if (blk == NULL || blk->mba->maturity <= MMAT_LOCOPT)
-			return 0;
+// This function looks tries to replace patterns of the form
+// either: (x&y)|(x^y)   ==> x|y
+// or:     (x&y)|(y^x)   ==> x|y
+static bool pat_OrViaXorAnd(minsn_t* ins, mblock_t* blk)
+{
+	if (ins->opcode != m_or)
+		return false;
 
-		minsn_t* insSub;
-		if (!ins->l.is_insn(m_sub))
-			return 0;
-		insSub = ins->l.d;
+	// ... where one side is a compound XOR, and the other is not ...
+	minsn_t* xorInsn;
+	mop_t* nonXorOp;
+	if (!ExtractByOpcodeType(ins, m_xor, xorInsn, nonXorOp))
+		return false;
 
-		int ret = pat_InitedVarCondImm(insSub, blk);
-		if (ret && insSub->opcode == m_nop)
-		{
-			ins->opcode = m_mov;
-			ins->l.make_number(1, 1);
-			return 1;
-		}
-#endif
-		return 0;
-	}
+	// .. and the other side is a compound AND ...
+	if (!nonXorOp->is_insn(m_and))
+		return false;
 
-	// This function replaces read-only initialized global variable patterns with 0
-	// e.g.,
-	// v10 = dword_73FBB590;
-	// if ( v10 < 10 )
-	//     ....
-	int pat_InitedVarMov(minsn_t* ins)
-	{
-#if RO_GVAR
-		if (!IsReadOnlyInitedVar(&ins->l))
-			return 0;
+	// Extract the operands for the AND and XOR terms
+	mop_t* xorOp1 = &xorInsn->l, * xorOp2 = &xorInsn->r;
+	mop_t* andOp1 = &nonXorOp->d->l, * andOp2 = &nonXorOp->d->r;
 
-		// Replace the global variable with 0
-		ins->l.make_number(0, ins->l.size);
-		return 1;
-#else
-		return 0;
-#endif
-	}
-
-	// This function looks tries to replace patterns of the form
-	// either: (x&y)|(x^y)   ==> x|y
-	// or:     (x&y)|(y^x)   ==> x|y
-	int pat_OrViaXorAnd(minsn_t* ins, mblock_t* blk)
-	{
-		if (ins->opcode != m_or)
-			return 0;
-
-		// ... where one side is a compound XOR, and the other is not ...
-		minsn_t* xorInsn;
-		mop_t* nonXorOp;
-		if (!ExtractByOpcodeType(ins, m_xor, xorInsn, nonXorOp))
-			return 0;
-
-		// .. and the other side is a compound AND ...
-		if (!nonXorOp->is_insn(m_and))
-			return 0;
-
-		// Extract the operands for the AND and XOR terms
-		mop_t* xorOp1 = &xorInsn->l, * xorOp2 = &xorInsn->r;
-		mop_t* andOp1 = &nonXorOp->d->l, * andOp2 = &nonXorOp->d->r;
-
-		// The operands must be equal
-		if (!(andOp1->equal_mops(*xorOp1, EQ_IGNSIZE) && andOp2->equal_mops(*xorOp2, EQ_IGNSIZE)) ||
+	// The operands must be equal
+	if (!(andOp1->equal_mops(*xorOp1, EQ_IGNSIZE) && andOp2->equal_mops(*xorOp2, EQ_IGNSIZE)) ||
 			(andOp2->equal_mops(*xorOp1, EQ_IGNSIZE) && andOp1->equal_mops(*xorOp2, EQ_IGNSIZE)))
-			return 0;
+		return false;
 
-		MSG_DO(("[I] pat_OrViaXorAnd: '%s'", ins->dstr()));
-		// Move the operands up to the top-level OR instruction
-		ins->l.swap(*xorOp1);
-		ins->r.swap(*xorOp2);
-		return 1;
+	MSG_DO(("[I] pat_OrViaXorAnd: '%s'", ins->dstr()));
+	// Move the operands up to the top-level OR instruction
+	ins->l.swap(*xorOp1);
+	ins->r.swap(*xorOp2);
+	return true;
+}
+
+// This pattern replaces microcode of the form (x|!x), where x is a
+// conditional, and !x is its syntactically-negated version, with 1.
+static bool pat_OrNegatedSameCondition(minsn_t* ins, mblock_t* blk)
+{
+	if (ins->opcode != m_or)
+		return false;
+
+	// Only applies when x and y are compound expressions, i.e., results
+	// of other microcode instructions.
+	if (ins->l.t != mop_d || ins->r.t != mop_d)
+		return false;
+
+	// Ensure x and y are syntactically-opposite versions of the same
+	// conditional.
+	if (!AreConditionsOpposite(ins->l.d, ins->r.d))
+		return false;
+
+	MSG_DO(("[I] pat_OrNegatedSameCondition: '%s'", ins->dstr()));
+	// If we get here, the pattern matched. Replace both sides of OR with
+	// 1, and then call optimize_flat to fold the constants.
+	ins->l.make_number(1, 1);
+	ins->r.make_number(1, 1);
+	return true;
+}
+
+// Replace patterns of the form
+// (x & c) | ( ~x & d) (when c and d are numbers such that c == ~d) => x ^ d.
+static bool pat_OrAndNot(minsn_t* ins, mblock_t* /*blk*/)
+{
+	// Looking for OR instructions...
+	if (ins->opcode != m_or)
+		return false;
+
+	// ... with compound operands ...
+	if (ins->l.t != mop_d || ins->r.t != mop_d)
+		return false;
+
+	minsn_t* lhs1 = ins->l.d;
+	minsn_t* rhs1 = ins->r.d;
+
+	// ... where each operand is an AND ...
+	if (lhs1->opcode != m_and || rhs1->opcode != m_and)
+		return false;
+
+	// Extract the numeric and non-numeric operands from both AND terms
+	mop_t* lhsNum = NULL, * rhsNum = NULL;
+	mop_t* lhsNonNum = NULL, * rhsNonNum = NULL;
+	bool bLhsSucc = ExtractNumAndNonNum(lhs1, lhsNum, lhsNonNum);
+	bool bRhsSucc = ExtractNumAndNonNum(rhs1, rhsNum, rhsNonNum);
+
+	// ... both AND terms must have one constant ...
+	if (!bLhsSucc || !bRhsSucc)
+		return false;
+
+	// .. both constants have a size, and are the same size ...
+	if (lhsNum->size == NOSIZE || lhsNum->size != rhsNum->size)
+		return false;
+
+	// ... and the constants are bitwise inverses of one another ...
+	if ((lhsNum->nnn->value & rhsNum->nnn->value) != 0)
+		return false;
+
+	// One of the non-numeric parts must have a binary not (i.e., ~) on it
+	mop_t* nonNottedInsn = NULL, * nottedNum = NULL, * nottedInsn = NULL;
+
+	// Check the left-hand size for binary not
+	if (lhsNonNum->is_insn(m_bnot)) {
+		// Extract the NOTed term
+		nottedInsn = &lhsNonNum->d->l;
+		// Make note of the corresponding constant value
+		nottedNum = lhsNum;
+	} else {
+		nonNottedInsn = lhsNonNum;
 	}
 
-	// This pattern replaces microcode of the form (x|!x), where x is a
-	// conditional, and !x is its syntactically-negated version, with 1.
-	int pat_OrNegatedSameCondition(minsn_t* ins, mblock_t* blk)
-	{
-		if (ins->opcode != m_or)
-			return 0;
+	// Check the left-hand size for binary not
+	if (rhsNonNum->is_insn(m_bnot)) {
+		// Both sides NOT? Not what we want, return false
+		if (nottedInsn != NULL)
+			return false;
 
-		// Only applies when x and y are compound expressions, i.e., results
-		// of other microcode instructions.
-		if (ins->l.t != mop_d || ins->r.t != mop_d)
-			return 0;
-
-		// Ensure x and y are syntactically-opposite versions of the same
-		// conditional.
-		if (!AreConditionsOpposite(ins->l.d, ins->r.d))
-			return 0;
-
-		MSG_DO(("[I] pat_OrNegatedSameCondition: '%s'", ins->dstr()));
-		// If we get here, the pattern matched. Replace both sides of OR with
-		// 1, and then call optimize_flat to fold the constants.
-		ins->l.make_number(1, 1);
-		ins->r.make_number(1, 1);
-		return 1;
+		// Extract the NOTed term
+		nottedInsn = &rhsNonNum->d->l;
+		// Make note of the corresponding constant value
+		nottedNum = rhsNum;
+	} else {
+		// Neither side has a NOT? Bail
+		if (nonNottedInsn != NULL)
+			return false;
+		nonNottedInsn = rhsNonNum;
 	}
 
-	// Replace patterns of the form
-	// (x & c) | ( ~x & d) (when c and d are numbers such that c == ~d) => x ^ d.
-	int pat_OrAndNot(minsn_t* ins, mblock_t* /*blk*/)
-	{
-		// Looking for OR instructions...
-		if (ins->opcode != m_or)
-			return 0;
+	// The expression that was NOTed must match the non-NOTed operand
+	if (!nonNottedInsn->equal_mops(*nottedInsn, EQ_IGNSIZE))
+		return false;
 
-		// ... with compound operands ...
-		if (ins->l.t != mop_d || ins->r.t != mop_d)
-			return 0;
+	MSG_DO(("[I] pat_OrAndNot: '%s'", ins->dstr()));
+	// Okay, all of our conditions matched. Make an XOR(x,d) instruction
+	ins->opcode = m_xor;
+	ins->l.swap(*nonNottedInsn);
+	ins->r.swap(*nottedNum);
+	return true;
+}
 
-		minsn_t* lhs1 = ins->l.d;
-		minsn_t* rhs1 = ins->r.d;
+// Replaces conditionals of the form
+// !(!c1 || !c2) => (c1 && c2).
+static bool pat_LnotOrLnotLnot(minsn_t* ins, mblock_t* /*blk*/)
+{
+	// The whole expression must be logically negated.
+	minsn_t* inner;
+	if (!ExtractLogicallyNegatedTerm(ins, inner) || inner == NULL)
+		return false;
 
-		// ... where each operand is an AND ...
-		if (lhs1->opcode != m_and || rhs1->opcode != m_and)
-			return 0;
+	// The thing that was negated must be an OR with compound operands.
+	if (inner->opcode != m_or || inner->l.t != mop_d || inner->r.t != mop_d)
+		return false;
 
-		// Extract the numeric and non-numeric operands from both AND terms
-		mop_t* lhsNum = NULL, * rhsNum = NULL;
-		mop_t* lhsNonNum = NULL, * rhsNonNum = NULL;
-		bool bLhsSucc = ExtractNumAndNonNum(lhs1, lhsNum, lhsNonNum);
-		bool bRhsSucc = ExtractNumAndNonNum(rhs1, rhsNum, rhsNonNum);
+	// The two compound operands must also be negated
+	minsn_t* insLeft = inner->l.d;
+	minsn_t* insRight = inner->r.d;
+	mop_t* opLeft, * opRight;
+	if (!ExtractLogicallyNegatedTerm(inner->l.d, insLeft, &opLeft) || !ExtractLogicallyNegatedTerm(inner->r.d, insRight, &opRight))
+		return false;
 
-		// ... both AND terms must have one constant ...
-		if (!bLhsSucc || !bRhsSucc)
-			return 0;
+	MSG_DO(("[I] pat_LnotOrLnotLnot: '%s'", ins->dstr()));
+	// If we're here, the pattern matched. Make the AND.
+	ins->opcode = m_and;
+	ins->l.swap(*opLeft);
+	ins->r.swap(*opRight);
+	return true;
+}
 
-		// .. both constants have a size, and are the same size ...
-		if (lhsNum->size == NOSIZE || lhsNum->size != rhsNum->size)
-			return 0;
+// Replaces terms of the form, where n is a number
+// ~(~x | n) ==> x & ~n.
+static bool pat_BnotOrBnotConst(minsn_t* ins, mblock_t* /*blk*/)
+{
+	// We're looking for BNOT instructions (~y)...
+	if (ins->opcode != m_bnot || ins->l.t != mop_d)
+		return false;
 
-		// ... and the constants are bitwise inverses of one another ...
-		if ((lhsNum->nnn->value & rhsNum->nnn->value) != 0)
-			return 0;
+	// ... where x is an OR instruction ...
+	minsn_t* inner = ins->l.d;
+	if (inner->opcode != m_or)
+		return false;
 
-		// One of the non-numeric parts must have a binary not (i.e., ~) on it
-		mop_t* nonNottedInsn = NULL, * nottedNum = NULL, * nottedInsn = NULL;
+	// ... and one side is constant, where the other one isn't ...
+	mop_t* orNum, * orNonNum;
+	if (!ExtractNumAndNonNum(inner, orNum, orNonNum))
+		return false;
 
-		// Check the left-hand size for binary not
-		if (lhsNonNum->is_insn(m_bnot)) {
-			// Extract the NOTed term
-			nottedInsn = &lhsNonNum->d->l;
-			// Make note of the corresponding constant value
-			nottedNum = lhsNum;
+	// ... and the non-constant part is itself a BNOT instruction (~x)
+	if (!orNonNum->is_insn(m_bnot))
+		return false;
+
+	MSG_DO(("[I] pat_BnotOrBnotConst: '%s'", ins->dstr()));
+	// Once we found it, rewrite the top-level BNOT with an AND
+	ins->opcode = m_and;
+	ins->l.swap(orNonNum->d->l);
+
+	// Invert the numeric part
+	uint64 notNum = ~(orNum->nnn->value) & ((1ULL << (orNum->size * 8)) - 1);
+	ins->r.make_number(notNum, orNum->size);
+	return true;
+}
+
+// Replaces 'call ARITH(x, y)' to inlined expression ==> `x & y` or `x | y` or `x ^ y` or `x + y` or `x - y`
+static bool call_ARITH(minsn_t* call, mblock_t* blk)
+{
+	if(call->opcode != m_call || call->l.t != mop_v)
+		return false;
+	mcallinfo_t *fi = call->d.f;
+	if (!fi || fi->return_type.is_void() || fi->args.size() != 2)
+		return false;
+	//FIXME: what about spoiled registers and stack balance in case of __stdcall
+
+	qstring funcname = get_name(call->l.g);
+	stripName(&funcname, true);
+	if(funcname.length() > 3)
+		return false; //optimize away funcs with longer names
+
+	mcode_t opcode;
+	if(!qstrcmp(funcname.c_str(), "AND"))
+		opcode = m_and;
+	else if(!qstrcmp(funcname.c_str(), "OR_"))
+		opcode = m_or;
+	else if(!qstrcmp(funcname.c_str(), "XOR"))
+		opcode = m_xor;
+	else if(!qstrcmp(funcname.c_str(), "ADD"))
+		opcode = m_add;
+	else if(!qstrcmp(funcname.c_str(), "SUB"))
+		opcode = m_sub;
+	else {
+		MSG_DO(("[E] not implemented op"));
+		return false;
+	}
+	MSG_DO(("[I] call_ARITH: '%s'", call->dstr()));
+	call->opcode = opcode;
+	call->l = fi->args.front();
+	call->r = fi->args.back();
+	//call->d = // doesn't care, at this stage `call` must be a part of `m_mov mop_d(call), reg`
+	return true;
+}
+
+// Replaces 'call ARITH_0xNN(x)' ==> `x & NN` or `x | NN` or `x ^ NN` or `x + NN` or `x - NN`
+// Replaces 'call LDX_0xNN(x)'   ==> `[x + NN]` (ldx  ds.2, (arg.8+#0xNN.8), result.4)
+// Replaces 'call RET_0xNN()'    ==> `NN`
+static bool call_ARITH_0xNN(mop_t* op, minsn_t* ins, mblock_t* /*blk*/)
+{
+	if(ins->opcode != m_call || ins->l.t != mop_v)
+		return false;
+
+	mcallinfo_t *fi = ins->d.f;
+	if (!fi || fi->return_type.is_void())
+		return false;
+	//FIXME: what about spoiled registers and stack balance in case of __stdcall
+
+	qstring funcname = get_name(ins->l.g);
+	stripName(&funcname, true);
+	if(funcname.length() <= 6 || strncmp(funcname.c_str() + 3, "_0x", 3))
+		return false;
+
+	ea_t n;
+	if(!atoea(&n, funcname.c_str() + 4))
+		return false;
+
+	mcode_t opcode;
+	if(!strncmp(funcname.c_str(), "AND", 3))
+		opcode = m_and;
+	else if(!strncmp(funcname.c_str(), "OR_", 3))
+		opcode = m_or;
+	else if(!strncmp(funcname.c_str(), "XOR", 3))
+		opcode = m_xor;
+	else if(!strncmp(funcname.c_str(), "ADD", 3))
+		opcode = m_add;
+	else if(!strncmp(funcname.c_str(), "SUB", 3))
+		opcode = m_sub;
+	else if(!strncmp(funcname.c_str(), "LDX", 3))
+		opcode = m_ldx;
+	else if(!strncmp(funcname.c_str(), "RET", 3))
+		opcode = m_ret;
+	else {
+		MSG_DO(("[E] not implemented op"));
+		return false;
+	}
+
+	MSG_DO(("[I] call_ARITH_0xNN: '%s'", ins->dstr()));
+	if(opcode == m_ret) {
+		if(!op)
+			return false;
+		op->make_number(n, (int)fi->return_type.get_size(), ins->ea);
+	} else {
+		if(fi->args.size() < 1)
+			return false;
+		if(opcode == m_ldx) {
+			minsn_t* add = new minsn_t(ins->ea);
+			add->opcode = m_add;
+			add->l = fi->args.front();
+			add->r.make_number(n, add->l.size, ins->ea);
+			add->d.size = ea_size;
+			ins->r.make_insn(add);
+			ins->r.size = ea_size;
+			ins->l.make_reg(reg2mreg(R_ds), 2); //FIXME: x86 specific!
 		} else {
-			nonNottedInsn = lhsNonNum;
+			ins->l = fi->args.front();
+			ins->r.make_number(n, (int)fi->return_type.get_size(), ins->ea);
 		}
-
-		// Check the left-hand size for binary not
-		if (rhsNonNum->is_insn(m_bnot)) {
-			// Both sides NOT? Not what we want, return 0
-			if (nottedInsn != NULL)
-				return 0;
-
-			// Extract the NOTed term
-			nottedInsn = &rhsNonNum->d->l;
-			// Make note of the corresponding constant value
-			nottedNum = rhsNum;
-		} else {
-			// Neither side has a NOT? Bail
-			if (nonNottedInsn != NULL)
-				return 0;
-			nonNottedInsn = rhsNonNum;
-		}
-
-		// The expression that was NOTed must match the non-NOTed operand
-		if (!nonNottedInsn->equal_mops(*nottedInsn, EQ_IGNSIZE))
-			return 0;
-
-		MSG_DO(("[I] pat_OrAndNot: '%s'", ins->dstr()));
-		// Okay, all of our conditions matched. Make an XOR(x,d) instruction
-		ins->opcode = m_xor;
-		ins->l.swap(*nonNottedInsn);
-		ins->r.swap(*nottedNum);
-		return 1;
+		ins->opcode = opcode;
 	}
+	return true;
+}
 
-	// Replaces conditionals of the form
-	// !(!c1 || !c2) => (c1 && c2).
-	int pat_LnotOrLnotLnot(minsn_t* ins, mblock_t* /*blk*/)
-	{
-		// The whole expression must be logically negated.
-		minsn_t* inner;
-		if (!ExtractLogicallyNegatedTerm(ins, inner) || inner == NULL)
-			return 0;
+// replace: x ^ c == d
+// to:     x == c ^ d
+static bool pat_XorCondImm(minsn_t* cjmp, mblock_t* blk)
+{
+	if(!is_mcode_convertible_to_set(cjmp->opcode) && !is_mcode_convertible_to_jmp(cjmp->opcode))
+		return false;
 
-		// The thing that was negated must be an OR with compound operands.
-		if (inner->opcode != m_or || inner->l.t != mop_d || inner->r.t != mop_d)
-			return 0;
+	if(!cjmp->l.is_insn(m_xor))
+		return false;
 
-		// The two compound operands must also be negated
-		minsn_t* insLeft = inner->l.d;
-		minsn_t* insRight = inner->r.d;
-		mop_t* opLeft, * opRight;
-		if (!ExtractLogicallyNegatedTerm(inner->l.d, insLeft, &opLeft) || !ExtractLogicallyNegatedTerm(inner->r.d, insRight, &opRight))
-			return 0;
+	uint64 num1, num2;
+	if (!cjmp->l.d->r.is_constant(&num1, false) || !cjmp->r.is_constant(&num2, false))
+		return false;
 
-		MSG_DO(("[I] pat_LnotOrLnotLnot: '%s'", ins->dstr()));
-		// If we're here, the pattern matched. Make the AND.
-		ins->opcode = m_and;
-		ins->l.swap(*opLeft);
-		ins->r.swap(*opRight);
-		return 1;
+	MSG_DO(("[I] pat_XorCondImm: '%s'", cjmp->dstr()));
+	cjmp->l.swap(cjmp->l.d->l);
+	cjmp->r.nnn->update_value(num1 ^ num2);
+	return true;
+}
+
+static bool bswap_const_to_const(mop_t* op, minsn_t* call)
+{
+	if (!call->is_bswap())
+		return false;
+	if (!call->is_helper("_byteswap_ulong"))
+		return false;
+	mcallinfo_t& fi = *call->d.f;
+	if (fi.args.empty())
+		return false;
+	uint64 val;
+	if (!fi.args.front().is_constant(&val))
+		return false;
+	MSG_DO(("[I] bswap_const_to_const: '%s'", call->dstr()));
+	val = swap32((uint32)val);
+	op->make_number(val, op->size);
+	return true;
+}
+
+#if 0 //TODO: not completed
+static bool unpackInterlockedExchange(mba_t* mba, mop_t* op)
+{
+	if (!op->is_insn(m_call))
+		return false;
+	if (!op->d->is_helper("_InterlockedExchange64"))
+		return false;
+	mcallinfo_t& fi = *op->d->d.f;
+	if (fi.args.size() != 2)
+		return false;
+
+	mreg_t tmpReg = mba->alloc_kreg(op->size);
+	minsn_t* ins1 = new minsn_t(op->d->ea);
+	ins1->opcode = m_mov;
+	ins1->d.make_reg(tmpReg, op->size);
+	ins1->l = fi.args[0];
+	minsn_t* ins2 = new minsn_t(op->d->ea);
+	ins2->opcode = m_mov;
+	ins2->d = fi.args[0];
+	ins2->l = fi.args[1];
+	minsn_t* ins3 = new minsn_t(op->d->ea);
+	ins3->opcode = m_mov;
+	ins3->d = fi.args[1];
+	ins3->l.make_reg(tmpReg, op->size);
+	mba->free_kreg(tmpReg, op->size);
+
+	//TODO: replace/insert
+
+	return true;
+}
+#endif
+
+// This function just inspects the instruction and calls the
+// pattern-replacement functions above to perform deobfuscation.
+bool OptimizeInsn(mop_t* op, minsn_t* ins, mblock_t* blk)
+{
+	switch (ins->opcode) {
+	case m_bnot:
+		return pat_BnotOrBnotConst(ins, blk);
+	case m_or:
+		return pat_OrAndNot(ins, blk)
+			|| pat_OrViaXorAnd(ins, blk)
+			|| pat_OrNegatedSameCondition(ins, blk)
+			|| pat_LogicAnd1(ins, blk)
+			|| pat_MulSub2(ins, blk);
+	case m_and:
+		return pat_MulSub(ins, blk);
+	case m_xor:
+		return pat_LnotOrLnotLnot(ins, blk) || pat_LogicAnd1(ins, blk);
+	case m_lnot:
+		return pat_LnotOrLnotLnot(ins, blk);
+	case m_setl:
+	case m_jl:
+	case m_jge:
+	case m_seto: // cause INTERR 50862 -> replace in later maturity level
+		return pat_InitedVarCondImm(ins, blk);
+	case m_sets:
+		return pat_InitedVarSubImmCond0(ins, blk);
+	case m_mov:
+		return pat_InitedVarMov(ins);// data-flow tracking required
+	case m_add:
+	case m_sub:
+		return pat_AddSub(ins, blk);
+	case m_call:
+		return call_ARITH(ins, blk) 
+			|| call_ARITH_0xNN(op, ins, blk)
+			|| bswap_const_to_const(op, ins);
+	case m_jz:
+	case m_jnz:
+	case m_setz:
+	case m_setnz:
+		return pat_XorCondImm(ins, blk);
 	}
-
-	// Replaces terms of the form, where n is a number
-	// ~(~x | n) ==> x & ~n.
-	int pat_BnotOrBnotConst(minsn_t* ins, mblock_t* /*blk*/)
-	{
-		// We're looking for BNOT instructions (~y)...
-		if (ins->opcode != m_bnot || ins->l.t != mop_d)
-			return 0;
-
-		// ... where x is an OR instruction ...
-		minsn_t* inner = ins->l.d;
-		if (inner->opcode != m_or)
-			return 0;
-
-		// ... and one side is constant, where the other one isn't ...
-		mop_t* orNum, * orNonNum;
-		if (!ExtractNumAndNonNum(inner, orNum, orNonNum))
-			return 0;
-
-		// ... and the non-constant part is itself a BNOT instruction (~x)
-		if (!orNonNum->is_insn(m_bnot))
-			return 0;
-
-		MSG_DO(("[I] pat_BnotOrBnotConst: '%s'", ins->dstr()));
-		// Once we found it, rewrite the top-level BNOT with an AND
-		ins->opcode = m_and;
-		ins->l.swap(orNonNum->d->l);
-
-		// Invert the numeric part
-		uint64 notNum = ~(orNum->nnn->value) & ((1ULL << (orNum->size * 8)) - 1);
-		ins->r.make_number(notNum, orNum->size);
-		return 1;
-	}
-
-	// Replaces 'call ARITH(x, y)' to inlined expression ==> `x & y` or `x | y` or `x ^ y` or `x + y` or `x - y`
-	int call_ARITH(minsn_t* call, mblock_t* blk)
-	{
-		if(call->opcode != m_call || call->l.t != mop_v)
-			return 0;
-		mcallinfo_t *fi = call->d.f;
-		if (!fi || fi->return_type.is_void() || fi->args.size() != 2)
-			return 0;
-		//FIXME: what about spoiled registers and stack balance in case of __stdcall
-
-		qstring funcname = get_name(call->l.g);
-		stripName(&funcname, true);
-		if(funcname.length() > 3)
-			return 0; //optimize away funcs with longer names
-
-		mcode_t opcode;
-		if(!qstrcmp(funcname.c_str(), "AND"))
-			opcode = m_and;
-		else if(!qstrcmp(funcname.c_str(), "OR_"))
-			opcode = m_or;
-		else if(!qstrcmp(funcname.c_str(), "XOR"))
-			opcode = m_xor;
-		else if(!qstrcmp(funcname.c_str(), "ADD"))
-			opcode = m_add;
-		else if(!qstrcmp(funcname.c_str(), "SUB"))
-			opcode = m_sub;
-		else {
-			MSG_DO(("[E] not implemented op"));
-			return 0;
-		}
-		MSG_DO(("[I] call_ARITH: '%s'", call->dstr()));
-		call->opcode = opcode;
-		call->l = fi->args.front();
-		call->r = fi->args.back();
-		//call->d = // doesn't care, at this stage `call` must be a part of `m_mov mop_d(call), reg`
-		return 1;
-	}
-
-	// Replaces 'call ARITH_0xNN(x)' ==> `x & NN` or `x | NN` or `x ^ NN` or `x + NN` or `x - NN`
-	// Replaces 'call LDX_0xNN(x)'   ==> `[x + NN]` (ldx  ds.2, (arg.8+#0xNN.8), result.4)
-	// Replaces 'call RET_0xNN()'    ==> `NN`
-	int call_ARITH_0xNN(mop_t* op, minsn_t* ins, mblock_t* /*blk*/)
-	{
-		if(ins->opcode != m_call || ins->l.t != mop_v)
-			return 0;
-
-		mcallinfo_t *fi = ins->d.f;
-		if (!fi || fi->return_type.is_void())
-			return 0;
-		//FIXME: what about spoiled registers and stack balance in case of __stdcall
-
-		qstring funcname = get_name(ins->l.g);
-		stripName(&funcname, true);
-		if(funcname.length() <= 6 || strncmp(funcname.c_str() + 3, "_0x", 3))
-			return 0;
-
-		ea_t n;
-		if(!atoea(&n, funcname.c_str() + 4))
-			return 0;
-
-		mcode_t opcode;
-		if(!strncmp(funcname.c_str(), "AND", 3))
-			opcode = m_and;
-		else if(!strncmp(funcname.c_str(), "OR_", 3))
-			opcode = m_or;
-		else if(!strncmp(funcname.c_str(), "XOR", 3))
-			opcode = m_xor;
-		else if(!strncmp(funcname.c_str(), "ADD", 3))
-			opcode = m_add;
-		else if(!strncmp(funcname.c_str(), "SUB", 3))
-			opcode = m_sub;
-		else if(!strncmp(funcname.c_str(), "LDX", 3))
-			opcode = m_ldx;
-		else if(!strncmp(funcname.c_str(), "RET", 3))
-			opcode = m_ret;
-		else {
-			MSG_DO(("[E] not implemented op"));
-			return 0;
-		}
-
-		MSG_DO(("[I] call_ARITH_0xNN: '%s'", ins->dstr()));
-		if(opcode == m_ret) {
-			if(!op)
-				return 0;
-			op->make_number(n, (int)fi->return_type.get_size(), ins->ea);
-		} else {
-			if(fi->args.size() < 1)
-				return 0;
-			if(opcode == m_ldx) {
-				minsn_t* add = new minsn_t(ins->ea);
-				add->opcode = m_add;
-				add->l = fi->args.front();
-				add->r.make_number(n, add->l.size, ins->ea);
-				add->d.size = ea_size;
-				ins->r.make_insn(add);
-				ins->r.size = ea_size;
-				ins->l.make_reg(reg2mreg(R_ds), 2); //FIXME: x86 specific!
-			} else {
-				ins->l = fi->args.front();
-				ins->r.make_number(n, (int)fi->return_type.get_size(), ins->ea);
-			}
-			ins->opcode = opcode;
-		}
-		return 1;
-	}
-
-	// replace: x ^ c == d
-	// to:     x == c ^ d
-	int pat_XorCondImm(minsn_t* cjmp, mblock_t* blk)
-	{
-		if(!is_mcode_convertible_to_set(cjmp->opcode) && !is_mcode_convertible_to_jmp(cjmp->opcode))
-			return 0;
-
-		if(!cjmp->l.is_insn(m_xor))
-			return 0;
-
-		uint64 num1, num2;
-		if (!cjmp->l.d->r.is_constant(&num1, false) || !cjmp->r.is_constant(&num2, false))
-			return 0;
-
-		MSG_DO(("[I] pat_XorCondImm: '%s'", cjmp->dstr()));
-		cjmp->l.swap(cjmp->l.d->l);
-		cjmp->r.nnn->update_value(num1 ^ num2);
-		return 1;
-	}
-
-	// This function just inspects the instruction and calls the
-	// pattern-replacement functions above to perform deobfuscation.
-	int OptimizeInsn(mop_t* op, minsn_t* ins, mblock_t* blk)
-	{
-		int iLocalRetVal = 0;
-
-		switch (ins->opcode) {
-		case m_bnot:
-			iLocalRetVal = pat_BnotOrBnotConst(ins, blk);
-			break;
-		case m_or:
-			iLocalRetVal = pat_OrAndNot(ins, blk);
-			if (!iLocalRetVal)
-				iLocalRetVal = pat_OrViaXorAnd(ins, blk);
-			if (!iLocalRetVal)
-				iLocalRetVal = pat_OrNegatedSameCondition(ins, blk);
-			if (!iLocalRetVal)
-				iLocalRetVal = pat_LogicAnd1(ins, blk);
-			if (!iLocalRetVal)
-				iLocalRetVal = pat_MulSub2(ins, blk);
-			break;
-		case m_and:
-			iLocalRetVal = pat_MulSub(ins, blk);
-			break;
-		case m_xor:
-			iLocalRetVal = pat_LnotOrLnotLnot(ins, blk);
-			if (!iLocalRetVal)
-				iLocalRetVal = pat_LogicAnd1(ins, blk);
-			break;
-		case m_lnot:
-			iLocalRetVal = pat_LnotOrLnotLnot(ins, blk);
-			break;
-		case m_setl:
-		case m_jl:
-		case m_jge:
-		case m_seto: // cause INTERR 50862 -> replace in later maturity level
-			iLocalRetVal = pat_InitedVarCondImm(ins, blk);
-			break;
-		case m_sets:
-			iLocalRetVal = pat_InitedVarSubImmCond0(ins, blk);
-			break;
-		case m_mov:
-			iLocalRetVal = pat_InitedVarMov(ins);// data-flow tracking required
-			break;
-		case m_add:
-		case m_sub:
-			iLocalRetVal = pat_AddSub(ins, blk);
-			break;
-		case m_call:
-			iLocalRetVal = call_ARITH(ins, blk);
-			if (!iLocalRetVal)
-				iLocalRetVal = call_ARITH_0xNN(op, ins, blk);
-			break;
-		case m_jz:
-		case m_jnz:
-			iLocalRetVal = pat_XorCondImm(ins, blk);
-			break;
-		}
-		return iLocalRetVal;
-	}
+	return false;
+}
 
 struct ida_local InstOptimizer : public optinsn_t
 {
@@ -1119,11 +1137,11 @@ struct ida_local InstOptimizer : public optinsn_t
 
 		//Optimize top level insn
 		if(!res)
-			res += OptimizeInsn(nullptr, ins, blk);
+			res = OptimizeInsn(nullptr, ins, blk);
 
 		// If any optimizations were performed...
 		if (res) {
-			MSG_DO((" --> '%s' (%c) ", ins->dstr(), blk != nullptr ? 'b' : 's' ));
+			MSG_DO((" --> '%s' (%d %c) ", ins->dstr(), blk ? blk->mba->maturity : 0,  blk ? 'b' : 's' ));
 			if (blk) {
 				blk->optimize_insn(ins);
 				blk->mark_lists_dirty();

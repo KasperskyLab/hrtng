@@ -21,7 +21,7 @@ ELSE ()
 ENDIF ()
 
 IF(MSVC)
-   SET(COMMON_FLAGS "${CMAKE_CXX_FLAGS} -D __NT__ ${IDA_COMMON_CXX_FLAGS} ")
+   SET(COMMON_FLAGS "${CMAKE_CXX_FLAGS} /std:c++17 -D __NT__ ${IDA_COMMON_CXX_FLAGS} ")
   IF(${UNI64})
    TARGET_LINK_LIBRARIES(${target_name} ${IDASDK_DIR}/lib/x64_win_vc_64${PRO}/ida.lib)
   ELSE()

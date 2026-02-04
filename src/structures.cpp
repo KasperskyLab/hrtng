@@ -887,7 +887,7 @@ int create_VT(tid_t parent, ea_t VT_ea, bool autoScan/*= false*/, const char *to
 			tinfo_code_t err = utype.set_numbered_type(nullptr, ord, 0, utname.c_str());
 			if (err == TERR_OK) {
 #if IDA_SDK_VERSION < 850
-				import_type(get_idati(), vtstruc_idx, utname.c_str());
+				import_type(get_idati(), (int)vtstruc_idx, utname.c_str());
 				smt_code_t e = set_member_tinfo(struc, vtbl, 0, make_pointer(utype), 0);
 				if(e < SMT_OK) {
 					Log(llError, "save or set union VTBLs type error %d on set_member_tinfo\n", e);

@@ -5787,7 +5787,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.7.82";
+	addon.version = "3.7.83";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {
@@ -5928,9 +5928,11 @@ void refs_for_linker(void)
 	CALL_DSTR(fnumber_t);
 	CALL_DSTR(mcallinfo_t);
 	CALL_DSTR(vivl_t);
+#if IDA_SDK_VERSION > 820
 	CALL_DSTR(cexpr_t);
 	CALL_DSTR(cinsn_t);
 	CALL_DSTR(ctree_item_t);
+#endif // IDA_SDK_VERSION > 820
 	dstr((tinfo_t*)0);
 	((mbl_array_t*)0)->dump();
 	((mblock_t*)0)->dump();
