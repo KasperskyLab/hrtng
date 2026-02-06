@@ -1143,8 +1143,8 @@ struct ida_local InstOptimizer : public optinsn_t
 		if (res) {
 			MSG_DO((" --> '%s' (%d %c) ", ins->dstr(), blk ? blk->mba->maturity : 0,  blk ? 'b' : 's' ));
 			if (blk) {
-				blk->optimize_insn(ins);
 				blk->mark_lists_dirty();
+				blk->optimize_insn(ins);
 				blk->mba->verify(false);
 			} else {
 				ins->optimize_solo();

@@ -867,7 +867,7 @@ static bool getJccDests(mblock_t *blk, mblock_t *&endsWithJcc, int &jccDest, int
 
 // For a block with two predecessors, figure out if one of them ends in a jcc instruction.
 // Return the block that ends in a jcc and the one that doesn't. Also return the integer numbers of those blocks.
-static bool SplitMblocksByJccEnding(mblock_t *pred1, mblock_t *pred2, mblock_t *&endsWithJcc, mblock_t *&nonJcc, int &jccDest, int &jccFallthrough)
+bool SplitMblocksByJccEnding(mblock_t *pred1, mblock_t *pred2, mblock_t *&endsWithJcc, mblock_t *&nonJcc, int &jccDest, int &jccFallthrough)
 {
 	endsWithJcc = NULL;
 	nonJcc = NULL;
