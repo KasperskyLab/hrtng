@@ -5,6 +5,13 @@ This experimental feature have the intention to force decompilation a code that 
 Such code may be full of trashy void operations, liberal stack movement, smeared excessive jumps, calls and returns used as jumps.
 Purpose of this feature to force decompiler to clean up trash and show a crumb of meaning of the code does.
 
+Here is also implemented draft of inderect branch and call deobfuscation. Just try to re-decompile proc with *Alt-F5* when part of pseudocode looks like:
+```
+  xxx = (off_1400197B8 + 0x44927437A5E3AB1CLL)(0, x, y, z);
+  // or
+  __asm { jmp     rax }
+```
+
 How does it work:
  - At first the plugin tries to collect ranges of code spread over binary that belongs one function. 
    If any other subroutines is met in the path - it will be destroyed. If data or unexplored bytes are met in the path - it will be converted to code automatically or ask user to deal with it.

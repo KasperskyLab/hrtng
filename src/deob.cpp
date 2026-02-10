@@ -79,7 +79,7 @@ asize_t extraSpaceForPatch(ea_t ea)
 	return end - ea;
 }
 
-static bool patch_jmp(ea_t from, ea_t to, ea_t endOfBlk)
+static bool patch_jmp(ea_t from, ea_t to, asize_t maxLen)
 {
 	if (!isX86()) {
 		Log(llWarning, "FIXME: patch_jmp is x86 specific\n");
@@ -87,8 +87,7 @@ static bool patch_jmp(ea_t from, ea_t to, ea_t endOfBlk)
 	}
 	adiff_t dist = to - (from + 2);
 	asize_t patchLen = (dist >= -128 && dist <= 127) ? 2 : 5;
-	asize_t maxLen = endOfBlk - from;
-	if (maxLen < patchLen && maxLen + extraSpaceForPatch(endOfBlk) < patchLen) {
+	if (maxLen < patchLen && maxLen + extraSpaceForPatch(from + maxLen) < patchLen) {
 		Log(llWarning, "%a: no space for jmp patch\n", from);
 		return false;
 	}
@@ -111,7 +110,7 @@ static bool patch_jmp(ea_t from, ea_t to, ea_t endOfBlk)
 	return true;
 }
 
-static bool patch_cond_jmp(ea_t ea, mcode_t op, ea_t trueDest, ea_t falseDest, ea_t endOfBlk)
+static bool patch_cond_jmp(ea_t ea, mcode_t op, ea_t trueDest, ea_t falseDest, asize_t maxLen)
 {
 	if (!isX86()) {
 		Log(llWarning, "FIXME: patch_cond_jmp is x86 specific\n");
@@ -122,7 +121,6 @@ static bool patch_cond_jmp(ea_t ea, mcode_t op, ea_t trueDest, ea_t falseDest, e
 	asize_t tlen = (tdist >= -128 && tdist <= 127) ? 2 : 6;
 	adiff_t fdist = falseDest - (ea + tlen + 2 );
 	asize_t flen = (fdist == 0) ? 0 : (fdist >= -128 && fdist <= 127) ? 2 : 5;
-	asize_t maxLen = endOfBlk - ea;
 	if (maxLen < tlen + flen) {
 		Log(llWarning, "%a: no space for cond jmp patch\n", ea);
 		return false;
@@ -152,7 +150,7 @@ static bool patch_cond_jmp(ea_t ea, mcode_t op, ea_t trueDest, ea_t falseDest, e
 		case m_jl:  patch_byte(ea, 0x7c); break;
 		case m_jle: patch_byte(ea, 0x7e); break;
 		default:
-			Log(llWarning, "FIXME: patch_cond_jmp unk short op\n");
+			Log(llWarning, "FIXME: patch_cond_jmp unk short op %d\n", op);
 			return false;
 		}
 		patch_byte(ea + 1, uint64(tdist));
@@ -169,7 +167,7 @@ static bool patch_cond_jmp(ea_t ea, mcode_t op, ea_t trueDest, ea_t falseDest, e
 		case m_jl:  patch_word(ea, 0x8c0f); break;
 		case m_jle: patch_word(ea, 0x8e0f); break;
 		default:
-			Log(llWarning, "FIXME: patch_cond_jmp unk near op\n");
+			Log(llWarning, "FIXME: patch_cond_jmp unk near op %d\n", op);
 			return false;
 		}
 		patch_dword(ea + 2, uint64(tdist - 4));
@@ -227,10 +225,19 @@ struct ida_local ijmp_0way_op_visitor_t : mop_visitor_t
 		else if (op->is_insn()) {
 			if (is_mcode_set(op->d->opcode))
 				set = op;
-			else if (op->d->opcode == m_add && isRegOvar(op->d->l.t) && op->d->r.is_glbaddr()) {
-				glbaddr = &op->d->r;
-				addReg = &op->d->l;
-				return 1;
+			else if (op->d->opcode == m_add) {
+				if(isRegOvar(op->d->l.t) && op->d->r.is_glbaddr()) {
+					glbaddr = &op->d->r;
+					addReg = &op->d->l;
+					return 1;
+				}	else if (op->d->l.is_glbaddr() && op->d->r.is_insn(m_mul)) {
+					mop_t *num, *reg;
+					if (!ExtractNumAndNonNum(op->d->r.d, num, reg) || /*num->nnn->value != ea_size ||*/ !isRegOvar(reg->t))
+						return 0;
+					glbaddr = &op->d->l;
+					addReg = reg;
+					return 1;
+				}
 			}
 		}
 		return 0;
@@ -272,16 +279,16 @@ static int callOrJmp2InitedVar(minsn_t* ins, mblock_t* blk)
 	if (blk->tail) {
 		ins = blk->tail;
 		MSG_DO((" -> callOrJmp2InitedVar: %a %s\n", ea, ins->dstr()));
-		if ((dflags & DF_PATCH) != 0) {
-			if (ins->opcode == m_goto) {
-				if (ea != BADADDR && blk->end != BADADDR && ins->opcode == m_goto && ins->l.t == mop_v)
-					patch_jmp(ea, ins->l.g, blk->end);
-			}	else if (ins->opcode == m_call && ins->l.t == mop_v && isX86() && is64bit()) {
+		if ((dflags & DF_PATCH) != 0 && (blk->flags & MBL_FAKE) == 0) {
+			if (ins->opcode == m_goto && ins->l.t == mop_v && patch_jmp(ea, ins->l.g, blk->end - ea))
+				return 1;
+			if ((ins->opcode == m_call || ins->opcode == m_goto) && ins->l.t == mop_v && isX86() && is64bit()) {
 /*    --- Temporary hack----
 			TODO: not easy to correctly patch icall converted to call:
 			- call itself is too short
 			- just before call is arguments initialization, that should be saved
 			so it better to patch `add rax` or `mov rax`
+			(this works for jump too)
 			case1:
 			14000D580 48 B8 63 BA 6D 09 14 BC B7 00        mov     rax, 0B7BC14096DBA63h
 			14000D58A 48 03 05 57 F5 00 00                 add     rax, cs:off_14001CAE8
@@ -290,7 +297,7 @@ static int callOrJmp2InitedVar(minsn_t* ins, mblock_t* blk)
 */
 				insn_t addIns;
 				int addInsLen = decode_insn(&addIns, addEa);
-				if (addInsLen == 7 && addIns.itype == NN_add && addIns.Op1.type == o_reg && addIns.Op2.type == o_mem && get_word(addEa) == 0x0348) {
+				if (addInsLen == 7 && addIns.itype == NN_add && addIns.Op1.type == o_reg && addIns.Op2.type == o_mem && (get_word(addEa) & 0xfffb) == 0x0348) {
 					qstring cmt;
 					cmt.sprnt("; patched %d bytes:\n", addInsLen);//';' in first position prevents comment be copyed to pseudocode
 					cmt.append(gen_disasm(addEa, addInsLen));
@@ -299,9 +306,17 @@ static int callOrJmp2InitedVar(minsn_t* ins, mblock_t* blk)
 					patch_dword(addEa + 3, ins->l.g - addEa - 7);
 					create_insn(addEa);
 					add_extra_cmt(addEa, true, cmt.c_str());
-					Log(llInfo, "%a: patched %d bytes (call %a)\n", addEa, addInsLen, ins->l.g);
+					Log(llInfo, "%a: patched %d bytes (add+call %a)\n", addEa, addInsLen, ins->l.g);
+					return 1;
 				}
+#if 0
+				//TODO: check `mov`
+				insn_t movIns;
+				ea_t movEa = decode_prev_insn(&movIns, addEa);
+				if (BADADDR != movEa && movIns.size == 10 && movIns.itype == NN_mov && movIns.Op1.type == o_reg && movIns.Op2.type == o_imm && (get_word(movEa) & 0xf8fb) == 0xb848)
+#endif
 			}
+			Log(llWarning, "FIXME: no patch callOrJmp2InitedVar at %a\n", addEa);
 		}
 	}
 	return 1;
@@ -332,7 +347,7 @@ struct ida_local deobfuscation_optimizer_t : public optinsn_t
 #endif
 		if (res && blk) {
 				blk->mark_lists_dirty();
-				blk->mba->dump_mba(true, "after deobfuscation_optimizer");
+				blk->mba->dump_mba(true, "after deobfuscation_optimizer @%d", blk->serial);
 		}
 		return res;
 	}
@@ -511,8 +526,13 @@ to:
 
 		if (!v.glbaddr)
 			return false;
+		ea_t ijmpEa = ijmp->ea;
 
 /*
+	it may be possible easier and generic solution with using use/def chains and VALRANGES are already calculated by decompiler
+	just put copy of ijmp to both branches, and let decompiler to propagate register value to ijmp
+	but it seems patching will be too difficult by using this way
+ 
    replace:
 		2.1  mov    #0x68.8, rcx.8
 		2.2  jnz    [ds.2:rax.8{5}].8, #0.8, @4
@@ -569,8 +589,8 @@ to:
 			//set `false` branch reg val into ijmp expression
 			v.addReg->swap(numF);
 			blk->mark_lists_dirty();
-			ea_t origEnd = blk->end;
-			blk->end = blk->start + 1;	//make block small for callOrJmp2InitedVar cant patch this jmp
+			blk->start = blk->end - 1;	//make block small for callOrJmp2InitedVar is called from optimize_insn cant patch this jmp
+			blk->flags |= MBL_FAKE;
 
 			copy->optimize_insn(copy->tail, OPTI_ADDREXPRS | OPTI_MINSTKREF | OPTI_COMBINSNS);
 			blk->optimize_insn(blk->tail, OPTI_ADDREXPRS | OPTI_MINSTKREF | OPTI_COMBINSNS);
@@ -579,9 +599,18 @@ to:
 			MSG_DO(("[hrt]   %d: %s\n", blk->serial, blk->tail->dstr()));
 			MSG_DO(("[hrt]   %d: %s\n", copy->serial, copy->tail->dstr()));
 
-			ea_t tDst, fDst;
-			if ((dflags & DF_PATCH) != 0 && getGotoTargEa(copy, &tDst) && getGotoTargEa(blk, &fDst))
-				patch_cond_jmp(endsWithJcc->tail->ea, endsWithJcc->tail->opcode, tDst, fDst, origEnd);
+			if ((dflags & DF_PATCH) != 0) {
+				ea_t tDst, fDst;
+				if (getGotoTargEa(copy, &tDst) && getGotoTargEa(blk, &fDst)) {
+					insn_t ijmpIns;
+					int ijmpInsLen = decode_insn(&ijmpIns, ijmpEa);
+					if (ijmpIns.itype == NN_jmpni) {
+						patch_cond_jmp(endsWithJcc->tail->ea, endsWithJcc->tail->opcode, tDst, fDst, ijmpEa + ijmpInsLen - endsWithJcc->tail->ea);
+						return true;
+					}
+				}
+				Log(llWarning, "FIXME: no patch ijmp_0way addReg at %a\n", ijmpEa);
+			}
 			return true;
 		}
 
@@ -593,7 +622,7 @@ to:
 			2: ijmp   cs.2{16}, ([ds.2{16}:((xdu.8((xdu.4(0) <<l #7.1))+&($qword_1400184E0).8)+#0xC0.8)].8-#0x1260EC9986F965C0.8)
 			3: ijmp   cs.2{16}, ([ds.2{16}:((xdu.8((xdu.4(1) <<l #7.1))+&($qword_1400184E0).8)+#0xC0.8)].8-#0x1260EC9986F965C0.8)
 */
-		if(v.set) {
+		if (v.set) {
 			QASSERT(100402, v.set->is_insn());
 			ea_t setEa = v.set->d->ea;
 			minsn_t* jcnd = new minsn_t(*v.set->d);
@@ -640,10 +669,38 @@ to:
 			MSG_DO(("[hrt]   %d: %s\n", copy0->serial, copy0->tail->dstr()));
 			MSG_DO(("[hrt]   %d: %s\n", copy1->serial, copy1->tail->dstr()));
 
-			ea_t tDst, fDst;
-			if((dflags & DF_PATCH) != 0 && setEa != BADADDR && blk->end != BADADDR
-				&& getGotoTargEa(copy1, &tDst) && getGotoTargEa(copy0, &fDst)) {
-				patch_cond_jmp(setEa, blk->tail->opcode, tDst, fDst, blk->end);
+			if ((dflags & DF_PATCH) != 0) {
+				ea_t tDst, fDst;
+				if (ijmpEa - setEa < 0x30 && getGotoTargEa(copy1, &tDst) && getGotoTargEa(copy0, &fDst)) {
+					//find `setX` instruction as patch point
+					//it may be above specified addr
+					insn_t setIns;
+#if 0
+					decode_insn(&setIns, setEa);
+#else
+					// ijmp may uses microinsn `set` produced from `cmp` opcode
+					// in this case setEa is equal `cmp` ea, and the `set` is looked for is below this address
+					// so start looking for set from lowest address
+					setEa = ijmpEa;
+#endif
+					int i = 11;
+					for (; setEa != BADADDR && i >= 0 && !(setIns.itype >= NN_seta && setIns.itype <= NN_setz); setIns.itype != NN_nop ? --i : i) {
+						if (has_xref(get_flags(setEa))) { //break on the block begginning
+							i = -1;
+							break;
+						}
+						setEa = decode_prev_insn(&setIns, setEa);
+					}
+					if (i >= 0 && setEa != BADADDR) {
+						insn_t ijmpIns;
+						int ijmpInsLen = decode_insn(&ijmpIns, ijmpEa);
+						if (ijmpIns.itype == NN_jmpni) {
+							patch_cond_jmp(setEa, blk->tail->opcode, tDst, fDst, ijmpEa + ijmpInsLen - setEa);
+							return true;
+						}
+					}
+				}
+				Log(llWarning, "FIXME: no patch ijmp_0way setX at %a\n", ijmpEa);
 			}
 			return true;
 		}
@@ -677,7 +734,9 @@ to:
 			MSG_DO(("[hrt] %a: empty 0way goto -> xtern blk %a\n", migoto->ea, targ_ea));
 			blk->type = BLT_XTRN;
 			blk->start = targ_ea;
-			blk->end = blk->start;// + 1;
+			blk->end = blk->start;
+			blk->mustbuse.clear();
+			blk->mustbdef.clear();
 			blk->remove_from_block(migoto);
 			delete migoto;
 			return true;
@@ -686,7 +745,7 @@ to:
 		mblock_t* xtrn = blk->mba->insert_block(blk->serial + 1);
 		xtrn->type = BLT_XTRN;
 		xtrn->start = targ_ea;
-		xtrn->end = xtrn->start;// + 1;
+		xtrn->end = xtrn->start;
 		xtrn->predset.add(blk->serial);
 
 		blk->type = BLT_1WAY;
@@ -698,6 +757,7 @@ to:
 		blk->remove_from_block(migoto);
 		delete migoto;
 #endif
+		blk->mark_lists_dirty();
 		return true;
 	}
 	virtual int idaapi func(mblock_t *blk)
@@ -901,7 +961,7 @@ static bool patch_dbl_jc(mbl_array_t *mba, mblock_t *b1, blocksset_t* removeBlk)
 	delete jmp2;
 
 	if ((dflags & DF_PATCH) != 0) {
-		patch_jmp(jc1->ea, destB1, b1->end);
+		patch_jmp(jc1->ea, destB1, b1->end - jc1->ea);
 		unreachBlocks.add(b2->start, b2->end); //do not mark b2 as unreach if no patch becouse next pass will not see jc pair
 	}
 	removeBlk->insert(b2);
@@ -1112,10 +1172,10 @@ bool disasm_dbl_jc(ea_t ea)
 		ea_t dest2 = (insn2.ops[0].type == o_near) ? insn2.ops[0].addr : BADADDR;
 		if (dest1 == dest2 && dest1 != BADADDR) {
 			if ((dflags & DF_PATCH) != 0) {
-				patch_jmp(insn1.ea, dest1, insn1.ea + insn1.size);
+				patch_jmp(insn1.ea, dest1, insn1.size);
 				if (get_first_fcref_to(insn2.ea) == BADADDR) {
 					unreachBlocks.add(insn2.ea, insn2.ea + insn2.size); //do not mark b2 as unreach if no patch
-					//patch_jmp(insn2.ea, dest2, insn2.ea + insn2.size);
+					//patch_jmp(insn2.ea, dest2, insn2.size);
 				}
 			} else if (get_first_fcref_to(insn2.ea + insn2.size) == BADADDR) {
 				unreachBlocks.add(insn2.ea + insn2.size, insn2.ea + insn2.size + 1);
@@ -1503,7 +1563,7 @@ int decompile_obfuscated(ea_t eaBgn)
 	ea_t nullsub = get_nullsub_1();
 	if (nullsub == BADADDR)
 		nullsub = eaBgn;
-	vdui_t *vdui = COMPAT_open_pseudocode_REUSE_ACTIVE(nullsub); //
+	vdui_t *vdui = COMPAT_open_pseudocode_REUSE(nullsub);
 	vdui->switch_to(cf, true); // broken in ida92 (or early). display requested code just until first click or keypress and then switches to `nullsub`
 	jumpto(cf->entry_ea);
 
