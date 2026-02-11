@@ -792,11 +792,29 @@ qstring msig_replace(void* ctx, const char* name)
 }
 
 //--------------------------------------------------------------------------
-static const int rcwidths[] = { 45 | CHCOL_PLAIN | CHCOL_INODENAME, 45  | CHCOL_PLAIN, 16 | CHCOL_EA | CHCOL_DEFHIDDEN, 4 | CHCOL_PLAIN
+static const int rcwidths[] = 
+{ 
+	// "Found" column
+	45 | CHCOL_PLAIN 
+#if IDA_SDK_VERSION < 930
+	| CHCOL_INODENAME
+#else
+	| OBSOLETE_CHCOL_INODENAME
+#endif //IDA_SDK_VERSION < 930
+	,
+
+	// "Replace to" column
+	45 | CHCOL_PLAIN,
+
+	// "Address/TypeID" column
+	16 | CHCOL_EA | CHCOL_DEFHIDDEN,
+
+	// "Kind" column
+	4 | CHCOL_PLAIN
 #if IDA_SDK_VERSION >= 770
-																| CHCOL_DEFHIDDEN
+	| CHCOL_DEFHIDDEN
 #endif //IDA_SDK_VERSION >= 770
-															};
+};
 static const char *const rcheader[] = { "Found", "#The real result may vary#Replace to (*)", "Address/TypeID", "Kind"};
 
 struct ida_local rf_chooser_t : public chooser_t
@@ -805,9 +823,11 @@ struct ida_local rf_chooser_t : public chooser_t
 	int problemIcon = -1;
 
 	rf_chooser_t(refac_t* rf_) : chooser_t(
-#if IDA_SDK_VERSION >= 770
+#if IDA_SDK_VERSION >= 770 && IDA_SDK_VERSION < 930
 																 CH_HAS_DIRTREE | CH_TM_FULL_TREE | CH_NON_PERSISTED_TREE |
-#endif //IDA_SDK_VERSION >= 770
+#elif IDA_SDK_VERSION >= 930
+																 OBSOLETE_CH_HAS_DIRTREE | OBSOLETE_CH_TM_FULL_TREE | OBSOLETE_CH_NON_PERSISTED_TREE |
+#endif //IDA_SDK_VERSION >= 770 && IDA_SDK_VERSION < 930
 																 CH_CAN_DEL, qnumber(rcwidths), rcwidths, rcheader, "[hrt] Refactoring"), rf(rf_)
 	{
 		get_action_icon("OpenProblems", &problemIcon);
