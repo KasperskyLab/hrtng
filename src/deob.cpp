@@ -47,161 +47,8 @@ static bool deob = false;
 static bool final_pass = false;
 static rangeset_t unreachBlocks; // blocks with trash should be excluded
 
-qstring gen_disasm(ea_t ea, asize_t len)
-{
-	qstring res;
-	ea_t dea = ea;
-	while (dea < ea + len) {
-		qstring tmp;
-		if (!generate_disasm_line(&tmp, dea, GENDSM_REMOVE_TAGS))
-			break;
-		if (!res.empty())
-			res.append('\n');
-		res.append(tmp);
-		dea = next_not_tail(dea);
-		if (dea == BADADDR)
-			break;
-	}
-	return res;
-}
-
-asize_t extraSpaceForPatch(ea_t ea)
-{
-	ea_t end = ea;
-	if (is_align(get_flags(ea)))
-		end = next_not_tail(ea);
-
-	// put more checks here
-
-	if (end == BADADDR)
-		return 0;
-	Log(llDebug, "extraSpaceForPatch(%a) => %d\n", end - ea);
-	return end - ea;
-}
-
-static bool patch_jmp(ea_t from, ea_t to, asize_t maxLen)
-{
-	if (!isX86()) {
-		Log(llWarning, "FIXME: patch_jmp is x86 specific\n");
-		return false;
-	}
-	adiff_t dist = to - (from + 2);
-	asize_t patchLen = (dist >= -128 && dist <= 127) ? 2 : 5;
-	if (maxLen < patchLen && maxLen + extraSpaceForPatch(from + maxLen) < patchLen) {
-		Log(llWarning, "%a: no space for jmp patch\n", from);
-		return false;
-	}
-
-	qstring cmt;
-	cmt.sprnt("; patched %d bytes:\n", patchLen);//';' in first position prevents comment be copyed to pseudocode
-	cmt.append(gen_disasm(from, patchLen));
-	del_items(from, DELIT_EXPAND); //Important here!!!
-
-	if (patchLen == 2) {
-		patch_byte(from, 0xeb);
-		patch_byte(from + 1, uint64(dist));
-	} else {
-		patch_byte(from, 0xe9);
-		patch_dword(from + 1, uint64(dist - 3));
-	}
-	create_insn(from);
-	add_extra_cmt(from, true, cmt.c_str());
-	Log(llInfo, "%a: patched %d bytes (jmp %a)\n", from, patchLen, to);
-	return true;
-}
-
-static bool patch_cond_jmp(ea_t ea, mcode_t op, ea_t trueDest, ea_t falseDest, asize_t maxLen)
-{
-	if (!isX86()) {
-		Log(llWarning, "FIXME: patch_cond_jmp is x86 specific\n");
-		return false;
-	}
-
-	adiff_t tdist = trueDest - (ea + 2);
-	asize_t tlen = (tdist >= -128 && tdist <= 127) ? 2 : 6;
-	adiff_t fdist = falseDest - (ea + tlen + 2 );
-	asize_t flen = (fdist == 0) ? 0 : (fdist >= -128 && fdist <= 127) ? 2 : 5;
-	if (maxLen < tlen + flen) {
-		Log(llWarning, "%a: no space for cond jmp patch\n", ea);
-		return false;
-	}
-
-#if 1
-	asize_t patchLen = maxLen;
-#else
-	asize_t patchLen = tlen + flen;
-#endif
-
-	qstring cmt;
-	cmt.sprnt("; patched %d bytes:\n", patchLen);//';' in first position prevents comment be copyed to pseudocode
-	cmt.append(gen_disasm(ea, patchLen));
-	del_items(ea, 0 /*DELIT_EXPAND*/, patchLen);
-
-	if (tlen == 2) {
-		switch (op) {
-		case m_jnz: patch_byte(ea, 0x75); break;
-		case m_jz:  patch_byte(ea, 0x74); break;
-		case m_jae: patch_byte(ea, 0x73); break;
-		case m_jb:  patch_byte(ea, 0x72); break;
-		case m_ja:  patch_byte(ea, 0x77); break;
-		case m_jbe: patch_byte(ea, 0x76); break;
-		case m_jg:  patch_byte(ea, 0x7f); break;
-		case m_jge: patch_byte(ea, 0x7d); break;
-		case m_jl:  patch_byte(ea, 0x7c); break;
-		case m_jle: patch_byte(ea, 0x7e); break;
-		default:
-			Log(llWarning, "FIXME: patch_cond_jmp unk short op %d\n", op);
-			return false;
-		}
-		patch_byte(ea + 1, uint64(tdist));
-	} else {
-		switch (op) {
-		case m_jnz: patch_word(ea, 0x850f); break;
-		case m_jz:  patch_word(ea, 0x840f); break;
-		case m_jae: patch_word(ea, 0x830f); break;
-		case m_jb:  patch_word(ea, 0x820f); break;
-		case m_ja:  patch_word(ea, 0x870f); break;
-		case m_jbe: patch_word(ea, 0x860f); break;
-		case m_jg:  patch_word(ea, 0x8f0f); break;
-		case m_jge: patch_word(ea, 0x8d0f); break;
-		case m_jl:  patch_word(ea, 0x8c0f); break;
-		case m_jle: patch_word(ea, 0x8e0f); break;
-		default:
-			Log(llWarning, "FIXME: patch_cond_jmp unk near op %d\n", op);
-			return false;
-		}
-		patch_dword(ea + 2, uint64(tdist - 4));
-	}
-
-	if (!flen) {
-		; // do nothing, already here
-	} else if(flen == 2) {
-		patch_byte(ea + tlen, 0xeb);
-		patch_byte(ea + tlen + 1, uint64(fdist));
-	}	else {
-		patch_byte(ea + tlen, 0xe9);
-		patch_dword(ea + tlen + 1, uint64(fdist - 3));
-	}
-
-	create_insn(ea);
-	if(flen)
-		create_insn(ea + tlen);
-
-	//fill tail
-	if (tlen + flen < patchLen) {
-		for (asize_t i = tlen + flen; i < patchLen; i++)
-			patch_byte(ea + i, 0xcc);
-		if (!create_align(ea + tlen + flen, patchLen - (tlen + flen), 0))
-			create_data(ea + tlen + flen, byte_flag(), patchLen - (tlen + flen), BADNODE);
-	}
-
-	add_extra_cmt(ea, true, cmt.c_str());
-	Log(llInfo, "%a: patched %d bytes (cond jmp)\n", ea, patchLen);
-	return true;
-}
-
 //blocks may be reordered at early stages
-mblock_t* get_next_mblock(mbl_array_t* mba, int from, ea_t ea)
+static mblock_t* get_next_mblock(mbl_array_t* mba, int from, ea_t ea)
 {
 	for (; from < mba->qty && from >= 0; ++from) {
 		mblock_t* blk = mba->get_mblock(from);
@@ -266,6 +113,7 @@ static int callOrJmp2InitedVar(minsn_t* ins, mblock_t* blk)
 		return 0;
 	if (!off->is_insn() || !is_mcode_addsub(off->d->opcode))
 		return 0;
+
 	ea_t ea = ins->ea; // it possible too small space for near jmp patch // if use `ins->d.d->ea` patch may overwrite significant instuctions
 	ea_t addEa = off->d->ea;
 	mop_t *num, *gvar;
@@ -274,11 +122,14 @@ static int callOrJmp2InitedVar(minsn_t* ins, mblock_t* blk)
 
 	if(!replaceReadOnlyInitedVar2Val(gvar))
 		return 0;
-	blk->optimize_insn(ins); // original 'ins' is probably not valid after this line
 
-	if (blk->tail) {
-		ins = blk->tail;
-		MSG_DO((" -> callOrJmp2InitedVar: %a %s\n", ea, ins->dstr()));
+	if(blk)
+		blk->optimize_insn(ins);
+	else
+		ins->optimize_solo();
+
+	MSG_DO((" -> callOrJmp2InitedVar: %a %s\n", ea, ins->dstr()));
+	if (blk) {
 		if ((dflags & DF_PATCH) != 0 && (blk->flags & MBL_FAKE) == 0) {
 			if (ins->opcode == m_goto && ins->l.t == mop_v && patch_jmp(ea, ins->l.g, blk->end - ea))
 				return 1;
@@ -298,23 +149,47 @@ static int callOrJmp2InitedVar(minsn_t* ins, mblock_t* blk)
 				insn_t addIns;
 				int addInsLen = decode_insn(&addIns, addEa);
 				if (addInsLen == 7 && addIns.itype == NN_add && addIns.Op1.type == o_reg && addIns.Op2.type == o_mem && (get_word(addEa) & 0xfffb) == 0x0348) {
-					qstring cmt;
-					cmt.sprnt("; patched %d bytes:\n", addInsLen);//';' in first position prevents comment be copyed to pseudocode
-					cmt.append(gen_disasm(addEa, addInsLen));
+					add_patch_cmt(addEa, addInsLen);
 					del_items(addEa, DELIT_EXPAND);
 					patch_byte(addEa + 1, 0x8d); //change opcode to LEA
 					patch_dword(addEa + 3, ins->l.g - addEa - 7);
 					create_insn(addEa);
-					add_extra_cmt(addEa, true, cmt.c_str());
 					Log(llInfo, "%a: patched %d bytes (add+call %a)\n", addEa, addInsLen, ins->l.g);
 					return 1;
 				}
-#if 0
-				//TODO: check `mov`
-				insn_t movIns;
-				ea_t movEa = decode_prev_insn(&movIns, addEa);
-				if (BADADDR != movEa && movIns.size == 10 && movIns.itype == NN_mov && movIns.Op1.type == o_reg && movIns.Op2.type == o_imm && (get_word(movEa) & 0xf8fb) == 0xb848)
-#endif
+				//TODO: check `mov` if `add reg1, reg2`
+				if(addIns.itype == NN_add && addIns.Op1.type == o_reg/* && addIns.Op2.type == o_reg*/) {
+					uint16 areg1 = addIns.Op1.reg;
+					ea_t movEa = addEa;
+					insn_t movIns;
+					int i = 3;
+					for (; movEa != BADADDR && i >= 0 &&
+							 !(movIns.size >= 7 && movIns.itype == NN_mov && movIns.Op1.type == o_reg && movIns.Op1.reg == areg1 && (
+								 //TODO: (movIns.Op2.type == o_imm && (get_word(movEa) & 0xf8fa) == 0xb848) ||
+								  (movIns.Op2.type == o_mem && (get_word(movEa) & 0xfffb) == 0x8b48)));
+							 movIns.itype != NN_nop ? --i : i) {
+						if (has_xref(get_flags(movEa))) { //break on the block begginning
+							i = -1;
+							break;
+						}
+						movEa = decode_prev_insn(&movIns, movEa);
+					}
+					if (i >= 0 && movEa != BADADDR) {
+						add_patch_cmt(movEa, movIns.size);
+						del_items(movEa, DELIT_EXPAND);
+
+						//if(movIns.size == 7 && movIns.Op2.type == o_mem) {
+							patch_byte(movEa + 1, 0x8d); //change opcode to LEA
+							patch_dword(movEa + 3, ins->l.g - movEa - 7);
+						//} else {
+							//TODO
+						//}
+						create_insn(movEa);
+						patch_nops(addEa, addInsLen);
+						Log(llInfo, "%a: patched %d bytes (mov+add+call %a)\n", addEa, addInsLen, ins->l.g);
+						return 1;
+					}
+				}
 			}
 			Log(llWarning, "FIXME: no patch callOrJmp2InitedVar at %a\n", addEa);
 		}
@@ -532,7 +407,7 @@ to:
 	it may be possible easier and generic solution with using use/def chains and VALRANGES are already calculated by decompiler
 	just put copy of ijmp to both branches, and let decompiler to propagate register value to ijmp
 	but it seems patching will be too difficult by using this way
- 
+
    replace:
 		2.1  mov    #0x68.8, rcx.8
 		2.2  jnz    [ds.2:rax.8{5}].8, #0.8, @4
@@ -1003,6 +878,13 @@ struct ida_local frac_visitor_t : minsn_visitor_t
 	frac_visitor_t(eavec_t *ret_dests_) : ret_dests(ret_dests_), changed(false) {}
 	int visit_minsn()
 	{
+		// optinsn_t optimizers are called up to MMAT_LOCOPT
+		// but it may be need on MMAT_GLBOPT? too
+		if (curins->opcode == m_icall || curins->opcode == m_ijmp) {
+			changed |= callOrJmp2InitedVar(curins, blk) != 0;
+			return 0;
+		}
+
 		if (curins->opcode != m_call || !curins->is_helper("ret_addr"))
 			return 0;
 		if (ret_dests) { // just remove "ret_addr" on final pass
@@ -1032,8 +914,11 @@ struct ida_local frac_visitor_t : minsn_visitor_t
 //returns 'true' only on final pass changes
 bool deob_postprocess(mbl_array_t *mba, eavec_t *new_dests)
 {
+	if (!deob)
+		return false;
+
 	frac_visitor_t frac_visitor(new_dests);
-	mba->for_all_topinsns(frac_visitor);
+	mba->for_all_insns(frac_visitor);
 	return frac_visitor.changed;
 }
 
@@ -1061,15 +946,6 @@ static bool ensure_code(ea_t ea)
 }
 #endif
 
-static void fill_nops(ea_t ea, uval_t len) {
-	add_extra_cmt(ea, true, "; patched %d bytes", len);
-	for (uval_t i = 0; i < len; i++) {
-		del_items(ea);
-		patch_byte(ea, 0x90);
-		create_insn(ea++);
-	}
-}
-
 bool disasm_dbl_jc(ea_t ea)
 {
 	if (!isX86())
@@ -1084,7 +960,7 @@ bool disasm_dbl_jc(ea_t ea)
 	// 0401249        loc_401249:
 	// 0401249 EB FF  jmp     short near ptr loc_401249+1
 	if((dflags & DF_PATCH) != 0 && insn1.itype == NN_jmp && insn1.ops[0].type == o_near && insn1.ops[0].addr == ea + 1) {
-		fill_nops(ea, 1);
+		patch_nops(ea, 1);
 		return true;
 	}
 #endif //example1
@@ -1109,7 +985,7 @@ bool disasm_dbl_jc(ea_t ea)
 			ea_t prev = insn2.ops[0].addr;
 			while (is_tail(get_flags(--prev))) ;
 
-			fill_nops(prev, insn3.ops[0].addr - prev);
+			patch_nops(prev, insn3.ops[0].addr - prev);
 			return true;
 		}
 	}

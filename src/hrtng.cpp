@@ -3305,13 +3305,7 @@ ACT_DEF(fill_nops)
 	}
 
 	unmark_selection();
-	add_extra_cmt(eaBgn, true, "; patched 0x%x", len);
-	for (uval_t i = 0; i < len; i++) {
-		del_items(eaBgn);
-		patch_byte(eaBgn, 0x90);
-		create_insn(eaBgn++);
-	}
-
+	patch_nops(eaBgn, len);
 	return 1;
 }
 
@@ -5787,7 +5781,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.7.85";
+	addon.version = "3.7.86";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

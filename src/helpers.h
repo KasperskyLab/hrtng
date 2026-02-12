@@ -165,6 +165,13 @@ qstring good_smember_name(const struc_t* sptr, ea_t offset, const char *format, 
 void mk_name_w(qstring& name);
 bool get_class_name(const char* fullName, qstring *classname);
 
+qstring gen_disasm(ea_t ea, asize_t len);
+void add_patch_cmt(ea_t ea, asize_t patchLen);
+asize_t extraSpaceForPatch(ea_t ea);
+void patch_nops(ea_t ea, uval_t len);
+bool patch_jmp(ea_t from, ea_t to, asize_t maxLen);
+bool patch_cond_jmp(ea_t ea, mcode_t op, ea_t trueDest, ea_t falseDest, asize_t maxLen);
+
 void patch_str(ea_t ea, const char *str, sval_t len, bool forceZeroTerm = false);
 void patch_wstr(ea_t ea, const char *str, sval_t len);
 void patch_wstr(ea_t ea, const wchar16_t *str, sval_t len, bool forceZeroTerm = false);

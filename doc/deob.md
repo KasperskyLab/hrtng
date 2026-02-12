@@ -11,6 +11,7 @@ Here is also implemented draft of inderect branch and call deobfuscation. Just t
   // or
   __asm { jmp     rax }
 ```
+For unknown reason IDA may cut the function at the patched code position, and pseudocode looks as `JUMPOUT(0x14001CFBELL);` Re-decompile proc again with *Alt-F5* to fix.
 
 How does it work:
  - At first the plugin tries to collect ranges of code spread over binary that belongs one function. 

@@ -309,6 +309,166 @@ bool get_class_name(const char* fullName, qstring *classname)
 	return false;
 }
 
+qstring gen_disasm(ea_t ea, asize_t len)
+{
+	qstring res;
+	ea_t dea = ea;
+	while (dea < ea + len) {
+		qstring tmp;
+		if (!generate_disasm_line(&tmp, dea, GENDSM_REMOVE_TAGS))
+			break;
+		if (!res.empty())
+			res.append('\n');
+		res.append(tmp);
+		dea = next_not_tail(dea);
+		if (dea == BADADDR)
+			break;
+	}
+	return res;
+}
+
+void add_patch_cmt(ea_t ea, asize_t patchLen)
+{
+	qstring cmt;
+	cmt.sprnt("; patched %d bytes:\n", patchLen);//';' in first position prevents copy to pseudocode
+	cmt.append(gen_disasm(ea, patchLen));
+	add_extra_cmt(ea, true, cmt.c_str());
+}
+
+asize_t extraSpaceForPatch(ea_t ea)
+{
+	ea_t end = ea;
+	if (is_align(get_flags(ea)))
+		end = next_not_tail(ea);
+
+	// put more checks here
+
+	if (end == BADADDR)
+		return 0;
+	Log(llDebug, "extraSpaceForPatch(%a) => %d\n", end - ea);
+	return end - ea;
+}
+
+void patch_nops(ea_t ea, uval_t len)
+{
+	add_patch_cmt(ea, len);
+	for (uval_t i = 0; i < len; i++) {
+		del_items(ea);
+		patch_byte(ea, 0x90);
+		create_insn(ea++);
+	}
+}
+
+bool patch_jmp(ea_t from, ea_t to, asize_t maxLen)
+{
+	if (!isX86()) {
+		Log(llWarning, "FIXME: patch_jmp is x86 specific\n");
+		return false;
+	}
+	adiff_t dist = to - (from + 2);
+	asize_t patchLen = (dist >= -128 && dist <= 127) ? 2 : 5;
+	if (maxLen < patchLen && maxLen + extraSpaceForPatch(from + maxLen) < patchLen) {
+		Log(llWarning, "%a: no space for jmp patch\n", from);
+		return false;
+	}
+	add_patch_cmt(from, patchLen);
+	del_items(from, DELIT_EXPAND); //Important here!!!
+	if (patchLen == 2) {
+		patch_byte(from, 0xeb);
+		patch_byte(from + 1, uint64(dist));
+	}	else {
+		patch_byte(from, 0xe9);
+		patch_dword(from + 1, uint64(dist - 3));
+	}
+	create_insn(from);
+	Log(llInfo, "%a: patched %d bytes (jmp %a)\n", from, patchLen, to);
+	return true;
+}
+
+bool patch_cond_jmp(ea_t ea, mcode_t op, ea_t trueDest, ea_t falseDest, asize_t maxLen)
+{
+	if (!isX86()) {
+		Log(llWarning, "FIXME: patch_cond_jmp is x86 specific\n");
+		return false;
+	}
+
+	adiff_t tdist = trueDest - (ea + 2);
+	asize_t tlen = (tdist >= -128 && tdist <= 127) ? 2 : 6;
+	adiff_t fdist = falseDest - (ea + tlen + 2);
+	asize_t flen = (fdist == 0) ? 0 : (fdist >= -128 && fdist <= 127) ? 2 : 5;
+	if (maxLen < tlen + flen) {
+		Log(llWarning, "%a: no space for cond jmp patch\n", ea);
+		return false;
+	}
+
+#if 1
+	asize_t patchLen = maxLen;
+#else
+	asize_t patchLen = tlen + flen;
+#endif
+	add_patch_cmt(ea, patchLen);
+	del_items(ea, 0 /*DELIT_EXPAND*/, patchLen);
+	if (tlen == 2) {
+		switch (op) {
+		case m_jnz: patch_byte(ea, 0x75); break;
+		case m_jz:  patch_byte(ea, 0x74); break;
+		case m_jae: patch_byte(ea, 0x73); break;
+		case m_jb:  patch_byte(ea, 0x72); break;
+		case m_ja:  patch_byte(ea, 0x77); break;
+		case m_jbe: patch_byte(ea, 0x76); break;
+		case m_jg:  patch_byte(ea, 0x7f); break;
+		case m_jge: patch_byte(ea, 0x7d); break;
+		case m_jl:  patch_byte(ea, 0x7c); break;
+		case m_jle: patch_byte(ea, 0x7e); break;
+		default:
+			Log(llWarning, "FIXME: patch_cond_jmp unk short op %d\n", op);
+			return false;
+		}
+		patch_byte(ea + 1, uint64(tdist));
+	}	else {
+		switch (op) {
+		case m_jnz: patch_word(ea, 0x850f); break;
+		case m_jz:  patch_word(ea, 0x840f); break;
+		case m_jae: patch_word(ea, 0x830f); break;
+		case m_jb:  patch_word(ea, 0x820f); break;
+		case m_ja:  patch_word(ea, 0x870f); break;
+		case m_jbe: patch_word(ea, 0x860f); break;
+		case m_jg:  patch_word(ea, 0x8f0f); break;
+		case m_jge: patch_word(ea, 0x8d0f); break;
+		case m_jl:  patch_word(ea, 0x8c0f); break;
+		case m_jle: patch_word(ea, 0x8e0f); break;
+		default:
+			Log(llWarning, "FIXME: patch_cond_jmp unk near op %d\n", op);
+			return false;
+		}
+		patch_dword(ea + 2, uint64(tdist - 4));
+	}
+
+	if (!flen) {
+		; // do nothing, already here
+	} else if (flen == 2) {
+		patch_byte(ea + tlen, 0xeb);
+		patch_byte(ea + tlen + 1, uint64(fdist));
+	} else {
+		patch_byte(ea + tlen, 0xe9);
+		patch_dword(ea + tlen + 1, uint64(fdist - 3));
+	}
+
+	create_insn(ea);
+	if (flen)
+		create_insn(ea + tlen);
+
+	//fill tail
+	if (tlen + flen < patchLen) {
+		for (asize_t i = tlen + flen; i < patchLen; i++)
+			patch_byte(ea + i, 0xcc);
+		if (!create_align(ea + tlen + flen, patchLen - (tlen + flen), 0))
+			create_data(ea + tlen + flen, byte_flag(), patchLen - (tlen + flen), BADNODE);
+	}
+	Log(llInfo, "%a: patched %d bytes (cond jmp)\n", ea, patchLen);
+	return true;
+}
+
 void patch_str(ea_t ea, const char *str, sval_t len, bool bZeroTerm)
 {
 	if (!len)
