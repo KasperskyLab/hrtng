@@ -156,7 +156,11 @@ ACT_DECL(rename_func             , AST_ENABLE_FOR_PC)
 ACT_DECL(remove_rettype      , AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
 ACT_DECL(remove_argument     , AST_ENABLE_FOR(is_arg_var(vu)))
 #endif //IDA_SDK_VERSION < 750
+#if IDA_SDK_VERSION < 930
 ACT_DECL(import_unf_types        , return ((ctx->widget_type == BWN_TICSR || ctx->widget_type == BWN_TILIST) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
+#else
+ACT_DECL(import_unf_types        , return ((ctx->widget_type == BWN_TITREE || ctx->widget_type == BWN_TILIST) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
+#endif //IDA_SDK_VERSION < 930
 ACT_DECL(refactoring             , return (ctx->widget_type == BWN_PSEUDOCODE || ctx->widget_type == BWN_DISASM || ctx->widget_type == BWN_TILIST ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
 
 //-------------------------------------------------------------------------
@@ -5259,7 +5263,11 @@ MY_DECLARE_LISTENER(ui_callback)
 #endif // IDA_SDK_VERSION >= 840
 			attach_action_to_popup(widget, p, ACT_NAME(refactoring));
 			break;
+#if IDA_SDK_VERSION < 930
 		case BWN_TICSR:
+#else
+		case BWN_TITREE:
+#endif
 			attach_action_to_popup(widget, p, ACT_NAME(import_unf_types), "Export to header file", SETMENU_INS);
 			break;
 		case BWN_DISASM:
