@@ -378,7 +378,6 @@ ACT_DEF(insert_reinterpret_cast)
 	if (!anchor)
 		return false;
 
-	//choose_local_tinfo
 	qstring title;
 	title.sprnt("[hrt] %s of \"%s\"", reincast_HELPERNAME, printExp(vu.cfunc, e).c_str());
 #if IDA_SDK_VERSION < 850

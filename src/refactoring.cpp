@@ -313,7 +313,7 @@ struct ida_local refac_t {
 				}
 			}
 
-#ifndef _DEBUG // restore_user_lvar_settings may cause crash somewhere deep inside decompiler on access nullptr exception on Windows in Debug mode (prbbl because of std::map)
+#if IDA_SDK_VERSION >= 930 || !defined(_DEBUG) // restore_user_lvar_settings may cause crash on early IDA versions somewhere deep inside decompiler on access nullptr exception on Windows in Debug mode (prbbl because of std::map)
 			//match func local vars
 			lvar_uservec_t lvinf;
 			if(restore_user_lvar_settings(&lvinf, ea)) {
@@ -331,7 +331,7 @@ struct ida_local refac_t {
 					add(nn.c_str(), eRF_loclVar, ea);
 				}
 			}
-#endif
+#endif //IDA_SDK_VERSION >= 930 || !defined(_DEBUG)
 
 			//match func local comments
 			user_cmts_t *cmts = restore_user_cmts(ea);
@@ -554,7 +554,7 @@ struct ida_local refac_t {
 			}
 			case eRF_loclVar:
 			{
-#ifndef _DEBUG   // restore_user_lvar_settings may cause crash somewhere deep inside decompiler on access nullptr exception on Windows in Debug mode
+#if IDA_SDK_VERSION >= 930 || !defined(_DEBUG) // restore_user_lvar_settings may cause crash on early IDA versions somewhere deep inside decompiler on access nullptr exception on Windows in Debug mode
 			  // save_user_lvar_settings cause internal error 1099 on the same sample
 				lvar_uservec_t lvinf;
 				if(is_func(get_flags(m.ea)) && restore_user_lvar_settings(&lvinf, m.ea)) {
@@ -588,7 +588,7 @@ struct ida_local refac_t {
 				}
 				++failc;
 				Log(llWarning, "Refactoring %a: fail local vars renaming '%s'\n", m.ea, m.name.c_str());
-#endif
+#endif // IDA_SDK_VERSION >= 930 || !defined(_DEBUG)
 				break;
 			}
 			case eRF_usrCmts:
@@ -792,16 +792,10 @@ qstring msig_replace(void* ctx, const char* name)
 }
 
 //--------------------------------------------------------------------------
-static const int rcwidths[] = 
-{ 
+static const int rcwidths[] =
+{
 	// "Found" column
-	45 | CHCOL_PLAIN 
-#if IDA_SDK_VERSION < 930
-	| CHCOL_INODENAME
-#else
-	| OBSOLETE_CHCOL_INODENAME
-#endif //IDA_SDK_VERSION < 930
-	,
+	45 | CHCOL_PLAIN | CHCOL_INODENAME,
 
 	// "Replace to" column
 	45 | CHCOL_PLAIN,
@@ -823,11 +817,9 @@ struct ida_local rf_chooser_t : public chooser_t
 	int problemIcon = -1;
 
 	rf_chooser_t(refac_t* rf_) : chooser_t(
-#if IDA_SDK_VERSION >= 770 && IDA_SDK_VERSION < 930
+#if IDA_SDK_VERSION >= 770
 																 CH_HAS_DIRTREE | CH_TM_FULL_TREE | CH_NON_PERSISTED_TREE |
-#elif IDA_SDK_VERSION >= 930
-																 OBSOLETE_CH_HAS_DIRTREE | OBSOLETE_CH_TM_FULL_TREE | OBSOLETE_CH_NON_PERSISTED_TREE |
-#endif //IDA_SDK_VERSION >= 770 && IDA_SDK_VERSION < 930
+#endif //IDA_SDK_VERSION >= 770
 																 CH_CAN_DEL, qnumber(rcwidths), rcwidths, rcheader, "[hrt] Refactoring"), rf(rf_)
 	{
 		get_action_icon("OpenProblems", &problemIcon);
@@ -1056,7 +1048,7 @@ int do_refactoring(action_activation_ctx_t *ctx)
 	rf_chooser_t* rfch = new rf_chooser_t(refac);
   sizevec_t selected;
   selected.push_back(0);  // first item by default
-	
+
 	static const char form[] =
 //		"STARTITEM 2\n" // to put the cursor on replaceWith field
 		"BUTTON YES* ~R~eplace\n"

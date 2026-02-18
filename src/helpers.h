@@ -45,6 +45,14 @@
 	};\
 	static name ## _t name;
 
+#if IDA_SDK_VERSION < 930
+  #define BWN_TITREE BWN_TICSR
+#else
+  #define CHCOL_INODENAME OBSOLETE_CHCOL_INODENAME
+  #define CH_HAS_DIRTREE OBSOLETE_CH_HAS_DIRTREE
+  #define CH_TM_FULL_TREE OBSOLETE_CH_TM_FULL_TREE
+  #define CH_NON_PERSISTED_TREE OBSOLETE_CH_NON_PERSISTED_TREE
+#endif
 
 #if IDA_SDK_VERSION < 920
   #define MY_DECLARE_LISTENER(name) static ssize_t idaapi name(void *ud, int ncode, va_list va)

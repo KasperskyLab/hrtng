@@ -156,11 +156,7 @@ ACT_DECL(rename_func             , AST_ENABLE_FOR_PC)
 ACT_DECL(remove_rettype      , AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
 ACT_DECL(remove_argument     , AST_ENABLE_FOR(is_arg_var(vu)))
 #endif //IDA_SDK_VERSION < 750
-#if IDA_SDK_VERSION < 930
-ACT_DECL(import_unf_types        , return ((ctx->widget_type == BWN_TICSR || ctx->widget_type == BWN_TILIST) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
-#else
 ACT_DECL(import_unf_types        , return ((ctx->widget_type == BWN_TITREE || ctx->widget_type == BWN_TILIST) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
-#endif //IDA_SDK_VERSION < 930
 ACT_DECL(refactoring             , return (ctx->widget_type == BWN_PSEUDOCODE || ctx->widget_type == BWN_DISASM || ctx->widget_type == BWN_TILIST ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
 
 //-------------------------------------------------------------------------
@@ -3077,6 +3073,9 @@ qstring dummy_struct_name(size_t size, const char* sprefix)
 	return name;
 }
 
+#define DSF_EMPTY 1
+#define DSF_FIXED 2
+
 static int idaapi dummy_struct_cb(int field_id, form_actions_t &fa)
 {
 	qstring sprefix;
@@ -3093,10 +3092,13 @@ static int idaapi dummy_struct_cb(int field_id, form_actions_t &fa)
 		if (fa.get_uint64_value(1, &val) && val >= 1) {
 			qstring name = dummy_struct_name(val, sprefix.c_str());
 			fa.set_string_value(2, &name); //set Name
-			ushort empty = 0;
+			ushort flags = 0;
+			fa.get_checkbox_value(3, &flags);
 			if(val >= 0x400)
-				empty = 1;
-			fa.set_checkbox_value(3, &empty); //set Empty checkbox
+				flags |= DSF_EMPTY;
+			else
+				flags &= ~DSF_EMPTY;
+			fa.set_checkbox_value(3, &flags);
 		}
 	}
 	return 1;
@@ -3109,8 +3111,8 @@ ACT_DEF(create_dummy_struct)
 	if(vu && vu->item.is_citem())
 		vu->item.e->get_const_value(&size);
 
+	ushort flags = size ? DSF_FIXED : 0;
 	qstring name;
-	static ushort empty = 1;
 	const char format[] =
 		"STARTITEM 1\n"
 		//title
@@ -3119,10 +3121,11 @@ ACT_DEF(create_dummy_struct)
 		"<~P~refix:q4::16::>\n"
 		"<~S~ize  :L1:32:16::>\n"
 		"<~N~ame  :q2::16::>\n"
-		"<###create only last field#~E~mpty:c3>>\n"
+		"<###create only last field#~E~mpty:c3>\n"
+		"<###IDA9+ fixed-layout struct#~F~ixed:c>>\n"
 		"\n\n";
 	do {
-		if (1 != ask_form(format, dummy_struct_cb, &dummy_struct_prefix, &size, &name, &empty))
+		if (1 != ask_form(format, dummy_struct_cb, &dummy_struct_prefix, &size, &name, &flags))
 			return 0;
 		if(isNamedTypeExists(name.c_str())) {
 			Log(llError, "struct '%s' already exists\n", name.c_str());
@@ -3142,11 +3145,11 @@ ACT_DEF(create_dummy_struct)
 	s.total_size = s.unpadded_size = size;
 	s.effalign = 1;
 	//s.pack = 1;
-	//not sure is need to set_fixed for a dummy_struct that will be modified many times during further reversing
-	//s.set_fixed(true);
+	if((flags & DSF_FIXED) != 0)
+		s.set_fixed(true);
 #endif //IDA_SDK_VERSION < 850
 
-	if (empty || size > 10240) {
+	if ((flags & DSF_EMPTY) != 0 || size > 10240) {
 #if IDA_SDK_VERSION < 850
 		add_struc_member(s, "gap", 0, byte_flag(), NULL, (ea_t)(size-1));
 		add_struc_member(s, "field_last", (ea_t)(size - 1), byte_flag(), NULL, 1);
@@ -4477,7 +4480,6 @@ ACT_DEF(decrypt_data)
 	if (decrypt_string(NULL, ea, NULL, len, &itSz, &result)) {
 		if (fromSel)
 			unmark_selection();
-		//request_refresh(IWID_DISASMS);
 	}
 	return 0;
 }
@@ -5263,11 +5265,7 @@ MY_DECLARE_LISTENER(ui_callback)
 #endif // IDA_SDK_VERSION >= 840
 			attach_action_to_popup(widget, p, ACT_NAME(refactoring));
 			break;
-#if IDA_SDK_VERSION < 930
-		case BWN_TICSR:
-#else
 		case BWN_TITREE:
-#endif
 			attach_action_to_popup(widget, p, ACT_NAME(import_unf_types), "Export to header file", SETMENU_INS);
 			break;
 		case BWN_DISASM:
@@ -5789,7 +5787,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.7.86";
+	addon.version = "3.8.87";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {
