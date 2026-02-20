@@ -91,7 +91,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    #if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -130,13 +130,9 @@ jobs:
 
       - name: Upload release assets
         uses: actions/upload-artifact@v4
+        uses: softprops/action-gh-release@v2
         with:
-          name: hrtng-ida${{ matrix.ida.version }}.zip
-          path: artifacts/*
-          if-no-files-found: error
-        #uses: softprops/action-gh-release@v2
-        #with:
-        #  files: artifacts/*.zip
-        #  fail_on_unmatched_files: false
+          files: artifacts/*.zip
+          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
