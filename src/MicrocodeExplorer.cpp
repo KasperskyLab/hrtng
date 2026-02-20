@@ -27,8 +27,8 @@ const char *matLevels[] =
 	"MMAT_LVARS"
 };
 
-const char* MicroMaturityToString(mba_maturity_t mmt) 
-{ 
+const char* MicroMaturityToString(mba_maturity_t mmt)
+{
 	if(mmt > MMAT_ZERO && mmt <= MMAT_LVARS)
 		return matLevels[mmt - MMAT_GENERATED];
 	return "???";
@@ -577,7 +577,7 @@ static bool idaapi ct_keyboard(TWidget * /*v*/, int key, int shift, void *ud)
 				qstring nBlock_or_addr;
 				if (!ask_str(&nBlock_or_addr, HIST_SEG, "[hrt] Go to block number or address..."))
 					return false;
-				
+
 				lochist_entry_t hist;
 				get_custom_viewer_location(&hist, si->cv, false);
 				simpleline_place_t* newplace = (simpleline_place_t*)hist.place()->clone();
@@ -760,7 +760,7 @@ void ShowMicrocodeExplorer(mbl_array_t* mba, const char* fmt, ...)
 }
 
 //-------------------------------------------------------------------------
-
+#if IDA_SDK_VERSION < 930
 mba_maturity_t AskDesiredMaturity()
 {
 	const char dlgText[] =
@@ -816,3 +816,8 @@ ACT_DEF(show_microcode_explorer)
 	showMicrocodeExplorer(mba, true, MicroMaturityToString(mmat));
 	return 1;
 }
+
+#else
+void registerMicrocodeExplorer() {}
+void unregisterMicrocodeExplorer() {}
+#endif //IDA_SDK_VERSION < 930

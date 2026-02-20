@@ -592,6 +592,7 @@ to:
 			return false;
 
 		ea_t targ_ea = migoto->l.g;
+#if IDA_SDK_VERSION >=750
 		if(blk->mba->range_contains(targ_ea)) {
 			for (int i = 0; i < blk->mba->qty; i++) {
 				const mblock_t* bi = blk->mba->get_mblock(i);
@@ -604,6 +605,7 @@ to:
 			blk->mba->dump_mba(false, "[hrt] no target for 0way goto @%d (%a)", blk->serial, migoto->ea);
 			return false;
 		}
+#endif //IDA_SDK_VERSION >=750
 
 		if(blk->tail == blk->head) {
 			MSG_DO(("[hrt] %a: empty 0way goto -> xtern blk %a\n", migoto->ea, targ_ea));
