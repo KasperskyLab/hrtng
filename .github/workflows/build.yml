@@ -35,6 +35,9 @@ jobs:
           - runner: macos-latest
             name: macos
             mask: "*.dylib"
+          - runner: macos-15-intel
+            name: macos-intel
+            mask: "*.dylib"
         ida:
           - version: "9.2"
             ver: "92"
@@ -76,6 +79,13 @@ jobs:
         run: |
           cmake -B build -S src -D IDASDK_VER=${{ matrix.ida.ver }} -D IDASDK_DIR="${{ github.workspace }}/ida-sdk/src"
           cmake --build build --config Release
+
+      - name: Post build rename on macos-intel
+        if: matrix.os.name == 'macos-intel'
+        shell: bash
+        run: |
+          cd ./build
+          for i in *.dylib; do mv "$i" "${i/.dylib/_x86_64.dylib}"; done
 
       - name: Collect artifacts
         shell: bash
