@@ -129,8 +129,8 @@ jobs:
       - name: Create archive
         shell: bash
         run: |
-          cp -v logo.jpg artifacts/
-          cp -v readme.md artifacts/
+          #cp -v logo.jpg artifacts/
+          #cp -v README.md artifacts/
           cp -v bin/plugins/*.txt artifacts/
           cp -v ida-plugin.json artifacts/
           cd artifacts
