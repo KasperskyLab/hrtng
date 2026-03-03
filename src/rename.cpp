@@ -327,23 +327,23 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 	{
 		for(auto it = vars->begin(); it != vars->end(); it++) {
 			if(it->name == n) {
-				if(it == var) {//old name is equal to new, why?
-					Log(llDebug, "FIXME: renameVar(%a, \"%s\") dup\n", refea, n.c_str());
-					return true;
-				}
+				if(it == var)
+					return true; // old name is equal to new, why? just return it's unique, and handle outside lambda
 				return false;
 			}
 		}
-		// it seems ida donsnt allow renaming local var to the name of existing proc, but OK with global var
-		ea_t nnea = get_name_ea(BADADDR, n.c_str());
-		if(nnea == BADADDR || !is_func(get_flags(nnea)))
-			return true;
-		Log(llDebug, "FIXME: renameVar(%a, \"%s\") not accepted\n", refea, n.c_str());
-		return false;
+		return true;
 	});
 
-	bool res = true;
 	qstring oldname = var->name;
+	if(oldname == newName) { // old name is equal to new, why?
+		if(isVarNameGood(oldname.c_str())) //it possible on renaming to bad name
+			Log(llDebug, "FIXME: renameVar(%a, \"%s\") dup\n", refea, oldname.c_str());
+		return false;
+	}
+
+	bool res = true;
+
 	if (vdui) {
 		res = vdui->rename_lvar(var, newName.c_str(), true); // vdui->rename_lvar can rebuild all internal structures/ call later!!!
 	} else {
@@ -836,23 +836,23 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			if(asgn->op != cot_asg && !is_relational(asgn->op))
 				return 0;
 
-			// find comments on this ea
-			qstring comments;
+			// get newName from comments on this ea
+			qstring newName;
 			treeloc_t loc;
 			loc.ea = asgn->ea;
 			loc.itp = ITP_SEMI;
 			user_cmts_iterator_t it = user_cmts_find(cmts, loc);//get existing comments
 			if(it != user_cmts_end(cmts)) {
-				comments = user_cmts_second(it);
+				newName = user_cmts_second(it);
 			} else {
 				loc.itp = ITP_BLOCK1;
 				it = user_cmts_find(cmts, loc);
 				if(it != user_cmts_end(cmts))
-					comments = user_cmts_second(it);
+					newName = user_cmts_second(it);
 			}
 			//do not use comments been set by enum detector (see helpers.cpp appendComment)
-			if (comments.length() && comments[0] == ';')
-				comments.clear();
+			if (!newName.empty() && newName[0] == ';')
+				newName.clear();
 
 			//get name from right side of assignment
 			qstring rname;
@@ -861,27 +861,30 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 
 			//have some name on right side?
 			bool renameLeft = false;
-			if (comments.length() || rname.length()) {
+			if(!rname.empty())
+				newName = rname; //assume rname more important then comments
+			if(!newName.empty())
 				renameLeft = true;
-				if(rname.length()) //assume rname more important then comments
-					comments = rname;
-			}
 
 			//take name of left side assigned var
 			//and rename it if possible
 			qstring lname;
 			cexpr_t* left = asgn->x;
 			bool hasLeft = getExpName(func, left, &lname);
-			if(hasLeft && skipCast(right)->op == cot_ref && lname[0] == 'p' && lname[1] == '_' && strncmp(comments.c_str(), "p_", 2)) // overwrite unbalanced with type annoying IDA's renaming to "p_something"
+
+			if(hasLeft && rname.length() > 2 && skipCast(right)->op == cot_ref && lname[0] == 'p' && lname[1] == '_' && (rname[0] != 'p' || rname[1] != '_' )) {
+				Log(llFlood, "%a: rename asgn ignore left side \"%s = &%s\"\n", asgn->ea, lname.c_str(), rname.c_str());
 				hasLeft = false;
+			}
+
 			if(!hasLeft && renameLeft)
-				varRenamed |= renameExp(asgn->ea, func, left, &comments);
+				varRenamed |= renameExp(asgn->ea, func, left, &newName);
 
 			//rename right if have good name on left side
-			if(!rname.length() && (hasLeft || renameLeft)) {
-				if(lname.length())//assume lname more important then comments
-					comments = lname;
-				varRenamed |= renameExp(asgn->ea, func, right, &comments);
+			if(rname.empty() && (hasLeft || renameLeft)) {
+				if(!lname.empty())//assume lname more important then comments
+					newName = lname;
+				varRenamed |= renameExp(asgn->ea, func, right, &newName);
 			}
 			return 0;
 		}
