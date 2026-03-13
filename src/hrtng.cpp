@@ -1003,26 +1003,26 @@ ACT_DEF(rename_func)
 		return 0;
 
 	qstring newName;
+	lvar_t *var = nullptr;
 	func_type_data_t fti;
 	ftype.get_func_details(&fti);
 	if(fti.size()) {
 		tinfo_t argt;
-		lvar_t *var = nullptr;
-		if(vu->item.citype == VDI_FUNC && is_arg_var(vu, &var)) {
+		if(vu->item.citype == VDI_LVAR && is_arg_var(vu, &var)) {
 			//if cursor is on argument, selected arg type name is used as prefix
 			argt = var->tif.get_pointed_object();
 		} else {
 			// select arg0 type as prefix by default
 			argt = fti[0].type.get_pointed_object();
 		}
-		if(argt.is_struct() && argt.get_type_name(&newName))
+		if(!argt.is_from_subtil() && argt.is_struct() && argt.get_type_name(&newName))
 			newName.append("::");
 	}
 
 	qstring oldname = get_short_name(vu->cfunc->entry_ea);
 	qstring highlight;
 	uint32 hlflg;
-	if(get_highlight(&highlight, ctx->widget, &hlflg)) {
+	if(!var && get_highlight(&highlight, ctx->widget, &hlflg)) {
 		if(newName.empty() && get_name_ea(BADADDR, highlight.c_str()) != BADADDR)
 			mk_name_w(highlight);
 		newName.append(highlight);
@@ -1889,6 +1889,11 @@ ACT_DEF(recognize_shape)
 	if(vi == -1)
 		return 0;
 
+	if(var->type().is_ptr()) {
+		warning("[hrt]\nPlease do \"Reset pointer type\" \n on var '%s' \n and try again", var->name.c_str());
+		return 0;
+	}
+
 	// additionally display details of the field the cursor is staying at
 	uint64 offset = 0;
 	if(vu.item.is_citem()) {
@@ -2369,35 +2374,11 @@ bool set_membr_type(vdui_t * vu, tinfo_t *ts)
 #else //IDA_SDK_VERSION >= 850
 bool set_membr_type(tinfo_t& struc, int idx, udm_t& member, tinfo_t *newType)
 {
-	asize_t mbsz = member.size / 8;
-	asize_t nsz = 0;
 	if(!struc.is_from_subtil()) {
-		//if new type is smaller then old one - do delete member and re-create field
-		switch(newType->get_decltype()) {
-		case BT_UNK_OWORD:
-		case BTF_INT128:
-		case BTF_UINT128:
-		case BT_INT128: nsz =16; break;
-		case BT_UNK_QWORD:
-		case BTF_INT64:
-		case BTF_UINT64:
-		case BT_INT64: nsz = 8; break;
-		case BT_UNK_DWORD:
-		case BTF_INT32:
-		case BTF_UINT32:
-		case BT_INT32: nsz = 4; break;
-		case BT_UNK_WORD:
-		case BTF_INT16:
-		case BTF_UINT16:
-		case BT_INT16: nsz = 2; break;
-		case BT_UNK_BYTE:
-		case BTF_INT8:
-		case BTF_UINT8:
-		case BTF_CHAR:
-		case BT_INT8:  nsz = 1; break;
-		default:       nsz = 0; break;
-		}
-		if(nsz && nsz < mbsz && (mbsz % nsz == 0)) {
+		//if new type is smaller then old one - do delete member and re-create smaller fields
+		size_t mbsz = member.size / 8;
+		size_t nsz = newType->get_size();
+		if(nsz != BADSIZE && nsz < mbsz && (mbsz % nsz == 0)) {
 			asize_t fo = member.offset / 8;
 			qstring fname = member.name;
 			if (struc.del_udm(struc.find_udm(member.offset)) == TERR_OK) {
@@ -2407,15 +2388,21 @@ bool set_membr_type(tinfo_t& struc, int idx, udm_t& member, tinfo_t *newType)
 					udm.size =  nsz * 8;
 					udm.name = fname;
 					create_type_from_size(&udm.type, nsz);
-					if(TERR_OK != struc.add_udm(udm))
+					tinfo_code_t err = struc.add_udm(udm);
+					if(TERR_OK != err) {
+						Log(llWarning, "set_membr_type/add_udm %s error %d\n", udm.name.c_str(), err);
 						break;
+					}
 					mbsz -= nsz;
 					if (mbsz <= 0)
 						break;
 					fo   += nsz;
 					fname = good_udm_name(struc, fo * 8, "field_%a", fo);
 				}
-				return true;
+				//idx changed?
+				idx = struc.find_udm(member.offset);
+				if(idx < 0)
+					return true;
 			}
 		}
 	}
@@ -5582,7 +5569,7 @@ MY_DECLARE_LISTENER(idb_callback)
 
 			if(is_func(ea_fl)) {
 				qstring className;
-				if(get_class_name(new_name, &className)) {
+				if(ctor_class_name(new_name, &className)) {
 					tinfo_t tif;
 					uint32 haveType = TINFO_GUESSED;
 					if(get_tinfo(&tif, ea))
@@ -5787,7 +5774,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.8.89";
+	addon.version = "3.8.90";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

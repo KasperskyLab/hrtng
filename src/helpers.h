@@ -96,6 +96,9 @@
 
 #if IDA_SDK_VERSION < 830
 	#define flags64_t flags_t
+  #define DSTR(x) ""
+#else
+  #define DSTR(x) (x)->dstr()
 #endif // IDA_SDK_VERSION < 830
 
 #if IDA_SDK_VERSION < 760
@@ -171,7 +174,7 @@ qstring good_udm_name(const tinfo_t &struc, uint64 offInBits, const char *format
 qstring good_smember_name(const struc_t* sptr, ea_t offset, const char *format, ...);
 #endif
 void mk_name_w(qstring& name);
-bool get_class_name(const char* fullName, qstring *classname);
+bool ctor_class_name(const char* fullName, qstring *classname);
 
 qstring gen_disasm(ea_t ea, asize_t len);
 void add_patch_cmt(ea_t ea, asize_t patchLen);

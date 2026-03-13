@@ -1142,17 +1142,19 @@ bool confirm_create_struct(tinfo_t &out_type, qstring& strucname, tinfo_t &in_ty
 {
 	if(strucname.empty())
 		strucname = dummy_struct_name(in_type.get_size(), sprefix);
+	tinfo_t new_type = in_type;
 	while(1) {
 		qstring tdecl;
-		if(!in_type.print(&tdecl, strucname.c_str(), PRTYPE_MULTI | PRTYPE_TYPE | PRTYPE_PRAGMA | PRTYPE_SEMI, 5, 40, NULL, NULL))
+		if(!new_type.print(&tdecl, strucname.c_str(), PRTYPE_MULTI | PRTYPE_TYPE | PRTYPE_PRAGMA | PRTYPE_SEMI, 5, 40, NULL, NULL))
 			return false;
 
 		if(!ask_text(&tdecl, 0, tdecl.c_str(), "[hrt] The following new type %s will be created", strucname.c_str()))
 			return false;
 
-		tinfo_t new_type;
-		if (!parse_decl(&new_type, &strucname, NULL, tdecl.c_str(), PT_TYP))
+		if (!parse_decl(&new_type, &strucname, NULL, tdecl.c_str(), PT_TYP)) {
+			new_type = in_type;
 			continue;
+		}
 
 		tinfo_code_t err = new_type.set_named_type(NULL, strucname.c_str(), NTF_TYPE);
 		if (TERR_OK != err) {

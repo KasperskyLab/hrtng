@@ -296,15 +296,16 @@ void mk_name_w(qstring& name)
 }
 
 //returns true if constructor
-bool get_class_name(const char* fullName, qstring *classname)
+bool ctor_class_name(const char* fullName, qstring *classname)
 {
 	const char* div = qstrstr(fullName, "::");
 	if(div && div != fullName && qstrlen(div) > 2) {
 		qstring cname(fullName, div - fullName);
-		if(classname)
-			*classname = cname;
-		if(!strncmp(div + 2, "ctor", 4) || !qstrcmp(cname.c_str(), div + 2))
+		if(!strncmp(div + 2, "ctor", 4) || !qstrcmp(cname.c_str(), div + 2)) {
+			if(classname)
+				*classname = cname;
 			return true;
+		}
 	}
 	return false;
 }

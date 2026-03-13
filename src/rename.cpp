@@ -161,7 +161,7 @@ static bool getCallName(cfunc_t *func, cexpr_t* call, qstring* name)
 		return true;
 	}
 
-	if(get_class_name(funcname.c_str(), name))
+	if(ctor_class_name(funcname.c_str(), name))
 		return true;
 
 	carglist_t &args = *call->a;
@@ -857,11 +857,8 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			//get name from right side of assignment
 			qstring rname;
 			cexpr_t* right = asgn->y;
-			getExpName(func, right, &rname, true);
-
-			//have some name on right side?
 			bool renameLeft = false;
-			if(!rname.empty())
+			if(getExpName(func, right, &rname, true)) //is named exp on right side?
 				newName = rname; //assume rname more important then comments
 			if(!newName.empty())
 				renameLeft = true;
@@ -877,13 +874,16 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 				hasLeft = false;
 			}
 
-			if(!hasLeft && renameLeft)
+			if(!hasLeft && renameLeft) {
+				Log(llFlood, "%a: renaming asgn left side '%s' to '%s'\n", asgn->ea, DSTR(left), newName.c_str());
 				varRenamed |= renameExp(asgn->ea, func, left, &newName);
+			}
 
 			//rename right if have good name on left side
 			if(rname.empty() && (hasLeft || renameLeft)) {
 				if(!lname.empty())//assume lname more important then comments
 					newName = lname;
+				Log(llFlood, "%a: renaming asgn right side '%s' to '%s'\n", asgn->ea, DSTR(right), newName.c_str());
 				varRenamed |= renameExp(asgn->ea, func, right, &newName);
 			}
 			return 0;
@@ -964,27 +964,31 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 						}
 
 						if(!argNamed && isArgNameGood(fiIname.c_str())) {
-								varRenamed |= renameExp(call->ea, func, arg, &fiIname, nullptr, true);
+							Log(llFlood, "%a: renaming arg '%s' to '%s'\n", call->ea, DSTR(arg), fiIname.c_str());
+							varRenamed |= renameExp(call->ea, func, arg, &fiIname, nullptr, true);
 						} else if(argNamed && bAllowTypeChange && !isVarNameGood(fiIname.c_str())) {
-								Log(llDebug, "%a %s: In function %a %s rename arg%d \"%s\" to \"%s\"\n", call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str(), i + 1, fi[i].name.c_str(), argVarName.c_str());
-								fi[i].name = argVarName;
-								fiChanged = true;
-								if(isDummyType(fi[i].type.get_decltype())) {
-									tinfo_t argType = getType4Name(argVarName.c_str());
-									if(argType.empty())
-										argType = getExpType(func, skipCast(arg));
-									if(!isDummyType(argType.get_decltype()) && argType.is_scalar()) {
-										Log(llDebug, "%a %s: In function %a %s recasted arg%d `%s` from \"%s\" to \"%s\"\n", 	call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str(), i + 1, fi[i].name.c_str(), fi[i].type.dstr(), argType.dstr());
-										fi[i].type = argType;
-									}
-								} //else Log(llDebug, "arg%d `%s` (%d - %s) of %s\n", i + 1, fi[i].name.c_str(), fi[i].type.get_decltype(), fi[i].type.dstr(), get_short_name(dstea).c_str());
+							Log(llDebug, "%a %s: In function %a %s rename arg%d \"%s\" to \"%s\"\n", call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str(), i + 1, fi[i].name.c_str(), argVarName.c_str());
+							fi[i].name = argVarName;
+							fiChanged = true;
+							if(isDummyType(fi[i].type.get_decltype())) {
+								tinfo_t argType = getType4Name(argVarName.c_str());
+								if(argType.empty())
+									argType = getExpType(func, skipCast(arg));
+								if(!isDummyType(argType.get_decltype()) && argType.is_scalar()) {
+									Log(llDebug, "%a %s: In function %a %s recasted arg%d `%s` from \"%s\" to \"%s\"\n", 	call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str(), i + 1, fi[i].name.c_str(), fi[i].type.dstr(), argType.dstr());
+									fi[i].type = argType;
+								}
+							} //else Log(llDebug, "arg%d `%s` (%d - %s) of %s\n", i + 1, fi[i].name.c_str(), fi[i].type.get_decltype(), fi[i].type.dstr(), get_short_name(dstea).c_str());
 						}
 					}
 					if(bCallAssign) {
-						if(!anL.length() && anR.length())
+						if(!anL.length() && anR.length()) {
+							Log(llFlood, "%a: renaming arg left '%s' to '%s'\n", call->ea, DSTR(&args[iL]), anR.c_str());
 							varRenamed |= renameExp(call->ea, func, &args[iL], &anR, nullptr, true);
-						else if(anL.length() && !anR.length())
+						} else if(anL.length() && !anR.length()) {
+							Log(llFlood, "%a: renaming arg right '%s' to '%s'\n", call->ea, DSTR(&args[iR]), anL.c_str());
 							varRenamed |= renameExp(call->ea, func, &args[iR], &anL, nullptr, true);
+						}
 					}
 					if(fiChanged) {
 						//TODO: some name cleanup, remove duplicates (?)
