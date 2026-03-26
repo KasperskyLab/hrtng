@@ -1399,9 +1399,13 @@ int decompile_obfuscated(ea_t eaBgn)
 			unreachBlocks.clear();
 	} while (bChanged && !user_cancelled());
 
-	replace_wait_box("[hrt] Creating func...");
 	MSG_DO(("[hrt] deob final pass at %a, %d ranges\n", eaBgn, ranges.nranges()));
-	func = remake_func(eaBgn, ranges);
+	if (dflags & DF_FUNC) {
+		replace_wait_box("[hrt] Creating func...");
+		func = remake_func(eaBgn, ranges);
+	} else {
+		func = nullptr;
+	}
 	final_pass = true;
 	hide_wait_box();
 #if 0

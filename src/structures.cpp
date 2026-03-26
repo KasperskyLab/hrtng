@@ -63,7 +63,7 @@ int extract_substruct(uval_t idx, uval_t begin, uval_t end)
 
 	qstring struc_name;
 	get_struc_name(&struc_name, id);
-	struc_name = unique_name(struc_name.c_str(), "_obj", [](const qstring& n) { return get_name_ea(BADADDR, n.c_str()) == BADADDR; });
+	struc_name = unique_nameD(struc_name.c_str(), "_obj", [](const qstring& n) { return get_name_ea(BADADDR, n.c_str()) == BADADDR; });
 
 	tid_t newid = add_struc(idx+1, struc_name.c_str());
 	struc_t * newstruc = get_struc(newid);
@@ -622,7 +622,7 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 	struccmt.sprnt("@0x%a", VT_ea);
 
 	name_vt.rtrim('_'); // avoid names ending like "_12" to not exec name-to-type conversion
-	name_vt = unique_name(name_vt.c_str(), "", [](const qstring& n) { return !isNamedTypeExists(n.c_str()); });
+	name_vt = unique_nameD(name_vt.c_str(), "", [](const qstring& n) { return !isNamedTypeExists(n.c_str()); });
 
 	tid_t newid = BADADDR;
 #if IDA_SDK_VERSION < 850
@@ -883,7 +883,7 @@ int create_VT(tid_t parent, ea_t VT_ea, bool autoScan/*= false*/, const char *to
 			enable_numbered_types(nullptr, true);// is it need???
 			uint32 ord = alloc_type_ordinal(nullptr);
 			qstring utname("u"); utname.append(name_VT);
-			utname = unique_name(utname.c_str(), "", [](const qstring& n) { return !isNamedTypeExists(n.c_str()); });
+			utname = unique_nameD(utname.c_str(), "", [](const qstring& n) { return !isNamedTypeExists(n.c_str()); });
 			tinfo_code_t err = utype.set_numbered_type(nullptr, ord, 0, utname.c_str());
 			if (err == TERR_OK) {
 #if IDA_SDK_VERSION < 850

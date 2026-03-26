@@ -47,6 +47,7 @@
 
 #if IDA_SDK_VERSION < 930
   #define BWN_TITREE BWN_TICSR
+  #define mark_builtin_widgets request_refresh
 #else
   #define CHCOL_INODENAME OBSOLETE_CHCOL_INODENAME
   #define CH_HAS_DIRTREE OBSOLETE_CH_HAS_DIRTREE
@@ -247,7 +248,7 @@ int Log(LogLevel level, const char *fmt, ...);
 int LogTail(LogLevel level, const char *fmt, ...);
 
 template< class IsUniqueFunc >
-qstring unique_name(const char* name, const char* separator, IsUniqueFunc isUnique)
+qstring unique_nameD(const char* name, const char* separator, IsUniqueFunc isUnique)
 {
 	qstring uName = name;
 	for(int i = 1; i < 1000; i++) {
@@ -256,7 +257,27 @@ qstring unique_name(const char* name, const char* separator, IsUniqueFunc isUniq
 		uName = name;
 		uName.cat_sprnt("%s%d", separator, i);
 	}
-	Log(llError, "FIXME! unique_name '%s' is not unique\n", uName.c_str());
+	Log(llError, "FIXME! unique_nameD '%s' is not unique\n", uName.c_str());
 	return uName;
 }
 
+template< class IsUniqueFunc >
+qstring unique_nameC(const char* name, const char* separator, IsUniqueFunc isUnique)
+{
+	qstring uName = name;
+	const char *sepr = separator;
+	for (char j = 'z'; j > 'f'; j--) {
+		qstring basename = uName;
+		for (char i = 'z'; i > 'f'; i--) {
+			if(isUnique(uName))
+				return uName;
+			uName = basename;
+			uName.cat_sprnt("%s%c", sepr, i);
+		}
+		uName = name;
+		uName.cat_sprnt("%s%c", separator, j);
+		sepr = "";
+	}
+	Log(llError, "FIXME! unique_nameC '%s' is not unique\n", uName.c_str());
+	return uName;
+}

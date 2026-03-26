@@ -322,7 +322,7 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 	}
 
 	//check if proc doesnt already has such name
-	newName = unique_name(newName.c_str(), "_",
+	newName = unique_nameD(newName.c_str(), "_",
 												[&refea, &vars, &var](const qstring &n)
 	{
 		for(auto it = vars->begin(); it != vars->end(); it++) {
@@ -595,10 +595,19 @@ bool getExpName(cfunc_t *func, cexpr_t* exp, qstring* name, bool derefPtr /* =fa
 bool renameExp(ea_t refea, cfunc_t *func, cexpr_t* exp, qstring* name, vdui_t *vdui, bool derefPtr /*= false*/)
 {
 	exp = skipCast(exp);
+#if 1
 	if(derefPtr && exp->op == cot_ptr && isRenameble(exp->x->op) && exp->x->type.is_scalar() && !getExpName(func, exp->x, nullptr)) {
 		name->insert(0,"p_");
 		return renameExp(refea, func, exp->x, name);
 	}
+#else
+	//Experimental: may produce a lot of false "p_smth" names
+	//??? check if exp->x is an arg
+	if(exp->op == cot_ptr && isRenameble(skipCast(exp->x)->op) && !getExpName(func, exp->x, nullptr)) {
+		name->insert(0,"p_");
+		return renameExp(refea, func, exp->x, name);
+	}
+#endif
 	if(derefPtr && exp->op == cot_ref && isRenameble(exp->x->op)) {
 		qstring xname;
 		if(!getExpName(func, exp->x, &xname) || xname == *name) {

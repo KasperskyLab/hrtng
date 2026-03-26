@@ -1040,9 +1040,8 @@ ACT_DEF(rename_func)
 			break;
 
 		// manually implement SN_FORCE like behavior because numeric suffix like "_12" is stripped by the plugin on a type-to-name and name-to-type checks
-		// but the functions with such names may have different prototypes, so need to add different suffix, for example without "_"
-
-		newName = unique_name(newName.c_str(), "", [](const qstring& n) { return get_name_ea(BADADDR, n.c_str()) == BADADDR; });
+		// but the functions with such names may have different prototypes, so need to add different suffix
+		newName = unique_nameC(newName.c_str(), "_", [](const qstring& n) { return get_name_ea(BADADDR, n.c_str()) == BADADDR; });
 	}
 
 	vu->refresh_view(true);
@@ -3039,25 +3038,11 @@ qstring dummy_struct_name(size_t size, const char* sprefix)
 		else
 			sprefix = dummy_struct_prefix.c_str();
 	}
-
 	qstring name = sprefix;
 	if(size)
 		name.sprnt("%s%X", sprefix, size);
 
-	qstring bn = name;
-	for (char j = 'z'; j > 'f'; j--) {
-		qstring basename = name;
-		for (char i = 'z'; i > 'f'; i--) {
-			if(!isNamedTypeExists(name.c_str()))
-				return name;
-			name = basename;
-			name.cat_sprnt("%c", i);
-		}
-		name = bn;
-		name.cat_sprnt("%c", j);
-	}
-	QASSERT(100110, !"oops");
-	return name;
+	return unique_nameC(name.c_str(), "", [](const qstring& n) { return !isNamedTypeExists(n.c_str()); });
 }
 
 #define DSF_EMPTY 1
@@ -5774,7 +5759,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.8.90";
+	addon.version = "3.8.91";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

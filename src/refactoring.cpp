@@ -477,7 +477,7 @@ struct ida_local refac_t {
 		return true;
 	}
 
-	void replace()
+	bool replace()
 	{
 		Log(llDebug, "Refactoring '%s' -> '%s': replace %d matches \n", searchFor.c_str(), replaceWith.c_str(), matches.size());
 		uint32 count = 0;
@@ -521,7 +521,7 @@ struct ida_local refac_t {
 								qstring newname;
 								if(match(fi[i].name, &newname)) {
 									stripName(&newname);
-									newname = unique_name(newname.c_str(), "_", [&fi, i](const qstring &n)
+									newname = unique_nameD(newname.c_str(), "_", [&fi, i](const qstring &n)
 									{
 										for(size_t j = 0; j < fi.size(); j++){
 											if(fi[i].name == n) {
@@ -563,7 +563,7 @@ struct ida_local refac_t {
 						qstring newname;
 						if(match(lvinf.lvvec[i].name, &newname)) {
 							stripName(&newname);
-							newname = unique_name(newname.c_str(), "_", [&lvinf, i](const qstring &n)
+							newname = unique_nameD(newname.c_str(), "_", [&lvinf, i](const qstring &n)
 							{
 								for(size_t j = 0; j < lvinf.lvvec.size(); j++){
 									if(lvinf.lvvec[j].name == n) {
@@ -738,8 +738,7 @@ struct ida_local refac_t {
 		}
 
 		Log(llNotice, "Refactoring '%s' -> '%s': %d changes, %d fails\n", searchFor.c_str(), replaceWith.c_str(), count, failc);
-		if(count)
-			clear_cached_cfuncs();
+		return count > 0;
 	}
 };
 
@@ -969,8 +968,23 @@ static int idaapi callback(int fid, form_actions_t &fa)
 		} else if(!rf->validateReplace()) {
 			warning("[hrt] bad replace: '%s'", rf->replaceWith.c_str());
 			break;
-		} else {
-			rf->replace();
+		} else if(rf->replace()) {
+			clear_cached_cfuncs();
+			mark_builtin_widgets(IWID_ALL);
+#if 0
+			//refresh currently displayed pseudocode / replace 'C' to 'Z' for all of them
+			for(char i = 'A'; i <= 'C' ; i++) {
+				qstring wn; wn.sprnt("Pseudocode-%c", i);
+				TWidget *w = find_widget(wn.c_str());
+				if(w) {
+					vdui_t *vd = get_widget_vdui(w);
+					if(vd) {
+						//vd->refresh_view(false); // results is better, but it steals focus
+						vd->refresh_ctext(false);
+					}
+				}
+			}
+#endif
 		}
 		close_widget(rf->rfform, 0);
 		break;
