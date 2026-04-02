@@ -82,7 +82,7 @@ bool set_var_type(vdui_t *vu, lvar_t *lv, tinfo_t *ts);
 bool is_arg_var(vdui_t *vu, lvar_t **var = nullptr);
 bool is_call(vdui_t *vu, cexpr_t **call = nullptr, bool argsDeep = false);
 bool isMultiTargetCall(vdui_t *vu);
-bool is_recastable(vdui_t *vu, tinfo_t *ts);
+bool is_recastable(vdui_t *vu, tinfo_t *ts = nullptr, cexpr_t **call = nullptr);
 bool is_stack_var_assign(vdui_t *vu, int* varIdx, ea_t *ea, sval_t* size);
 bool is_array_char_assign(vdui_t *vu, int* varIdx, ea_t *ea);
 bool is_decryptable_obj(vdui_t *vu, ea_t *ea);
@@ -129,7 +129,7 @@ ACT_DECL(jump_to_cxrefs      , AST_ENABLE_FOR(isMultiTargetCall(vu)))
 ACT_DECL(zeal_doc_help       , AST_ENABLE_FOR(is_call(vu)))
 ACT_DECL(add_VT              , AST_ENABLE_FOR(is_VT_assign(vu, NULL, NULL)));
 ACT_DECL(add_VT_struct       , return ((ctx->widget_type != BWN_DISASM) ? AST_DISABLE_FOR_WIDGET : (((is_data(get_flags(ctx->cur_ea)) && is_func(get_flags(get_ea(ctx->cur_ea))))) ? AST_ENABLE : AST_DISABLE)))
-ACT_DECL(recast_item             ,  AST_ENABLE_FOR(is_recastable(vu, NULL)))
+ACT_DECL(recast_item             , AST_ENABLE_FOR(is_recastable(vu)))
 ACT_DECL(scan_stack_string       , AST_ENABLE_FOR(is_stack_var_assign(vu, NULL, NULL, NULL)))
 ACT_DECL(scan_stack_string_n_decr, AST_ENABLE_FOR(is_stack_var_assign(vu, NULL, NULL, NULL)))
 ACT_DECL(scan_array_string       , AST_ENABLE_FOR(is_array_char_assign(vu, NULL, NULL)))
@@ -258,7 +258,7 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 	else if (is_reincast(vu))
 		attach_action_to_popup(view, p, ACT_NAME(delete_reinterpret_cast));
 
-	if (is_recastable(vu, NULL))
+	if (is_recastable(vu))
 		attach_action_to_popup(view, p, ACT_NAME(recast_item));
 
 	if (is_stack_var_assign(vu, NULL, NULL, NULL)) {
@@ -379,68 +379,6 @@ void hrt_unreg_act()
 	unregister_action(ACT_NAME(create_dummy_struct));
 }
 //-------------------------------------------------------------------------
-
-static ea_t idaapi get_call_dst(cfunc_t* cfunc, cexpr_t *call)
-{
-	if(call->op != cot_call)
-		return BADADDR;
-
-	ea_t dst_ea = BADADDR;
-	cexpr_t *callee = skipCast(call->x);
-
-	if(callee->op == cot_obj) {
-		flags64_t flg = get_flags(callee->obj_ea);
-		if(is_func(flg))
-			return callee->obj_ea;
-		if(is_data(flg)) {
-			dst_ea = get_ea(callee->obj_ea);
-			if(is_func(get_flags(dst_ea)))
-				return dst_ea;
-		}
-		// fall down to "last hope"
-	}
-
-	// jump to address in struct member-to-proc-xref (or by VT/comment/name)
-	if(callee->op == cot_memptr || callee->op == cot_memref) {
-		cexpr_t *e = callee;
-		int offset = e->m;
-		if (e->x->op == cot_idx)
-			e = e->x;
-		cexpr_t *var = e->x;
-		tinfo_t t = var->type;
-		if(t.is_ptr_or_array())
-			t.remove_ptr_or_array();
-		if(t.is_struct()) {
-#if IDA_SDK_VERSION < 850
-			qstring sname;
-			if(t.get_type_name(&sname)) {
-				tid_t sid = get_struc_id(sname.c_str());
-				if(sid != BADNODE) {
-					struc_t* s = get_struc(sid);
-					if(s) {
-						member_t *m = get_member(s, offset);
-						if(m)
-							dst_ea = get_memb2proc_ref(s, m);
-					}
-				}
-			}
-#else
-			dst_ea = get_memb2proc_ref(t, offset);
-#endif
-		}
-	}
-
-	if(dst_ea == BADADDR) {
-		//last hope, jump to name
-		qstring callname;
-		if(getExpName(cfunc, callee, &callname)) {
-			dst_ea = get_name_ea(BADADDR, callname.c_str());
-			if(dst_ea == BADADDR && callname.replace("__", "::")) // from some version (9.??) IDA disables "::" in Var and Member names, and "::" is replaced it with "__"
-				dst_ea = get_name_ea(BADADDR, callname.c_str());
-		}
-	}
-	return dst_ea;
-}
 
 static int idaapi jump_to_call_dst(vdui_t *vu)
 {
@@ -2151,21 +2089,28 @@ static bool is_cast_assign(cfuncptr_t cfunc, cexpr_t * var, tinfo_t * ts)
 	if (!isRenameble(var->op))
 		return false;
 
-	citem_t * asg_ci = cfunc->body.find_parent_of(var);
-	if(!asg_ci->is_expr())
+	citem_t * prnti = cfunc->body.find_parent_of(var);
+	if(!prnti->is_expr())
 		return false;
+	cexpr_t *prnt = (cexpr_t *)prnti;
+	cexpr_t *asg = nullptr;
 
 	bool bDerefPtr = false;
-	cexpr_t * asg = (cexpr_t *)asg_ci;
-	if(!is_like_assign(asg->op)) {
-		if(asg->op != cot_ptr || asg->x != var)
+	if(is_like_assign(prnt->op)) {
+		asg = prnt;
+		if(asg->x != var) // var = smth;
 			return false;
-		bDerefPtr = true;
-		asg_ci = cfunc->body.find_parent_of(asg);
-		if(!asg_ci->is_expr() || !is_like_assign(asg_ci->op))
+	} else {
+		if(prnt->op == cot_ptr && prnt->x == var) // *var = smth;
+			bDerefPtr = true;
+		else if(!(prnt->op == cot_idx && prnt->x == var && prnt->y->is_zero_const())) // var[0] = smth;
 			return false;
-		asg = (cexpr_t *)asg_ci;
-	} else if(asg->x != var)
+		prnti = cfunc->body.find_parent_of(prnt);
+		if(!prnti->is_expr() || !is_like_assign(prnti->op))
+			return false;
+		asg = (cexpr_t *)prnti;
+	}
+	if(!asg)
 		return false;
 
 	cexpr_t* y = skipCast(asg->y);
@@ -2430,40 +2375,61 @@ bool set_membr_type(vdui_t* vu, tinfo_t* t)
 }
 #endif //IDA_SDK_VERSION < 850
 
-static int idaapi cast_var2(vdui_t *vu, tinfo_t *ts)
+bool is_recastable(vdui_t *vu, tinfo_t *ts /*=nullptr*/, cexpr_t **call /*=nullptr*/)
 {
 	if (!vu->item.is_citem())
 		return false;
-	cexpr_t * var = vu->item.e;
-	if (var->op == cot_var) {
-		lvar_t * lv = vu->item.get_lvar();
-		return set_var_type(vu, lv, ts);
-	} else if(var->op == cot_obj) {
-		ea_t ea = vu->item.get_ea();
-		if(set_ea_type(ea, ts)) {
-			vu->refresh_view(false);
-		}
-	} else if(var->op == cot_memref || var->op == cot_memptr) {
-		if(set_membr_type(vu, ts)) {
-			vu->refresh_view(false);
-		}
-	}
-	return 0;
-}
-
-bool is_recastable(vdui_t *vu, tinfo_t *ts)
-{
-	if (!vu->item.is_citem())
-		return false;
-	return is_cast_var(vu->cfunc, vu->item.e, ts) || is_cast_assign(vu->cfunc, vu->item.e, ts);
+	return is_cast_var(vu->cfunc, vu->item.e, ts) || is_cast_assign(vu->cfunc, vu->item.e, ts) || is_call(vu, call);
 }
 
 ACT_DEF(recast_item)
 {
 	vdui_t *vu = get_widget_vdui(ctx->widget);
 	tinfo_t ts;
-	if (is_recastable(vu, &ts))
-		return cast_var2(vu, &ts);
+	cexpr_t *call = nullptr;
+	if(!is_recastable(vu, &ts, &call))
+		return 0;
+
+	if(call) {
+		ea_t dstea;
+		tinfo_t tif = getCallInfo(vu->cfunc, call, &dstea);
+		if(dstea != BADADDR) {
+			carglist_t &args = *call->a;
+			tif.remove_ptr_or_array();
+			func_type_data_t fi;
+			if(tif.is_decl_func() && tif.get_func_details(&fi, GTD_CALC_ARGLOCS) && args.size() == fi.size()) {
+				for(size_t i = 0; i < args.size(); i++) {
+					cexpr_t *arg = &args[i];
+					qstring argName;
+					if(getExpName(vu->cfunc, arg, &argName, true))
+						fi[i].name = argName;
+					Log(llDebug, "%a: on call %s arg%d name is \"%s\"\n", call->ea, get_short_name(dstea).c_str(), i + 1, argName.c_str());
+
+					tinfo_t argType = getExpType(vu->cfunc, skipCast(arg));
+					Log(llDebug, "%a: on call %s arg%d type is \"%s\"\n", call->ea, get_short_name(dstea).c_str(), i + 1, argType.dstr());
+					if(!isDummyType(argType.get_decltype()))
+						fi[i].type = argType;
+				}
+				tinfo_t newFType;
+				newFType.create_func(fi);
+				if(newFType.is_correct() && apply_tinfo(dstea, newFType, TINFO_DELAYFUNC | TINFO_DEFINITE)) {
+					Log(llInfo, "%a: '%s' is recasted to \"%s\"\n", call->ea, get_short_name(dstea).c_str(), newFType.dstr());
+					vu->refresh_view(false);
+				}
+			} else {
+				Log(llDebug, "%a: recast call %s smth went wrong\n", call->ea, get_short_name(dstea).c_str());
+			}
+		}
+		return 0;
+	}
+
+	cexpr_t *e = vu->item.e;
+	if (e->op == cot_var)
+		return set_var_type(vu, vu->item.get_lvar(), &ts);
+
+	if((e->op == cot_obj && set_ea_type(vu->item.get_ea(), &ts)) || ((e->op == cot_memref || e->op == cot_memptr) && set_membr_type(vu, &ts)))
+		vu->refresh_view(false);
+
 	return 0;
 }
 
@@ -5440,7 +5406,7 @@ MY_DECLARE_LISTENER(idb_callback)
 					}
 				}
 				if(code != SMT_OK)
-					Log(llWarning, "set type \"%s\"  on rename of '%s.%s' error %d\n", t.dstr(), strucname.c_str(), membName.c_str(), code);
+					Log(llWarning, "set type \"%s\" on rename of '%s.%s' error %d\n", t.dstr(), strucname.c_str(), membName.c_str(), code);
 				else
 					Log(llInfo, "type of '%s.%s' updated\n", strucname.c_str(), membName.c_str());
 			}
@@ -5759,7 +5725,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.8.91";
+	addon.version = "3.8.92";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

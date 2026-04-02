@@ -29,6 +29,8 @@
 
 #include "helpers.h"
 #include "config.h"
+#include "structures.h"
+#include "rename.h"
 
 bool at_atoea(const char * str, ea_t * pea )
 {
@@ -593,15 +595,75 @@ bool setComment4Exp(cfunc_t* func, user_cmts_t *cmts, citem_t *expr, const char*
 	return false;
 }
 
-tinfo_t getCallInfo(cexpr_t *call, ea_t* dstea)
+ea_t get_call_dst(cfunc_t* cfunc, cexpr_t *call)
+{
+	if(call->op != cot_call)
+		return BADADDR;
+
+	ea_t dst_ea = BADADDR;
+	cexpr_t *callee = skipCast(call->x);
+
+	if(callee->op == cot_obj) {
+		flags64_t flg = get_flags(callee->obj_ea);
+		if(is_func(flg))
+			return callee->obj_ea;
+		if(is_data(flg)) {
+			dst_ea = get_ea(callee->obj_ea);
+			if(is_func(get_flags(dst_ea)))
+				return dst_ea;
+		}
+		// fall down to "last hope"
+	}
+
+	// jump to address in struct member-to-proc-xref (or by VT/comment/name)
+	if(callee->op == cot_memptr || callee->op == cot_memref) {
+		cexpr_t *e = callee;
+		int offset = e->m;
+		if (e->x->op == cot_idx)
+			e = e->x;
+		cexpr_t *var = e->x;
+		tinfo_t t = var->type;
+		if(t.is_ptr_or_array())
+			t.remove_ptr_or_array();
+		if(t.is_struct()) {
+#if IDA_SDK_VERSION < 850
+			qstring sname;
+			if(t.get_type_name(&sname)) {
+				tid_t sid = get_struc_id(sname.c_str());
+				if(sid != BADNODE) {
+					struc_t* s = get_struc(sid);
+					if(s) {
+						member_t *m = get_member(s, offset);
+						if(m)
+							dst_ea = get_memb2proc_ref(s, m);
+					}
+				}
+			}
+#else
+			dst_ea = get_memb2proc_ref(t, offset);
+#endif
+		}
+	}
+
+	if(dst_ea == BADADDR) {
+		//last hope, jump to name
+		qstring callname;
+		if(getExpName(cfunc, callee, &callname)) {
+			dst_ea = get_name_ea(BADADDR, callname.c_str());
+			if(dst_ea == BADADDR && callname.replace("__", "::")) // from some version (9.??) IDA disables "::" in Var and Member names, and "::" is replaced it with "__"
+				dst_ea = get_name_ea(BADADDR, callname.c_str());
+		}
+	}
+	return dst_ea;
+}
+
+tinfo_t getCallInfo(cfunc_t* cfunc, cexpr_t *call, ea_t* dstea)
 {
 	tinfo_t tif;
-	if (call->x->op == cot_obj) {
-		*dstea = call->x->obj_ea;
+	*dstea = get_call_dst(cfunc, call);
+	if(*dstea != BADADDR)
 		get_tinfo(&tif, *dstea);
-	} else {
-		*dstea = BADADDR;
-	}
+
 	if (tif.empty()) {
 		tif = call->x->type;
 		if (tif.empty()) {

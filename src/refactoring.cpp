@@ -131,7 +131,7 @@ struct ida_local refac_t {
 	TWidget* rfform = nullptr;
 	qstring searchFor;
 	qstring replaceWith;
-	ushort flags = RFF_WWORDS; // see RFF_* above
+	ushort flags = RFF_CASESN | RFF_WWORDS; // see RFF_* above
 	rf_matches_t matches;
 	regex_ptr_t re;
 #if IDA_SDK_VERSION >= 770

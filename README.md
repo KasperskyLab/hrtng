@@ -20,8 +20,8 @@ The plugin's menu items placed closer to logically related standard IDA & Hex-Ra
 Messages, menu items, popup windows and dialog boxes belong to this plugin are marked with "`[hrt]`" prefix.
 
 ### Automation
-  * [Pull up comments from disasm to pseudocode view](doc/pull-cmt.md)
   * [Automatic renaming local and global variables, struct members](doc/var-auto-rename.md)
+  * [Pull up comments from disasm to pseudocode view](doc/pull-cmt.md)
   * [Automatic enum substitution](doc/enum.md)
   * [COM helper](doc/com-helper.md)
 

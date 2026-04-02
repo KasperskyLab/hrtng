@@ -648,7 +648,7 @@ bool renameExp(ea_t refea, cfunc_t *func, cexpr_t* exp, qstring* name, vdui_t *v
 	return false;
 }
 
-static tinfo_t getExpType(cfunc_t *func, cexpr_t* exp)
+tinfo_t getExpType(cfunc_t *func, cexpr_t* exp)
 {
 	if(!exp->type.empty())
 		return exp->type;
@@ -905,7 +905,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			callCnt++;
 
 			ea_t dstea;
-			tinfo_t tif = getCallInfo(call, &dstea);
+			tinfo_t tif = getCallInfo(func, call, &dstea);
 			bool bAllowTypeChange =  false;
 			if(dstea != BADADDR && !tif.is_from_subtil()) {
 				func_t *f = get_func(dstea);
