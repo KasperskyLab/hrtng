@@ -250,8 +250,7 @@ qstring good_udm_name(const tinfo_t &struc, uint64 offInBits, const char *format
 		name.resize(MAX_NAME_LEN - 3);
 	validate_name(&name, VNT_UDTMEM);
 
-	return unique_nameD(name.c_str(), "_",
-										 [&struc, offInBits](const qstring &n)
+	return unique_nameD(name.c_str(), "_", [&struc, offInBits](const qstring &n)
 	{
 		udm_t m;
 		m.name = n;
@@ -272,8 +271,7 @@ qstring good_smember_name(const struc_t* sptr, ea_t offset, const char *format, 
 		name.resize(MAX_NAME_LEN);
 	//validate_name(&name, VNT_UDTMEM);
 
-	return unique_nameD(name.c_str(), "_",
-										 [&sptr, offset](const qstring &n)
+	return unique_nameD(name.c_str(), "_", [&sptr, offset](const qstring &n)
 	{
 
 		member_t *m = get_member_by_name(sptr, n.c_str());

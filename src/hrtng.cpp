@@ -1086,13 +1086,23 @@ struct ida_local types_locator_t : public ctree_parentee_t
 	lvars_t* lvars;
 	intvec_t   vidxs;
 	tinfovec_t types;
+	size_t usize;
 
 	types_locator_t(cfunc_t* func_, lvars_t* lvars_, int varIdx) : func(func_), lvars(lvars_)
 	{
+		usize = 0;
 		vidxs.add_unique(varIdx);
-		types.add_unique(lvars->at(varIdx).type());
+		addType(lvars->at(varIdx).type());
 	}
-
+	void addType(const tinfo_t &t)
+	{
+		size_t tsz = t.get_size();
+		if(tsz != BADSIZE)  {//ignore "void" and bad types
+			types.add_unique(t);
+			if(tsz > usize)
+				usize = tsz;
+		}
+	}
 	int idaapi visit_expr(cexpr_t * e)
 	{
 		if(e->op == cot_asg) {
@@ -1117,15 +1127,15 @@ struct ida_local types_locator_t : public ctree_parentee_t
 		cexpr_t* parent = (cexpr_t*)parents[i];
 		switch(parent->op) {
 		case cot_cast:
-			Log(llDebug, "var cast: %s [%s]\n", printExp(func, parent).c_str(), parent->type.dstr());
-			types.add_unique(parent->type);
+			Log(llDebug, "%a: var cast: %s [%s]\n", parent->ea, printExp(func, parent).c_str(), parent->type.dstr());
+			addType(parent->type);
 			break;
 		case cot_ref:
 			if(i > 1 /*&& parents[i - 1]->op == cot_cast*/) {
 				parent = (cexpr_t*)parents[i - 1];
-				Log(llDebug, "var ref: %s [%s]\n", printExp(func, parent).c_str(), parent->type.dstr());
+				Log(llDebug, "%a: var ref: %s [%s]\n", parent->ea, printExp(func, parent).c_str(), parent->type.dstr());
 				if(parent->type.is_ptr())
-					types.add_unique(remove_pointer(parent->type));
+					addType(remove_pointer(parent->type));
 				else
 					Log(llDebug, " not pointer\n");
 			}
@@ -1143,12 +1153,12 @@ struct ida_local types_locator_t : public ctree_parentee_t
 			tinfo_t yType = y->type; //??? getExpType
 			if(bDerefPtr)
 				yType = make_pointer(yType);
-			Log(llDebug, "var assign cast: %s [%s]\n", printExp(func, parent).c_str(), yType.dstr());
-			types.add_unique(yType);
+			Log(llDebug, "%a: var assign cast: %s [%s]\n", parent->ea, printExp(func, parent).c_str(), yType.dstr());
+			addType(yType);
 			break;
 		}
 		default:
-			Log(llDebug, "unhandled var use: %s\n", printExp(func, parent).c_str());
+			Log(llDebug, "%a: unhandled var use: %s\n", parent->ea, printExp(func, parent).c_str());
 		}
 		return 0;
 	}
@@ -1172,40 +1182,98 @@ ACT_DEF(var_reuse)
 		return 0;
 	}
 
-	udt_type_data_t utd;
-	utd.is_union = true;
-	utd.taudt_bits |= TAUDT_UNALIGNED;
-	utd.effalign = 1;
-
-	size_t total_size = 0;
-	for(size_t i = 0; i < tl.types.size(); i++) {
-		size_t tsz = tl.types[i].get_size();
-		if(tsz == BADSIZE) //ignore "void" and bad types
+	// check if the same type already exists
+	tinfo_t utype;
+	qstring utname;
+#if IDA_SDK_VERSION < 850
+	for(uval_t idx = get_first_struc_idx(); idx != BADNODE; idx = get_next_struc_idx(idx)) {
+		tid_t id = get_struc_by_idx(idx);
+		struc_t *struc = get_struc(id);
+		if(!struc || !struc->is_union() || get_struc_size(struc) != tl.usize)
 			continue;
-		udm_t &udm = utd.push_back();
-		udm.offset = 0; // i ?
-    udm.type = tl.types[i];
-		udm.name = create_field_name(udm.type);
-    udm.size = tsz * 8;
-		if(total_size < tsz)
-			total_size = tsz;
+		size_t j = 0;
+		for(; j < tl.types.size(); j++) {
+			uint32 i = 0;
+			for (; i < struc->memqty; i++) {
+				tinfo_t mt;
+				if(get_member_tinfo(&mt, &struc->members[i]) && tl.types[j].equals_to(mt))
+					break;
+			}
+			if(i == struc->memqty) //not found
+				break;
+		}
+		if(j == tl.types.size() && get_tid_name(&utname, id)) {
+			utype = create_typedef(utname.c_str());
+			break;
+		}
+	}
+#else //IDA_SDK_VERSION >= 850
+	uint32 limit = get_ordinal_limit();
+	if(limit != uint32(-1)) {
+		for(uint32 ord = 1; ord < limit; ++ord) {
+			tinfo_t t;
+			udt_type_data_t udt;
+			if(!t.get_numbered_type(ord, BTF_UNION, true) || !t.is_union() || t.get_size() != tl.usize || !t.get_udt_details(&udt))
+				continue;
+			size_t j = 0;
+			for(; j < tl.types.size(); j++) {
+				size_t i = 0;
+				for(; i < udt.size(); ++i) {
+					if(tl.types[j].equals_to(udt.at(i).type))
+						break;
+				}
+				if(i == udt.size()) //not found
+					break;
+			}
+			if(j == tl.types.size()) {
+				utype = t;
+				utype.get_type_name(&utname);
+				break;
+			}
+		}
+	}
+#endif //IDA_SDK_VERSION < 850
+
+	if(!utype.empty() && !utname.empty()) {
+		Log(llNotice, "Existing union has been found for Var reuse '%s'\n", utname.c_str());
+	} else {
+		udt_type_data_t utd;
+		utd.is_union = true;
+		utd.taudt_bits |= TAUDT_UNALIGNED;
+		utd.effalign = 1;
+
+		size_t total_size = 0;
+		for(size_t i = 0; i < tl.types.size(); i++) {
+			size_t tsz = tl.types[i].get_size();
+			if(tsz == BADSIZE) //ignore "void" and bad types
+				continue;
+			udm_t &udm = utd.push_back();
+			udm.offset = 0; // i ?
+			udm.type = tl.types[i];
+			if(get_base_type(udm.type.get_realtype()) >= BT_PTR) {
+				tinfo_t t = remove_pointer(udm.type);
+				if(!t.is_scalar() && t.get_type_name(&udm.name) && !udm.type.is_ptr())
+					udm.name.append('_');
+			}
+			if(udm.name.empty())
+				udm.name = create_field_name(udm.type);
+			udm.size = tsz * 8;
+			if(total_size < tsz)
+				total_size = tsz;
+		}
+
+		utd.unpadded_size = utd.total_size = total_size;
+		tinfo_t ut;
+		ut.create_udt(utd, BTF_UNION);
+		if (!confirm_create_struct(utype, utname, ut, "u"))
+			return 0;
 	}
 
-
-	utd.unpadded_size = utd.total_size = total_size;
-	tinfo_t restype;
-	restype.create_udt(utd, BTF_UNION);
-
-	//TODO: sort tl.types vector just after filling,
-	//TODO: and then enum all existing unions to check if the same type was already created
-
-	tinfo_t ts;
-	qstring tname;
-	if (!confirm_create_struct(ts, tname, restype, "u"))
-		return 0;
-	tname.append('_');
-	vu->set_lvar_type(var, ts);
-	renameVar(vu->cfunc->entry_ea, vu->cfunc, vi, &tname, vu); //force to rename var, it usually has a wrong name at this time
+	vu->set_lvar_type(var, utype);
+	if(!utname.empty()) {
+		utname.append('_');
+		renameVar(vu->cfunc->entry_ea, vu->cfunc, vi, &utname, vu); //force to rename var, it usually has a wrong name at this time
+	}
 
 #if 0
 	// (???) it may be probably better for older IDA versions
@@ -2029,10 +2097,8 @@ ACT_DEF(structs_with_this_size)
 #if IDA_SDK_VERSION < 850
 	for (uval_t idx = get_first_struc_idx(); idx != BADNODE; idx = get_next_struc_idx(idx)) {
 		tid_t id = get_struc_by_idx(idx);
-		struc_t * struc = get_struc(id);
-		if (!struc)
-			continue;
-		if (is_union(id))
+		struc_t *struc = get_struc(id);
+		if (!struc || struc->is_union())
 			continue;
 		if (get_struc_size(struc) == size)
 			m.list.push_back(id);
@@ -4690,6 +4756,67 @@ int brJump(TWidget *ct, int line)
 	return oldline;
 }
 
+//--------------------------------------------------------------------------
+void auto_comments(cfunc_t *cfunc)
+{
+	// print comment when call has multiple targets
+	if(cfunc->treeitems.size() > 0)	{
+		for(ssize_t i = cfunc->treeitems.size() - 1; i >= 0; i--) {
+			citem_t *cit = cfunc->treeitems[i];
+			if(cit->op == cot_call && cit->ea != BADADDR) {
+				eavec_t callees;
+				int y;
+				if(cxrefs_from(cit->ea, &callees) > 1 && cfunc->find_item_coords(cit, nullptr, &y) && y >= 0 && (size_t)y < cfunc->sv.size()) {
+					size_t indent = 0;
+					const char *p = cfunc->sv[y].line.c_str();
+					while(*p != 0) {
+						if(*p == COLOR_ON)
+							p = tag_skipcodes(p);
+						else if(*p++ == ' ')
+							indent++;
+						else
+							break;
+					}
+					for(auto callee : callees) {
+						simpleline_t sl;
+						sl.line.fill(' ', indent);
+						sl.line.cat_sprnt(COLSTR("// %s", SCOLOR_AUTOCMT), get_short_name(callee).c_str());
+						cfunc->sv.insert(cfunc->sv.begin() + y, sl);
+					}
+				}
+			}
+		}
+	}
+
+	// insert 'addr-name' before any "@0xaddr" in pseudocode text
+	for(size_t i = 0; i < cfunc->sv.size(); i++) {
+		qstring &l = cfunc->sv[i].line;
+		size_t pos = 0;
+		while(qstring::npos != (pos = l.find("@0x", pos))) {
+			ea_t ea = BADADDR;
+			atoea(&ea, (const char*)(l.begin() + pos + 1)); //it seems atoea always returns false if string has extra characters after the address
+			if(ea != BADADDR && is_mapped(ea)) {
+				qstring eaname = get_short_name(ea);
+				if(!eaname.empty()) {
+					qstring s;
+					s.sprnt(COLSTR("%s", SCOLOR_AUTOCMT), eaname.c_str());
+					l.insert(pos, s);
+					pos += s.size();
+					continue;
+				}
+			}
+			pos++;
+		}
+	}
+
+	if (ufIsInGL(cfunc->entry_ea))
+		cfunc->sv.insert(cfunc->sv.begin(), simpleline_t(COLSTR("// The function may be unflattened", SCOLOR_AUTOCMT)));
+	else if (ufIsInWL(cfunc->entry_ea))
+		cfunc->sv.insert(cfunc->sv.begin(), simpleline_t(COLSTR("// The function seems has been flattened", SCOLOR_AUTOCMT)));
+
+	if (has_varvals(cfunc->entry_ea))
+		cfunc->sv.insert(cfunc->sv.begin(), simpleline_t(COLSTR("// The function is modified by hidden variable assignment(s)", SCOLOR_AUTOCMT)));
+}
 
 //--------------------------------------------------------------------------
 // This callback handles various hexrays events.
@@ -4809,13 +4936,7 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 				ufDelGL(ufCurr);
 				ufAddWL(ufCurr);
 			}
-			if (ufIsInGL(cfunc->entry_ea))
-				cfunc->sv.insert(cfunc->sv.begin(), simpleline_t("// The function may be unflattened"));
-			else if (ufIsInWL(cfunc->entry_ea))
-				cfunc->sv.insert(cfunc->sv.begin(), simpleline_t("// The function seems has been flattened"));
-
-			if (has_varvals(cfunc->entry_ea))
-				cfunc->sv.insert(cfunc->sv.begin(), simpleline_t("// The function is modified by hidden variable assignment(s)"));
+			auto_comments(cfunc);
 
 			// hxe_func_printed is not called in packet decompiling mode
 			const char* msigName = msig_cached(cfunc->entry_ea);
@@ -5305,8 +5426,8 @@ void findStrucMembersByName(const char* memberName, tidvec_t* tids)
 {
 	for(uval_t idx = get_first_struc_idx(); idx != BADNODE; idx = get_next_struc_idx(idx)) {
 		tid_t id = get_struc_by_idx(idx);
-		struc_t * struc = get_struc(id);
-		if(!struc || is_union(id))
+		struc_t *struc = get_struc(id);
+		if(!struc || struc->is_union())
 			continue;
 		for (uint32 i = 0; i < struc->memqty; i++) {
 			qstring membName;
@@ -5725,7 +5846,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.8.92";
+	addon.version = "3.8.93";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

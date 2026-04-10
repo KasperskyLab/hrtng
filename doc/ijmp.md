@@ -5,7 +5,8 @@ Double click, press "j" or right click on indirect call and select *"Jump to ind
 Code xref visible on the side of target proc links call instruction and target proc.
 
 When indirect call has a few targets have been visited with *"Jump to indirect call (J)"* the new context meny item is appered: *"Jump to visited indirect call... (Shift-J)" 
-that allows to select and jump to one of previously seen target. That essentially is a choise in the list of code xrefs from the call instruction.
+that allows to select and jump to one of previously seen target. That essentially is a choise in the list of code xrefs from the call instruction.  
+Visited targets are also displayed in [auto-comment](auto-cmt.md)
 
 #### How does it work, and why doesn't.
 There is no any magic behind this feature: no symbolic nor debugging/emulation execution. 

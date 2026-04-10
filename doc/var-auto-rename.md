@@ -4,7 +4,7 @@ The first thing I've seen very annoying when begins reverse a lot - I spend too 
 	- user named global/local variable, struct member
 	- user or library named arguments of called subroutine.
 	- string literal, "helper" name
-	- comment is not started from ';' letter
+	- comment is not started from ';' letter (there is also not displayed by default strings in writable data segment are duplicated as comments)
 	- number in range: `1 < const_val < 0x80000000` produce name like `n111`
 	- number in `enum` form
 	- call to procedure with following name (`A`/`W` letters and additions like `_2` in the end of proc name are ignored):

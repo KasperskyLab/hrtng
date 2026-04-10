@@ -55,10 +55,8 @@ void add_structures_popup_items(TWidget *view, TPopupMenu *p)
 int extract_substruct(uval_t idx, uval_t begin, uval_t end)
 {
 	tid_t id = get_struc_by_idx( idx );
-	if (is_union(id))
-		return 0;
-	struc_t * struc = get_struc(id);
-	if(!struc)
+	struc_t *struc = get_struc(id);
+	if(!struc || struc->is_union())
 		return 0;
 
 	qstring struc_name;
@@ -366,11 +364,8 @@ bool compare_structs(struc_t * str1, asize_t begin, struc_t * str2)
 int which_struct_matches_here(uval_t idx1, uval_t begin, uval_t end)
 {
 	tid_t id = get_struc_by_idx(idx1);
-	if (is_union(id))
-		return 0;
-
-	struc_t * struc = get_struc(id);
-	if(!struc)
+	struc_t *struc = get_struc(id);
+	if(!struc || struc->is_union())
 		return 0;
 
 	uval_t last = get_struc_prev_offset(struc, end);
@@ -381,10 +376,8 @@ int which_struct_matches_here(uval_t idx1, uval_t begin, uval_t end)
 	matched_structs_t m;
 	for(uval_t idx = get_first_struc_idx(); idx!=BADNODE; idx=get_next_struc_idx(idx)) {
 		tid_t id = get_struc_by_idx(idx);
-		struc_t * struc_candidate = get_struc(id);
-		if(!struc_candidate)
-			continue;
-		if(is_union(id))
+		struc_t *struc_candidate = get_struc(id);
+		if(!struc_candidate || struc_candidate->is_union())
 			continue;
 		if(get_struc_size(struc_candidate) != size)
 			continue;
@@ -399,23 +392,16 @@ int which_struct_matches_here(uval_t idx1, uval_t begin, uval_t end)
 
 int unpack_this_member(uval_t idx, uval_t offset)
 {
-	tid_t id = get_struc_by_idx( idx );
-	if(is_union(id))
-		return 0;
-
-	struc_t * struc = get_struc(id);
-	if(!struc)
+	struc_t *struc = get_struc(get_struc_by_idx(idx));
+	if(!struc || struc->is_union())
 		return 0;
 
 	member_t * member = get_member( struc, offset);
 	if (!member || member->get_soff() != offset)
 		return 0;
 
-	struc_t * membstr = get_sptr(member);
-	if(!membstr)
-		return 0;
-
-	if (is_union(membstr->id))
+	struc_t *membstr = get_sptr(member);
+	if(!membstr || membstr->is_union())
 		return 0;
 
 	asize_t delta = offset;

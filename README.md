@@ -21,8 +21,8 @@ Messages, menu items, popup windows and dialog boxes belong to this plugin are m
 
 ### Automation
   * [Automatic renaming local and global variables, struct members](doc/var-auto-rename.md)
-  * [Pull up comments from disasm to pseudocode view](doc/pull-cmt.md)
-  * [Automatic enum substitution](doc/enum.md)
+  * [Auto-comments](doc/auto-cmt.md)
+  * [Enum substitution](doc/enum.md)
   * [COM helper](doc/com-helper.md)
 
 ### Interactive pseudocode transformation

@@ -969,9 +969,10 @@ static int idaapi callback(int fid, form_actions_t &fa)
 			warning("[hrt] bad replace: '%s'", rf->replaceWith.c_str());
 			break;
 		} else if(rf->replace()) {
-			clear_cached_cfuncs();
-			mark_builtin_widgets(IWID_ALL);
-#if 0
+			//clear_cached_cfuncs(); // it cleans cache used by "Global cross refs", that bad for refactoring work process
+
+			mark_builtin_widgets(IWID_ALL); // it doesn't refresh pseudocode
+#if 1
 			//refresh currently displayed pseudocode / replace 'C' to 'Z' for all of them
 			for(char i = 'A'; i <= 'C' ; i++) {
 				qstring wn; wn.sprnt("Pseudocode-%c", i);
@@ -979,8 +980,8 @@ static int idaapi callback(int fid, form_actions_t &fa)
 				if(w) {
 					vdui_t *vd = get_widget_vdui(w);
 					if(vd) {
-						//vd->refresh_view(false); // results is better, but it steals focus
-						vd->refresh_ctext(false);
+						vd->refresh_view(true); // it steals focus with `false` arg
+						//vd->refresh_ctext(false); // is doesn't work
 					}
 				}
 			}
