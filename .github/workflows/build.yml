@@ -94,7 +94,7 @@ jobs:
           cp -v ./build/${{ matrix.os.mask }} artifacts/
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hrtng-ida${{ matrix.ida.version }}-${{ matrix.os.name }}
           path: artifacts/*
@@ -132,7 +132,7 @@ jobs:
           cp -v logo.jpg artifacts/
           cp -v README.md artifacts/
           cp -v bin/plugins/*.txt artifacts/
-          jq '.plugin.idaVersions = "==${{ matrix.ida.version }}"' ida-plugin.json > ../artifacts/ida-plugin.json
+          jq '.plugin.idaVersions = "==${{ matrix.ida.version }}"' ida-plugin.json > artifacts/ida-plugin.json
           cd artifacts
           zip -r ../hrtng-ida${{ matrix.ida.version }}.zip *
           cd ..
