@@ -47,7 +47,7 @@ jobs:
     steps:
       - name: Setup MSBuild
         if: matrix.os.name == 'windows'
-        uses: microsoft/setup-msbuild@v1.1
+        uses: microsoft/setup-msbuild@v3
 
       - name: Setup Visual Studio 2022
         if: matrix.os.name == 'windows'
