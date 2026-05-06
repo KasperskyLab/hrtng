@@ -1221,7 +1221,7 @@ ea_t get_memb2proc_ref(tinfo_t& s, uint32 offInBytes)
 	} else {
 		qstring mname = get_member_name(m->id);
 		stripName(&mname);
-		dstEA = get_name_ea(BADADDR, mname.c_str());
+		dstEA = get_name_ea_ex(mname);
 	}
 #else
 	// actually get_vftable_ea is appeared in ida 7.6 but here will be used from ida9 because it probably depends on TAUDT_VFTABLE flag has been set in create_VT_struc
@@ -1241,7 +1241,7 @@ ea_t get_memb2proc_ref(tinfo_t& s, uint32 offInBytes)
 	if(dstEA == BADADDR) {
 		qstring mname = memb.name.c_str();
 		stripName(&mname);
-		dstEA = get_name_ea(BADADDR, mname.c_str());
+		dstEA = get_name_ea_ex(mname);
 	}
 	Log(llDebug, "get_memb2proc_ref: dstEA %a for %s.%s\n", dstEA, s.dstr(), memb.name.c_str());
 #endif //IDA_SDK_VERSION < 850

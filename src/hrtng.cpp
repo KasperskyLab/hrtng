@@ -81,7 +81,6 @@ hexdsp_t *hexdsp = NULL;
 bool set_var_type(vdui_t *vu, lvar_t *lv, tinfo_t *ts);
 bool is_arg_var(vdui_t *vu, lvar_t **var = nullptr);
 bool is_call(vdui_t *vu, cexpr_t **call = nullptr, bool argsDeep = false);
-bool isMultiTargetCall(vdui_t *vu);
 bool is_recastable(vdui_t *vu, tinfo_t *ts = nullptr, cexpr_t **call = nullptr);
 bool is_stack_var_assign(vdui_t *vu, int* varIdx, ea_t *ea, sval_t* size);
 bool is_array_char_assign(vdui_t *vu, int* varIdx, ea_t *ea);
@@ -125,7 +124,6 @@ ACT_DECL(convert_to_golang_call, AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
 #endif // IDA_SDK_VERSION < 850
 ACT_DECL(convert_to_usercall , AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
 ACT_DECL(jump_to_indirect_call  , AST_ENABLE_FOR(is_call(vu)))
-ACT_DECL(jump_to_cxrefs      , AST_ENABLE_FOR(isMultiTargetCall(vu)))
 ACT_DECL(zeal_doc_help       , AST_ENABLE_FOR(is_call(vu)))
 ACT_DECL(add_VT              , AST_ENABLE_FOR(is_VT_assign(vu, NULL, NULL)));
 ACT_DECL(add_VT_struct       , return ((ctx->widget_type != BWN_DISASM) ? AST_DISABLE_FOR_WIDGET : (((is_data(get_flags(ctx->cur_ea)) && is_func(get_flags(get_ea(ctx->cur_ea))))) ? AST_ENABLE : AST_DISABLE)))
@@ -172,7 +170,6 @@ static const action_desc_t actions[] =
 	ACT_DESC("[hrt] Unite var reuse",                NULL, var_reuse),
 	ACT_DESC("[hrt] Convert to __usercall",          "U", convert_to_usercall),
 	ACT_DESC("[hrt] Jump to indirect call",          "J", jump_to_indirect_call),
-	ACT_DESC("[hrt] Jump to visited indirect call...", "Shift-J", jump_to_cxrefs),
 	ACT_DESC("[hrt] Zeal offline API help (zealdocs.org)",  "Alt-F1", zeal_doc_help),
 	ACT_DESC("[hrt] Add VT",                         NULL, add_VT),
 	ACT_DESC("[hrt] Add VT struct",                  NULL, add_VT_struct),
@@ -240,8 +237,6 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 	if(is_call(vu)) {
 		attach_action_to_popup(view, p, ACT_NAME(zeal_doc_help));
 		attach_action_to_popup(view, p, ACT_NAME(jump_to_indirect_call));
-		if(isMultiTargetCall(vu))
-			attach_action_to_popup(view, p, ACT_NAME(jump_to_cxrefs));
 	}
 	if(is_VT_assign(vu, NULL, NULL))
 		attach_action_to_popup(view, p, ACT_NAME(add_VT));
@@ -416,33 +411,6 @@ size_t cxrefs_from(ea_t from, eavec_t* to)
 		}
 	} while (x.next_from());
 	return cnt;
-}
-
-bool isMultiTargetCall(vdui_t *vu)
-{
-	cexpr_t *call;
-	if(!is_call(vu, &call) || call->ea == BADADDR)
-		return false;
-
-	function_list_t fl("[hrt] Called functions");
-	return cxrefs_from(call->ea, nullptr) > 1;
-}
-
-ACT_DEF(jump_to_cxrefs)
-{
-	vdui_t *vu = get_widget_vdui(ctx->widget);
-	cexpr_t *call;
-	if(!is_call(vu, &call) || call->ea == BADADDR)
-		return 0;
-
-	function_list_t fl("[hrt] Called functions");
-	if(!cxrefs_from(call->ea, &fl.functions))
-		return 0;
-
-	ssize_t choosed = fl.choose();
-	if (choosed >= 0 && jumpto(fl.functions[choosed]))
-		return 1;
-	return 0;
 }
 
 //-------------------------------------------------------------------------
@@ -961,7 +929,7 @@ ACT_DEF(rename_func)
 	qstring highlight;
 	uint32 hlflg;
 	if(!var && get_highlight(&highlight, ctx->widget, &hlflg)) {
-		if(newName.empty() && get_name_ea(BADADDR, highlight.c_str()) != BADADDR)
+		if(newName.empty() && get_name_ea_ex(highlight) != BADADDR)
 			mk_name_w(highlight);
 		newName.append(highlight);
 	} else if(has_user_name(get_flags(vu->cfunc->entry_ea)))
@@ -1227,8 +1195,10 @@ ACT_DEF(var_reuse)
 						break;
 				}
 				if(j == tl.types.size()) {
-					utype = t;
-					utype.get_type_name(&utname);
+					if(t.get_type_name(&utname))
+						utype = create_typedef(utname.c_str());
+					else
+						utype = t;
 					break;
 				}
 			}
@@ -1236,8 +1206,8 @@ ACT_DEF(var_reuse)
 #endif //IDA_SDK_VERSION < 850
 	}
 
-	if(!utype.empty() && !utname.empty()) {
-		Log(llNotice, "Existing union has been found for Var reuse '%s'\n", utname.c_str());
+	if(!utype.empty()) {
+		Log(llNotice, "Existing union has been found for Var reuse '%s'\n", utype.dstr());
 	} else {
 		udt_type_data_t utd;
 		utd.is_union = true;
@@ -4783,7 +4753,7 @@ void auto_comments(cfunc_t *cfunc)
 					for(auto callee : callees) {
 						simpleline_t sl;
 						sl.line.fill(' ', indent);
-						sl.line.cat_sprnt(COLSTR("// %s", SCOLOR_AUTOCMT), get_short_name(callee).c_str());
+						sl.line.cat_sprnt(COLSTR("// %a %s", SCOLOR_AUTOCMT), callee, get_short_name(callee).c_str());
 						cfunc->sv.insert(cfunc->sv.begin() + y, sl);
 					}
 				}
@@ -4791,18 +4761,18 @@ void auto_comments(cfunc_t *cfunc)
 		}
 	}
 
-	// insert 'addr-name' before any "@0xaddr" in pseudocode text
+	// insert 'addr-name' before any `@ 0xAddress` in pseudocode text
 	for(size_t i = 0; i < cfunc->sv.size(); i++) {
 		qstring &l = cfunc->sv[i].line;
 		size_t pos = 0;
-		while(qstring::npos != (pos = l.find("@0x", pos))) {
+		while(qstring::npos != (pos = l.find("@ 0x", pos))) {
 			ea_t ea = BADADDR;
-			atoea(&ea, (const char*)(l.begin() + pos + 1)); //it seems atoea always returns false if string has extra characters after the address
+			atoea(&ea, (const char*)(l.begin() + pos + 2)); //it seems atoea always returns false if string has extra characters after the address
 			if(ea != BADADDR && is_mapped(ea)) {
 				qstring eaname = get_short_name(ea);
 				if(!eaname.empty()) {
 					qstring s;
-					s.sprnt(COLSTR("%s", SCOLOR_AUTOCMT), eaname.c_str());
+					s.sprnt(COLSTR("%s ", SCOLOR_AUTOCMT), eaname.c_str());
 					l.insert(pos, s);
 					pos += s.size();
 					continue;
@@ -5852,7 +5822,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.8.95";
+	addon.version = "3.8.96";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

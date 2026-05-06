@@ -594,6 +594,17 @@ bool setComment4Exp(cfunc_t* func, user_cmts_t *cmts, citem_t *expr, const char*
 	return false;
 }
 
+// ATT: it may change 'name'
+ea_t get_name_ea_ex(qstring &name)
+{
+	ea_t ea = get_name_ea(BADADDR, name.c_str());
+	if(ea == BADADDR) {
+		if(name.replace("__", "::")) // from some version (9.??) IDA disables "::" in Var and Member names, and "::" is replaced it with "__"
+			ea = get_name_ea(BADADDR, name.c_str());
+	}
+	return ea;
+}
+
 ea_t get_call_dst(cfunc_t* cfunc, cexpr_t *call)
 {
 	if(call->op != cot_call)
@@ -647,11 +658,8 @@ ea_t get_call_dst(cfunc_t* cfunc, cexpr_t *call)
 	if(dst_ea == BADADDR) {
 		//last hope, jump to name
 		qstring callname;
-		if(getExpName(cfunc, callee, &callname)) {
-			dst_ea = get_name_ea(BADADDR, callname.c_str());
-			if(dst_ea == BADADDR && callname.replace("__", "::")) // from some version (9.??) IDA disables "::" in Var and Member names, and "::" is replaced it with "__"
-				dst_ea = get_name_ea(BADADDR, callname.c_str());
-		}
+		if(getExpName(cfunc, callee, &callname))
+			dst_ea = get_name_ea_ex(callname);
 	}
 	return dst_ea;
 }

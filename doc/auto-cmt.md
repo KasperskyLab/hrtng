@@ -1,14 +1,14 @@
 ## Pseudocode auto-comments
 
 ### Address name
-Sometimes during analysis you need to put comment with name of proc or global variable. But the proc may be renamed further. Just type the @0xaddress in the comment and the plugin dynamically resolve the address name insert it just before.
+Sometimes during analysis you need to put comment with name of proc or global variable. But the proc may be renamed further. Just type the `@ 0xAddress` in the comment and the plugin dynamically resolve the address name insert it just before.
 
 ```
  // example of the address comment
- // @0x180002222 @0x180008888
+ // @ 0x180002222 @ 0x180008888
 
  // be displayed with the plugin as
- // DllEntryPoint@0x180002222 CreateFileWrapper@0x180008888
+ // DllEntryPoint @ 0x180002222 CreateFileWrapper @ 0x180008888
 ```
 
 ### Indirect call targets
@@ -16,12 +16,14 @@ Indirect call including virtual calls are usually a big pain for researcher espe
 
 ```
  // these comments below are automatically displayed by the plugin
- // cCmd1__execCmd
- // cCmd2__forwardCmdToPeer
- // cCmd3__delCmd
- // cCmd4__sheduleDelayedCmd
+ // 180000100 cCmd1__execCmd
+ // 180000200 cCmd2__forwardCmdToPeer 
+ // 180000300 cCmd3__delCmd
+ // 180000400 cCmd4__sheduleDelayedCmd
  cCmd->cCmd1__execCmd((cCmd1 *)cCmd);
 ```
+
+> 💡 Double click or press 'Enter' on name/address to jump
 
 ### Display strings in writable segment
 Non constant strings placed in writable segment which Hex-Rays display as just a global variable are duplicated as comment.
