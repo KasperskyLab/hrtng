@@ -34,6 +34,11 @@
 #define ACT_NAME(name) "hrt:" # name
 #define ACT_DESC(label, shortcut, name) ACTION_DESC_LITERAL(ACT_NAME(name), label, &name, shortcut, NULL, -1)
 #define ACT_DESC1(label, shortcut, name) static const action_desc_t action_ ## name = ACT_DESC(label, shortcut, name);
+#if IDA_SDK_VERSION < 800
+#define ACT_DESC_CHECK(label, shortcut, name) ACT_DESC(label, shortcut, name)
+#else //  IDA_SDK_VERSION >= 800
+#define ACT_DESC_CHECK(label, shortcut, name) ACTION_DESC_LITERAL_OWNER(ACT_NAME(name), label, &name, &PLUGIN, shortcut, NULL, -1, ADF_OT_PLUGIN | ADF_CHECKABLE | ADF_CHECKED)
+#endif // IDA_SDK_VERSION < 800
 #define ACT_DEF(name) int idaapi name ## _t::activate(action_activation_ctx_t *ctx)
 #define ACT_REG(name) register_action(action_ ## name)
 #define ACT_UNREG(name) unregister_action(ACT_NAME(name))

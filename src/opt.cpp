@@ -293,17 +293,17 @@ static bool FindInsWithTheOp(mblock_t* blk, mop_t* op, minsn_t* start, minsn_t*&
 	minsn_t* mStart = start;
 	do {
 		minsn_t* mDef = my_find_def_backwards(blk, ml, mStart);
-		if (mDef == NULL) {
+		if(!mDef) {
 			// move to previous block
 			blk = blk->prevb;
-			mStart = NULL;
+			mStart = nullptr;
 		} else {
 			if (mDef->opcode == opcode && (opt == 0 || opt == mDef->l.t)) {
 				ins = mDef;
 				return true;
 			}
 
-			if (mDef->opcode == m_mov) {
+			if (mDef->opcode == m_mov || mDef->opcode == m_xdu || mDef->opcode == m_xds || mDef->opcode == m_low) {
 				ml.clear();
 				if (!InsertOp(blk, ml, &mDef->l))
 					return false;
@@ -316,9 +316,15 @@ static bool FindInsWithTheOp(mblock_t* blk, mop_t* op, minsn_t* start, minsn_t*&
 #endif
 				return false;
 			}
-			mStart = mDef;
+			if(mDef->prev) {
+				mStart = mDef->prev;
+			} else {
+				// move to previous block
+				blk = blk->prevb;
+				mStart = nullptr;
+			}
 		}
-	} while (blk->prevb != NULL);
+	} while(blk);
 	return false;
 }
 
@@ -612,14 +618,16 @@ bool replaceReadOnlyInitedVar2Val(mop_t* op)
 		if (xb.type == dr_W)
 			return false;
 
-	uint64 val;
-	switch(op->size) {
-	case 1: val = get_byte(op->g); break;
-	case 2: val = get_word(op->g); break;
-	case 4: val = get_dword(op->g); break;
-	case 8: val = get_qword(op->g); break;
-	default:
-		return false;
+	uint64 val = 0;
+	if(is_loaded(op->g)) {
+		switch(op->size) {
+		case 1: val = get_byte(op->g); break;
+		case 2: val = get_word(op->g); break;
+		case 4: val = get_dword(op->g); break;
+		case 8: val = get_qword(op->g); break;
+		default:
+			return false;
+		}
 	}
 
 	MSG_DO(("[I] replaceReadOnlyInitedVar2Val: '%s'", op->dstr()));
@@ -633,8 +641,8 @@ bool replaceReadOnlyInitedVar2Val(mop_t* op)
 static bool pat_InitedVarCondImm(minsn_t*& ins, mblock_t* blk)
 {
 #if RO_GVAR
-	if (ins->opcode == m_seto && (blk == NULL || blk->mba->maturity <= MMAT_LOCOPT))
-		return false;
+	//if (ins->opcode == m_seto && (blk == NULL || blk->mba->maturity <= MMAT_LOCOPT))
+	//	return false;
 
 	mop_t* condNum;
 	mop_t* condNonNum;
@@ -646,14 +654,17 @@ static bool pat_InitedVarCondImm(minsn_t*& ins, mblock_t* blk)
 
 	if(replaceReadOnlyInitedVar2Val(condNonNum))
 		return true;
-
-	if (blk == NULL)
+#if 1
+	return false;
+#else
+	if(!blk)
 		return false;
 	// data flow tracking
 	minsn_t* insOut;
-	if (!FindInsWithTheOp(blk, condNonNum, ins, insOut, m_mov, mop_v))
+	if(!FindInsWithTheOp(blk, condNonNum, ins, insOut, m_mov, mop_v))
 		return false;
 	return replaceReadOnlyInitedVar2Val(&insOut->l);
+#endif
 #else
 	return false;
 #endif
@@ -665,8 +676,8 @@ static bool pat_InitedVarCondImm(minsn_t*& ins, mblock_t* blk)
 static bool pat_InitedVarSubImmCond0(minsn_t* ins, mblock_t* blk)
 {
 #if RO_GVAR
-	if (blk == NULL || blk->mba->maturity <= MMAT_LOCOPT)
-		return false;
+	//if (blk == NULL || blk->mba->maturity <= MMAT_LOCOPT)
+	//	return false;
 
 	minsn_t* insSub;
 	if (!ins->l.is_insn(m_sub))
@@ -1090,20 +1101,30 @@ bool OptimizeInsn(mop_t* op, minsn_t* ins, mblock_t* blk)
 		return pat_LnotOrLnotLnot(ins, blk) || pat_LogicAnd1(ins, blk);
 	case m_lnot:
 		return pat_LnotOrLnotLnot(ins, blk);
+	case m_sets:
+	case m_seto:
+	case m_setp:
+	//case m_setnz:
+	//case m_setz:
+	case m_setae:
+	case m_setb:
+	case m_seta:
+	case m_setbe:
+	case m_setg:
+	case m_setge:
 	case m_setl:
+	case m_setle:
 	case m_jl:
 	case m_jge:
-	case m_seto: // cause INTERR 50862 -> replace in later maturity level
-		return pat_InitedVarCondImm(ins, blk);
-	case m_sets:
-		return pat_InitedVarSubImmCond0(ins, blk);
+		return pat_InitedVarCondImm(ins, blk) // may cause INTERR 50862 -> replace in later maturity level
+		|| pat_InitedVarSubImmCond0(ins, blk);
 	case m_mov:
 		return pat_InitedVarMov(ins);// data-flow tracking required
 	case m_add:
 	case m_sub:
 		return pat_AddSub(ins, blk);
 	case m_call:
-		return call_ARITH(ins, blk) 
+		return call_ARITH(ins, blk)
 			|| call_ARITH_0xNN(op, ins, blk)
 			|| bswap_const_to_const(op, ins);
 	case m_jz:

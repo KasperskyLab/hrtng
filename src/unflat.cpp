@@ -173,7 +173,7 @@ struct ida_local JZInfo
 struct ida_local JZCollector : public minsn_visitor_t
 {
 	qvector<JZInfo> m_SeenComparisons;
-	int m_nMaxJz;
+	ssize_t m_nMaxJz;
 	JZCollector() : m_nMaxJz(-1) {};
 
 	int visit_minsn(void)
@@ -311,7 +311,7 @@ struct ida_local JcMapper
 	int lastJnzTrg;
 	mbl_array_t* mba;
 	JcMapper(mbl_array_t* _mba, mop_t *mc, mop_t* mc_sub, mop_t *ma, int iDispatch, int iFirst) :
-		mba(_mba), m_CompareVar(mc), m_SubCompareVar(mc_sub), m_AssignVar(ma), m_DispatchBlockNo(iDispatch), m_FirstBlockNo(iFirst), lastJnzTrg(-1)
+		m_CompareVar(mc), m_SubCompareVar(mc_sub), m_AssignVar(ma), m_DispatchBlockNo(iDispatch), m_FirstBlockNo(iFirst), lastJnzTrg(-1), mba(_mba)
 	{	};
 
 	bool isCompare(mblock_t* blk)
@@ -462,7 +462,7 @@ struct ida_local JcMapper
 		mlist_t list;
 		mba->get_mblock(defBlk)->append_use_list(&list, *cmpVar, MUST_ACCESS);
 
-		for (int i = 0; i < ch->size(); i++) {
+		for (size_t i = 0; i < ch->size(); i++) {
 			int bn = ch->at(i);
 			mblock_t* blk = mba->get_mblock(bn);      // block that uses the instruction
 			minsn_t* ins = blk->head;
@@ -627,7 +627,7 @@ struct ida_local CFFlattenInfo
 	int64 OpAndImm;
 	bool bPtrAssign;
 
-	CFFlattenInfo() : iFirst(-1), iDispatch(-1), bTrackingFirstBlocks(false), bOpAndAssign(false), OpAndImm(0), jcm(NULL), bPtrAssign(false) {}
+	CFFlattenInfo() : iFirst(-1), iDispatch(-1), jcm(nullptr), bTrackingFirstBlocks(false), bOpAndAssign(false),  OpAndImm(0), bPtrAssign(false) {}
 	~CFFlattenInfo() { if(jcm) delete jcm; }
 
 	// This function finds the "first" block immediately before the control flow flattening dispatcher begins. The logic is simple; start at the beginning
@@ -688,7 +688,7 @@ struct ida_local CFFlattenInfo
 
 		//it maybe second pass for the same proc already cleared, recalc entropy again
 		if (jzc.m_SeenComparisons[jzc.m_nMaxJz].ShouldBlacklist()) {
-			int i = 0; //m_nMaxJz may be with low entropy but still exist flattened blocks, looks for more cmps
+			size_t i = 0; //m_nMaxJz may be with low entropy but still exist flattened blocks, looks for more cmps
 			for (; i < jzc.m_SeenComparisons.size(); ++i) {
 				if (i != jzc.m_nMaxJz && !jzc.m_SeenComparisons[i].ShouldBlacklist()) {
 					jzc.m_nMaxJz = i;
@@ -930,7 +930,7 @@ static void AppendGoto(mblock_t *blk, int iBlockDest)
 
 //#if IDA_SDK_VERSION < 760
 // use own implementation just to show warning message
-static void DeleteBlock(mblock_t *mb)
+static uint32 DeleteBlock(mblock_t *mb)
 {
 	mbl_array_t *mba = mb->mba;
 	for (int j = 0; j < mb->nsucc(); ++j)
@@ -952,7 +952,8 @@ static void DeleteBlock(mblock_t *mb)
 	mb->tail = NULL;
 	MSG_UF3(("[I] %a: DeleteBlock %d\n", mb->start, mb->serial));
 	if(cnt)
-		Log(llWarning, "%a unflat: Deleted practical code block at %a (%d insns)\n", mba->entry_ea, mb->start, cnt);
+		Log(llWarning, "%a unflat: Deleted practical code block %d at %a (%d insns)\n", mba->entry_ea, mb->serial, mb->start, cnt);
+	return cnt;
 }
 
 // The goto-to-goto elimination and unflattening remove edges in the control flow graph.
@@ -985,18 +986,25 @@ static int PruneUnreachable(mbl_array_t *mba)
 			worklist.push_back(iSucc);
 	}
 
+	uint32 insnRemoved = 0;
 	qvector<mblock_t*> brem;
 	for (int i = 0; i < mba->qty - 1; ++i) {
 		if (!visited.has(i)) {
 			// If so, delete the instructions on the block and remove any outgoing edges.
 			mblock_t* blk = mba->get_mblock(i);
 			brem.push_back(blk);
-			DeleteBlock(blk);
+			insnRemoved += DeleteBlock(blk);
 		}
 	}
+#if 0
+	//disabled because it seen really unreachable blocks that duplicate code of other block
+	//0x18007A838 F161B50E32320626DA2B87CC90ED371A
+	if(insnRemoved)
+		ufAddFL(mba->entry_ea); // set unflattening failed
+#endif
+
 	for (auto b : brem)
 		mba->remove_block(b); //causes blocks renumbering
-
 	return (int)brem.size();
 }
 //#endif
@@ -1795,9 +1803,9 @@ struct ida_local CFUnflattener
 				continue;
 			}
 
-			if (mb->npred() == 1 && iClusterHead == -1 && m_DeferredErasuresLocal.empty() && mb->get_reginsn_qty() == 1 &&
+			if (mb->npred() == 1 && /*iClusterHead == -1 &&*/ m_DeferredErasuresLocal.empty() && mb->get_reginsn_qty() == 1 &&
 				(mb->tail->opcode == m_goto || mb->tail->opcode == m_jnz)) { //is_simple_goto_block || is_simple_jcnd_block
-				MSG_UF2(("[W] %a: The dispatcher predecessor %d seems is a blind goto/jnz disp\n", mb->start, iDispPred));
+				MSG_UF2(("[W] %a: The dispatcher predecessor %d (cluster %d) seems is a blind goto/jnz disp\n", mb->start,  iDispPred, iClusterHead));
 				++skippedPreds; // count as correct block
 				continue;
 			}

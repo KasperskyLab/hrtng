@@ -280,9 +280,10 @@ ACT_DEF(insert_varval)
 	}
 
 	static const char form[] =
+		"STARTITEM 1\n"
 		"[hrt] Insert variable assignment\n\n"
 		"Before instruction at <#Address# :$::16::>\n"
-		"Insert: %q = <#Value# :l::16::>\n\n";
+		"Insert: %q = <#Value# :l1::16::>\n\n";
 	if (1 == ask_form(form, &fri.ea, &varname, &fri.value)) {
 		varvals_info_t vvs;
 		load_varvals(proc_ea, vvs);

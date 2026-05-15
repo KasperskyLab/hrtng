@@ -57,7 +57,7 @@ Messages, menu items, popup windows and dialog boxes belong to this plugin are m
   * [Union creation for a variable is reused with different types](doc/var-reuse.md)
   * [List of structures with given size, with given offset](doc/struct-sz-off.md)
   * [Assist in creation of new structure definitions](doc/struct-bld.md)
-  * [Finds structures with same "shape" as is used](doc/struct-shape.md)
+  * [Finds structures with same "shape" as is used / Create struct from derefs](doc/struct-shape.md)
   * [~~New functionality in Structures view~~](doc/ex-unp-struc.md)
   * [IDC script for interactive merging types across multiple IDBs](bin/idc/merge_types.idc)
 
