@@ -70,6 +70,15 @@ std::set<ea_t> g_GrayList;  // obfuscated, but user ask to see original code or 
 std::set<ea_t> g_FailList;  // deobfuscation is failed
 ea_t ufCurr = BADADDR;
 
+bool ufIsInBL(ea_t ea) {
+	return g_BlackList.find(ea) != g_BlackList.end();
+}
+
+void ufAddBL(ea_t ea) {
+	if(ea != BADADDR)
+		g_BlackList.insert(ea);
+}
+
 bool ufIsInWL(ea_t ea) {
 	return g_WhiteList.find(ea) != g_WhiteList.end();
 }
@@ -232,14 +241,14 @@ struct ida_local JZCollector : public minsn_visitor_t
 typedef qvector<mop_t*> SeenAssignments_t;
 struct ida_local BlockInsnAssignNumberExtractor : public minsn_visitor_t
 {
-	SeenAssignments_t m_SeenAssignments;
+	SeenAssignments_t m_SeenNumAssignments;
 	int visit_minsn()
 	{
 		// We're looking for MOV(const.4,x) or MOV(const.8,x)
 		// stx for case of assign var is a pointer
 		if ((curins->opcode != m_mov && curins->opcode != m_stx) || curins->l.t != mop_n || curins->l.size < 4)
 			return 0;
-		m_SeenAssignments.push_back(&curins->d);
+		m_SeenNumAssignments.push_back(&curins->d);
 		return 0;
 	}
 };
@@ -259,9 +268,9 @@ struct ida_local SingleAssingFinder : public minsn_visitor_t
 
 	int visit_minsn(void)
 	{
-		if ((curins->opcode == m_mov || curins->opcode == m_xdu || curins->opcode == m_xds || curins->opcode == m_and ||
-			curins->opcode == m_ldx || curins->opcode == m_stx)
-			&& curins->d.equal_mops(*dst, EQ_IGNSIZE)) {// We want copies into our comparison variable
+		if ((curins->opcode == m_mov || curins->opcode == m_xdu || curins->opcode == m_xds ||
+				 curins->opcode == m_and || curins->opcode == m_ldx || curins->opcode == m_stx)
+				&& curins->d.equal_mops(*dst, EQ_IGNSIZE)) {// We want copies into our comparison variable
 			lastSeenAssign = curins;
 			lastSeenBlk = blk->serial;
 			seenCnt++;
@@ -331,7 +340,7 @@ struct ida_local JcMapper
 				(!insn->l.equal_mops(*m_AssignVar, EQ_IGNSIZE) &&
 					(m_AssignVarAnd == NULL || !m_AssignVarAnd->equal_mops(*m_AssignVar, EQ_IGNSIZE)))) {
 				// or if it's sub-comparison var, include the map
-				if (m_SubCompareVar == NULL || !insn->l.equal_mops(*m_SubCompareVar, EQ_IGNSIZE))
+				if (m_SubCompareVar->t == mop_z || !insn->l.equal_mops(*m_SubCompareVar, EQ_IGNSIZE))
 					return false;
 			}
 		}
@@ -352,7 +361,8 @@ struct ida_local JcMapper
 		if (!map) {
 			// jz compare block, was predecessor of this block, can be removed becouse of "always true" for calculated single valrange,
 			// so try to restore compare key from valrange
-			if (getKeyFromValranges(targBlk, m_CompareVar, &keyVal))
+			if (getKeyFromValranges(targBlk, m_CompareVar, &keyVal) ||
+					(m_SubCompareVar->t != mop_z && getKeyFromValranges(targBlk, m_SubCompareVar, &keyVal)))
 				map = &KeyToBlockJz;
 		}
 
@@ -747,7 +757,7 @@ struct ida_local CFFlattenInfo
 		int assingBlk = iFirst;
 		for (mblock_t* mb = first; mb->prevb != NULL; mb = mb->prevb) {
 			mb->for_all_insns(fbe);
-			for (auto as : fbe.m_SeenAssignments) {
+			for (auto as : fbe.m_SeenNumAssignments) {
 				if (opMax->equal_mops(*as, EQ_IGNSIZE)) {
 					assingBlk = mb->serial;
 					bFound = true;// Was the comparison variable assigned a number in the first block?
@@ -797,13 +807,13 @@ struct ida_local CFFlattenInfo
 #if DEBUG_UF >= 2
 			// Verify the number that was assigned to the assignment variable in the first block.
 			bool found = false;
-			for (auto as : fbe.m_SeenAssignments) {
+			for (auto as : fbe.m_SeenNumAssignments) {
 				if (localOpAssigned->equal_mops(*as, EQ_IGNSIZE)) {
 					found = true;
 					break;
 				}
 			}
-			if (!bFound) {
+			if (!found) {
 				MSG_UF2(("[W] ??? couldn't find any direct const assignment to assignment variable %s. Hope FindNumericDefBackwards will do it.\n", localOpAssigned->dstr()));
 			}
 #endif
@@ -842,7 +852,7 @@ struct ida_local CFFlattenInfo
 		} else {
 			// ida can lost def-use chain for stack vars. Why??? (example: 782192b540ce0746cc058b3871e19284)
 			// try old way, enum all blocks
-			MSG_UF3(("[I] old way of Jc targets resolving, results may be incorrect in case of multiple flattening\n"));
+			MSG_UF2(("[W] old way of Jc targets resolving, results may be incorrect in case of multiple flattening\n"));
 			for (int i = 1 ; i < mba->qty - 1; ++i) {
 				jcm->addCmp(mba->get_mblock(i));
 			}
@@ -870,7 +880,7 @@ struct ida_local CFFlattenInfo
 		// Check if the first blocks may contain block update variables for flattened if-else statement blocks
 		if (this->iFirst > 2 && mba->get_mblock(iFirst - 2)->tail != NULL && is_mcode_jcond(mba->get_mblock(iFirst - 2)->tail->opcode))
 			this->bTrackingFirstBlocks = true;
-
+		MSG_UF3(("[I] TrackingFirstBlocks %s\n", bTrackingFirstBlocks ? "on" : "off"));
 		return true;
 	}
 };
@@ -1352,8 +1362,10 @@ struct ida_local CFUnflattener
 		mbl_array_t* mba = blk->mba;
 		mlist_t ml;
 
-		if (!InsertOp(blk, ml, op))
+		if (!InsertOp(blk, ml, op)) {
+			MSG_UF3(("[i] FindNumericDefBackwards(%d, %s) fail, bad op\n", blk->serial, op->dstr()));
 			return false;
+		}
 
 		// Start from the end of the block. This variable gets updated when a copy is encountered, so that subsequent searches start from the right place.
 		minsn_t* mStart = NULL;
@@ -1379,6 +1391,7 @@ struct ida_local CFUnflattener
 				mi.insMov = mDef;
 				if (mDef->l.t == mop_n) {// Was it a numeric assignment?
 					opNum = &mDef->l;
+					MSG_UF3(("[I] %a: FindNumericDef found '%s' in blk %d\n", mDef->ea, mDef->dstr(), blk->serial));
 					return true;
 				}
 
@@ -1387,39 +1400,51 @@ struct ida_local CFUnflattener
 				if (cfi.bPtrAssign && mDef->l.t == mop_a) { //is it addr of?
 					// InsertOp() doesnt work in that case becouse &var use all memory
 					// try dirty hack
-					if(!mop2list(mDef->l.a, &ml, mba))
+					if(!mop2list(mDef->l.a, &ml, mba)) {
+						MSG_UF3(("[i] FindNumericDefBackwards(%d, %s) fail on mop2list\n", blk->serial, op->dstr()));
 						return false;
+					}
 				} else {
 					// This can only succeed if the thing that was assigned was a register or stack variable.
-					if (!InsertOp(blk, ml, &mDef->l))
+					if (!InsertOp(blk, ml, &mDef->l)) {
+						MSG_UF3(("[i] FindNumericDefBackwards(%d, %s) fail, bad left op %s\n", blk->serial, op->dstr(), mDef->l.dstr()));
 						return false;
+					}
 				}
 
 				// Try to start tracking the other thing...
 				mStart = mDef;// Resume the search from the assignment instruction we just processed.
-				MSG_UF3(("[I] %a: Blk %d FindNumericDef now tracking '%s'\n", mDef->ea, blk->serial, mDef->l.dstr()));
+				MSG_UF3(("[I] %a: Blk %d FindNumericDef now tracking '%s' (bRecursive %d, bAllowMultiSuccs %d, iBlockStop %d)\n",
+								 mDef->ea, blk->serial, mDef->l.dstr(), bRecursive, bAllowMultiSuccs, iBlockStop));
 			} else {
 				// Otherwise, we did not find a definition of the currently-tracked variable on this block. Try to continue if the parameters allow.
 				// If recursion was disallowed, or we reached the topmost legal block, then quit.
-				if (!bRecursive || blk->serial == iBlockStop)
+				if (!bRecursive || blk->serial == iBlockStop) {
+					MSG_UF3(("[i] FindNumericDefBackwards(%d, %s) finished\n", blk->serial, op->dstr()));
 					return false;
+				}
 
 				// If there is more than one predecessor for this block, we don't know which one to follow, so stop.
-				if (blk->npred() != 1)
+				if (blk->npred() != 1) {
+					MSG_UF3(("[i] FindNumericDefBackwards(%d, %s) fail, npred\n", blk->serial, op->dstr()));
 					return false;
+				}
 
 				// Recurse into sole predecessor block
 				int iPred = blk->pred(0);
 				blk = mba->get_mblock(iPred);
 
 				// If the predecessor has more than one successor, check to see whether the arguments allow that.
-				if (!bAllowMultiSuccs && blk->nsucc() != 1)
+				if (!bAllowMultiSuccs && blk->nsucc() != 1) {
+					MSG_UF3(("[i] FindNumericDefBackwards(%d, %s) fail, nsucc\n", blk->serial, op->dstr()));
 					return false;
+				}
 
 				// Resume the search at the end of the new block.
 				mStart = NULL;
 			}
 		} while (true);
+		MSG_UF1(("[E] FindNumericDefBackwards(%d, %s) fail, oops\n", blk->serial, op->dstr()));
 		return false;
 	}
 
@@ -2038,8 +2063,13 @@ struct ida_local CFUnflattener
 
 bool unflattening(mbl_array_t *mba)
 {
-	if (g_BlackList.find(mba->entry_ea) != g_BlackList.end())
+	if(ufIsInBL(mba->entry_ea)) // it proved as not flattened, don't check it again
 		return false;
+
+	if(ufIsInFL(mba->entry_ea)) {
+		Log(llDebug, "%a: no reentry to failed unflattening (ufCurr: %a)\n", mba->entry_ea, ufCurr);
+		return false;
+	}
 
 	//unflattening may be called few times during decompilation
 	//do not check graylist on secondary calls
@@ -2078,7 +2108,7 @@ static uint32 reentryCnt;
 	} else {
 		MSG_UF3(("[I] no unflattening\n"));
 		if (!ufIsInWL(mba->entry_ea) && !ufIsInGL(mba->entry_ea))
-			g_BlackList.insert(mba->entry_ea);
+			ufAddBL(mba->entry_ea);
 	}
 	return changed;
 }

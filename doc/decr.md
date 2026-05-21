@@ -1,4 +1,4 @@
-## Strings/data/const decryption
+## String/data/const decryption
 Context menu *"Decrypt string (D)"* or *"Decrypt imm const (D)"* in pseudocode view, *"Decrypt data (Shift-D)"* in disasm view.
 
 Right click on string, global variable or constant value in pseudocode or  in disasm view and select "Decrypt ...". Select appropriate encryption algorithm and parameters in dialog box.
@@ -35,10 +35,10 @@ Notes:
 - Look in the "Output Window" if something went wrong.
 
 ### Decrypt string
-![Decrypt strings](decr-str.gif)
+![Decrypt string](decr-str.gif)
 
 ### Decrypt data
 ![Decrypt data](decr-data.gif)
 
 ### Decrypt const
-![Decrypt data](decr-const.gif)
+![Decrypt const](decr-const.gif)

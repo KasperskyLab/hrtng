@@ -34,9 +34,9 @@ Messages, menu items, popup windows and dialog boxes belong to this plugin are m
   * ["offsetof" convertor](doc/offsetof.md)
 
 ### Decryption
-  * [Strings/data/const decryption](doc/decr.md)
-  * [Build stack strings (optionally with decryption)](doc/stk-str.md)
-  * [Build array strings (optionally with decryption)](doc/arr-str.md)
+  * [String/data/const decryption](doc/decr.md)
+  * [Build stack string (optionally with decryption)](doc/stk-str.md)
+  * [Build array string (optionally with decryption)](doc/arr-str.md)
   * [Mass strings decryption](doc/appcall.md)
 
 ### Deal with obfuscated code

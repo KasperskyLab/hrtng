@@ -1,4 +1,4 @@
-## Build stack strings (optionally with decryption)
+## Build stack string (optionally with decryption)
 Context menu *"Build stack string (B)"*, *"Build stack string and decrypt (Shift-B)"*
 
 Simple example for beginning. Imagine code like this:

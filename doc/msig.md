@@ -18,6 +18,7 @@ There are options of the "Create MSIG file" dialog:
 > - It's recommended to look into just created MSIG file and consider deleting some of longest lines because they can be a reason of annoying false positives
 > - For a procedure has at least one call statement inside in addition to regular 'Strict' signature, one more, so called 'Relaxed' signature is created. Relaxed signature is marked by letter 'r' before the name.
 > - In Relaxed mode call's arguments, operands size, resizing instructions and the return statement are ignored. Matching a Relaxed signature is not the 100% reason to rename recognized proc, but just a hint showing similarity.
+> - While user named functions are re-decompiled for MSIG creation the global xrefs cache is updated too. This may be used instead *Ctrl-U* in "Global cross references" dialog to reduce number of re-decompiled functions.
 
 Load signatures with *"File/Load file/MSIG file..."* Multiple `.msig` files may be loaded. Last loaded MSIG filename is stored in database and will be used to auto-load MSIG on next IDB opening, and auto-save edited MSIGs on IDB saving.
 

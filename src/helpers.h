@@ -103,6 +103,7 @@
 #if IDA_SDK_VERSION < 830
 	#define flags64_t flags_t
   #define DSTR(x) ""
+  #define DECOMP_GXREFS_FORCE 0
 #else
   #define DSTR(x) (x)->dstr()
 #endif // IDA_SDK_VERSION < 830

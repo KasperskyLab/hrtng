@@ -1069,7 +1069,8 @@ void remove_funcs_tails(ea_t ea)
 {
 	int i = 0;
 	do {
-		func_t *f = get_func(ea); if (!f || !remove_func_tail(f, ea))
+		func_t *f = get_func(ea);
+		if (!f || !remove_func_tail(f, ea))
 			break;
 		MSG_DO(("[hrt] func tail at %a deleted\n", ea));
 	} while (++i > 100);
@@ -1089,7 +1090,9 @@ enum Add_BB_Stop_Reason {
 
 static bool add_bb(ea_t eaBgn, rangeset_t &ranges)
 {
-#if 0 // it doesnt work, probably need "auto_wait"
+#if 1 
+	// Sometimes this works, sometimes doesn't. Have no idea why, probably depends on ida version
+	// if you see block belongs to other proc it doesnt work - delete proc manually and try again
 	while(del_func(eaBgn)) {
 		MSG_DO(("[hrt] func at %a deleted\n", eaBgn));
 	}
@@ -1188,14 +1191,20 @@ static ea_t get_nullsub_1()
 	}
 
 	ea = inf_get_max_ea();
-	if(is_unknown(get_flags(ea)) &&
-		add_segm(0, ea, ea + 1, "[hrt]nullsub", "CODE", ADDSEG_QUIET | ADDSEG_FILLGAP) &&
-		put_byte(ea, 0xc3) &&
-		create_insn(ea) &&
-		add_func(ea) &&
-		set_name(ea, "nullsub_1"))
-	{
-		return ea;
+	if (is_unknown(get_flags(ea))) {
+		segment_t s;
+		s.start_ea = ea;
+		s.end_ea = ea + 1;
+		s.perm = SEGPERM_EXEC;
+		s.bitness = is64bit() ? 2 : 1;
+		if (add_segm_ex(&s, "hrt_nullsub", "CODE", ADDSEG_QUIET | ADDSEG_FILLGAP) &&
+			put_byte(ea, 0xc3) &&
+			create_insn(ea) &&
+			add_func(ea) &&
+			set_name(ea, "nullsub_1"))
+		{
+			return ea;
+		}
 	}
 	return BADADDR;
 }
@@ -1233,7 +1242,8 @@ func_t *remake_func(ea_t startEA,  const rangeset_t &ranges)
 	if (!is_auto_enabled())
 		enable_auto(true);
 #endif
-	del_func(startEA);
+	if(!del_func(startEA))
+		Log(llWarning, "%a: del_func failed, please delete it manually\n", startEA);
 
 	const range_t *first = ranges.find_range(startEA);
 	if (!first) {
@@ -1275,6 +1285,8 @@ int decompile_obfuscated(ea_t eaBgn)
 			MSG_DO(("[hrt] func at %a deleted\n", eaBgn));
 			if(get_screen_ea() != eaBgn)
 				jumpto(eaBgn, -1, UIJMP_IDAVIEW);
+		}	else {
+			Log(llWarning, "%a: del_func failed, please delete it manually\n", eaBgn);
 		}
 		func = NULL;
 	}
@@ -1431,12 +1443,12 @@ int decompile_obfuscated(ea_t eaBgn)
 	cfuncptr_t cf(nullptr);
 	if (func) {
 		mark_cfunc_dirty(eaBgn);
-		cf = decompile_func(func, nullptr, DECOMP_NO_CACHE | DECOMP_WARNINGS | DECOMP_ALL_BLKS);
+		cf = decompile_func(func, &hf, DECOMP_NO_CACHE | DECOMP_WARNINGS | DECOMP_ALL_BLKS);
 	} else {
 		cf = decompile_snippet(ranges.as_rangevec(), &hf, DECOMP_NO_CACHE | DECOMP_NO_FRAME | DECOMP_WARNINGS | DECOMP_ALL_BLKS);
 	}
 	deob_done();
-	if (hf.code != MERR_OK) {
+	if (!cf || hf.code != MERR_OK) {
 		Log(llError, "decompile error %d: %s\n", hf.code, hf.desc().c_str());
 		return 0;
 	}
@@ -1446,8 +1458,8 @@ int decompile_obfuscated(ea_t eaBgn)
 	if (nullsub == BADADDR)
 		nullsub = eaBgn;
 	vdui_t *vdui = COMPAT_open_pseudocode_REUSE(nullsub);
-	vdui->switch_to(cf, true); // broken in ida92 (or early). display requested code just until first click or keypress and then switches to `nullsub`
-	jumpto(cf->entry_ea);
+	vdui->switch_to(cf, false); // broken in ida92 (or early). display requested code just until first click or keypress and then switches to `nullsub`
+	jumpto(cf->entry_ea, -1, UIJMP_ACTIVATE | UIJMP_DONTPUSH);
 
 	if (stuck_ea != BADADDR) {
 		Log(llWarning, "stuck at %a\n", stuck_ea);

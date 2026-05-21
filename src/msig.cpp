@@ -575,7 +575,7 @@ ACT_DEF(msigSave)
 			hexrays_failure_t hf;
 #if 1
 			mark_cfunc_dirty(funcstru->start_ea);
-			cfuncptr_t cf = decompile_func(funcstru, &hf, DECOMP_NO_WAIT);
+			cfuncptr_t cf = decompile_func(funcstru, &hf, DECOMP_NO_WAIT | DECOMP_GXREFS_FORCE);
 			if (cf && hf.code == MERR_OK) {
 				if(!msig_add(cf->mba))
 					++skipCnt;
