@@ -5217,15 +5217,13 @@ bool idaapi runFuncSwitchSync()
     }
 #endif //defined __LINUX__  && IDA_SDK_VERSION >= 740 && IDA_SDK_VERSION <= 750
 
-    bool checkable;
+#if 0
+		bool checkable;
     bool bb = get_action_checkable(FunctionsToggleSync, &checkable);
     if(bb && !checkable) {
 			update_action_checkable(FunctionsToggleSync, true);
 			bb = get_action_checkable(FunctionsToggleSync, &checkable);
 		}
-		qstring lbl;
-		bool bl = get_action_label(&lbl, FunctionsToggleSync);
-#if 0
     action_state_t state;
     bool bs = get_action_state(FunctionsToggleSync, &state);
     if(bs && state == AST_DISABLE_FOR_WIDGET) {
@@ -5238,12 +5236,13 @@ bool idaapi runFuncSwitchSync()
     bool bv = get_action_visibility(FunctionsToggleSync, &visibility);
     Log(llDebug, "FuncSwitchSync %d-%d, %d-%d, %d-%d, %d-%d, %d-%s\n", bs, state, bb, checkable, bc, checked, bv, visibility, bl, lbl.c_str());
 #endif
-		if(bl && strneq(lbl.c_str(), "Turn on", 7)) { //"Turn on synchronization"
-			if(process_ui_action(FunctionsToggleSync))
-				Log(llInfo, "turn on %s\n", FunctionsToggleSync);
-			else
-				Log(llWarning, "fail to turn on %s\n", FunctionsToggleSync);
-		}
+		bool checked = false;
+		if(get_action_checked(FunctionsToggleSync, &checked) && !checked && update_action_checked(FunctionsToggleSync, true) && process_ui_action(FunctionsToggleSync))
+			Log(llInfo, "turn on %s\n", FunctionsToggleSync);
+		else if(checked)
+			Log(llDebug, "%s is already turned on\n", FunctionsToggleSync);
+		else
+			Log(llWarning, "fail to turn on %s\n", FunctionsToggleSync);
 
     if(!StartWdg)
       StartWdg = find_widget("Pseudocode-A");
@@ -5817,7 +5816,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.8.98";
+	addon.version = "3.8.99";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

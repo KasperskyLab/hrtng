@@ -278,7 +278,7 @@ minsn_t* my_find_def_backwards(mblock_t* mb, mlist_t& ml, minsn_t* start)
 {
 	for (minsn_t* p = start != NULL ? start : mb->tail; p != NULL; p = p->prev) {
 		mlist_t def = mb->build_def_list(*p, /*MAY_ACCESS*/ MUST_ACCESS | FULL_XDSU);//may-list includes all aliasable memory in case of indirect stx
-		if (def.includes(ml))
+		if(def.has_common(ml)) //if (def.includes(ml)) // doesnt catch when `rax` in `ml` and `eax` in `def` 
 			return p;
 	}
 	return NULL;
@@ -320,7 +320,9 @@ static bool FindInsWithTheOp(mblock_t* blk, mop_t* op, minsn_t* start, minsn_t*&
 				mStart = mDef->prev;
 			} else {
 				// move to previous block
-				blk = blk->prevb;
+				if (blk->npred() != 1)
+					return false;
+				blk = blk->mba->get_mblock(blk->pred(0));
 				mStart = nullptr;
 			}
 		}

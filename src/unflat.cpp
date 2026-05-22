@@ -157,9 +157,9 @@ struct ida_local JZInfo
 			}
 		}
 
-		//at least half of numbers shold be used in entropy calculation
-		if(iNumUsed * 2 < nSeen) {
-			MSG_UF3(("[I] Lack pseudorandom consts for entropy calc (%d used of %d) \n", iNumUsed, nSeen));
+		//at least 1/3 of numbers shold be used in entropy calculation
+		if(iNumUsed * 3 < nSeen) {
+			MSG_UF3(("[I] Lack pseudorandom consts compared with %s for entropy calc (%d used of %d) \n", op->dstr(), iNumUsed, nSeen));
 			return true;
 		}
 
@@ -1338,12 +1338,12 @@ struct ida_local CFUnflattener
 				mlist_t def;
 				if (InsertOp(mb, def, &p->d)) {
 #endif
-					if (def.includes(ml))
+					if (def.has_common(ml)) //if (def.includes(ml)) // doesnt catch when `rax` in `ml` and `eax` in `def` 
 						return p;
 				}
 			} else {
 				mlist_t def = mb->build_def_list(*p, MUST_ACCESS | FULL_XDSU);//may-list includes all aliasable memory in case of indirect stx
-				if (def.includes(ml))
+				if (def.has_common(ml)) //if (def.includes(ml)) // doesnt catch when `rax` in `ml` and `eax` in `def` 
 					return p;
 			}
 		}
@@ -1413,36 +1413,41 @@ struct ida_local CFUnflattener
 				}
 
 				// Try to start tracking the other thing...
-				mStart = mDef;// Resume the search from the assignment instruction we just processed.
 				MSG_UF3(("[I] %a: Blk %d FindNumericDef now tracking '%s' (bRecursive %d, bAllowMultiSuccs %d, iBlockStop %d)\n",
 								 mDef->ea, blk->serial, mDef->l.dstr(), bRecursive, bAllowMultiSuccs, iBlockStop));
-			} else {
-				// Otherwise, we did not find a definition of the currently-tracked variable on this block. Try to continue if the parameters allow.
-				// If recursion was disallowed, or we reached the topmost legal block, then quit.
-				if (!bRecursive || blk->serial == iBlockStop) {
-					MSG_UF3(("[i] FindNumericDefBackwards(%d, %s) finished\n", blk->serial, op->dstr()));
-					return false;
+				// Resume the search from the assignment instruction we just processed may cause looping in case of xdu/xds on the same register
+				// move mStart to prev insn
+				if (mDef->prev) {
+					mStart = mDef->prev;
+					continue;
 				}
-
-				// If there is more than one predecessor for this block, we don't know which one to follow, so stop.
-				if (blk->npred() != 1) {
-					MSG_UF3(("[i] FindNumericDefBackwards(%d, %s) fail, npred\n", blk->serial, op->dstr()));
-					return false;
-				}
-
-				// Recurse into sole predecessor block
-				int iPred = blk->pred(0);
-				blk = mba->get_mblock(iPred);
-
-				// If the predecessor has more than one successor, check to see whether the arguments allow that.
-				if (!bAllowMultiSuccs && blk->nsucc() != 1) {
-					MSG_UF3(("[i] FindNumericDefBackwards(%d, %s) fail, nsucc\n", blk->serial, op->dstr()));
-					return false;
-				}
-
-				// Resume the search at the end of the new block.
-				mStart = NULL;
+				// else fall down to move to previous block
 			}
+			// Otherwise, we did not find a definition of the currently-tracked variable on this block. Try to continue if the parameters allow.
+			// If recursion was disallowed, or we reached the topmost legal block, then quit.
+			if (!bRecursive || blk->serial == iBlockStop) {
+				MSG_UF3(("[i] FindNumericDefBackwards(%d, %s) finished\n", blk->serial, op->dstr()));
+				return false;
+			}
+
+			// If there is more than one predecessor for this block, we don't know which one to follow, so stop.
+			if (blk->npred() != 1) {
+				MSG_UF3(("[i] FindNumericDefBackwards(%d, %s) fail, npred\n", blk->serial, op->dstr()));
+				return false;
+			}
+
+			// Recurse into sole predecessor block
+			int iPred = blk->pred(0);
+			blk = mba->get_mblock(iPred);
+
+			// If the predecessor has more than one successor, check to see whether the arguments allow that.
+			if (!bAllowMultiSuccs && blk->nsucc() != 1) {
+				MSG_UF3(("[i] FindNumericDefBackwards(%d, %s) fail, nsucc\n", blk->serial, op->dstr()));
+				return false;
+			}
+
+			// Resume the search at the end of the new block.
+			mStart = NULL;
 		} while (true);
 		MSG_UF1(("[E] FindNumericDefBackwards(%d, %s) fail, oops\n", blk->serial, op->dstr()));
 		return false;
@@ -2073,8 +2078,7 @@ bool unflattening(mbl_array_t *mba)
 
 	//unflattening may be called few times during decompilation
 	//do not check graylist on secondary calls
-	Log(llDebug, "%a: unflattening ufCurr: %a\n", mba->entry_ea, ufCurr);
-static uint32 reentryCnt;
+	static uint32 reentryCnt;
 	if(ufCurr == mba->entry_ea) {
 		if(++reentryCnt % 100 == 0) {
 			int answer = ask_yn(ASKBTN_YES, "[hrt] %a: unflattening looping %d!\nWait 100 more?", mba->entry_ea, reentryCnt);
@@ -2089,6 +2093,7 @@ static uint32 reentryCnt;
 		reentryCnt = 0;
 	}
 
+	Log(llDebug, "unflattening %a, ufCurr %a, reentryCnt %u\n", mba->entry_ea, ufCurr, reentryCnt);
 	bool changed = RemoveSingleGotos(mba);
 
 	if (mba->get_graph()->is_du_chain_dirty(GC_REGS_AND_STKVARS)) {
