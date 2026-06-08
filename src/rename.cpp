@@ -229,7 +229,9 @@ static bool getEaName(ea_t ea, qstring* name)
 	if (has_user_name(flg) || has_auto_name(flg)) {
 		qstring n;
 		get_ea_name(&n, ea);
-		if(!stristr(n.c_str(), VTBL_SUFFIX)) { // avoid renaming derived class vtbl to base one by the redundant assignment in ctor/dtor
+		if(!stristr(n.c_str(), VTBL_SUFFIX)  // avoid renaming derived class vtbl to base one by the redundant assignment in ctor/dtor
+			 || strncmp(n.c_str(), "??_7", 4)) // ignore MSVC vtables (mangled names starting with "??_7")
+		{
 			if (name) {
 				*name = n;
 				stripName(name, is_func(flg));
@@ -594,8 +596,8 @@ bool getExpName(cfunc_t *func, cexpr_t* exp, qstring* name, bool derefPtr /* =fa
 bool renameExp(ea_t refea, cfunc_t *func, cexpr_t* exp, qstring* name, vdui_t *vdui, bool derefPtr /*= false*/)
 {
 	exp = skipCast(exp);
-#if 0
-	if(derefPtr && exp->op == cot_ptr && isRenameble(exp->x->op) && exp->x->type.is_scalar() && !getExpName(func, exp->x, nullptr)) {
+#if 1
+	if(derefPtr && exp->op == cot_ptr && isRenameble(skipCast(exp->x)->op) && exp->x->type.is_scalar() && !getExpName(func, exp->x, nullptr)) {
 		name->insert(0,"p_");
 		return renameExp(refea, func, exp->x, name);
 	}

@@ -97,8 +97,8 @@ Messages, menu items, popup windows and dialog boxes belong to this plugin are m
   * [Create patched (DEC) file](doc/create_dec.md)
 
 ### IDA plugin developer help
-  * [Microcode Explorer](doc/mcode-expl.md)
-  * [Ctree graph](doc/ctree-graph.md)
+  * [~~Microcode Explorer~~](doc/mcode-expl.md)
+  * [~~Ctree graph~~](doc/ctree-graph.md)
 
 ## Media
 ### Reversing FinSpy
