@@ -137,9 +137,13 @@ ACT_DECL(decrypt_data, flags64_t flg; return ((ctx->widget_type != BWN_DISASM) ?
 ACT_DECL(do_appcall              , AST_ENABLE_FOR(is_appcallable(vu, NULL, NULL)))
 ACT_DECL(convert_gap             , AST_ENABLE_FOR(is_gap_field(vu)))
 ACT_DECL(inlines                 , AST_ENABLE_FOR(hasInlines(vu, NULL)))
-ACT_DECL(rename_inline           , AST_ENABLE_FOR(is_nlib_inline(vu)))
+ACT_DECL(rename_inline           , AST_ENABLE_FOR(is_inline(vu)))
 ACT_DECL(create_inline_gr        , return ((ctx->widget_type != BWN_DISASM) ? AST_DISABLE_FOR_WIDGET : ((get_view_renderer_type(ctx->widget) == TCCRT_GRAPH) ? AST_ENABLE : AST_DISABLE)))
+#if IDA_SDK_VERSION >= 930
+ACT_DECL(create_inline_sel       , return ((ctx->widget_type != BWN_PSEUDOCODE && ctx->widget_type != BWN_DISASM && ctx->widget_type != BWN_MICROCODE) ?  AST_DISABLE_FOR_WIDGET : (ctx->has_flag(ACF_HAS_SELECTION) ?  AST_ENABLE : AST_DISABLE)))
+#else
 ACT_DECL(create_inline_sel       , return ((ctx->widget_type != BWN_PSEUDOCODE && ctx->widget_type != BWN_DISASM) ?  AST_DISABLE_FOR_WIDGET : (ctx->has_flag(ACF_HAS_SELECTION) ?  AST_ENABLE : AST_DISABLE)))
+#endif //IDA_SDK_VERSION >= 930
 ACT_DECL(unflat                  , AST_ENABLE_FOR(ufIsInGL(vu->cfunc->entry_ea) || ufIsInWL(vu->cfunc->entry_ea)))
 #if IDA_SDK_VERSION >= 750
 ACT_DECL(mavx                    , AST_ENABLE_FOR(isMicroAvx_avail()))
@@ -281,7 +285,7 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 	bool bEnabled;
 	if (hasInlines(vu, &bEnabled)) {
 		if (bEnabled) {
-			if(is_nlib_inline(vu))
+			if(is_inline(vu))
 				attach_action_to_popup(view, p, ACT_NAME(rename_inline));
 			update_action_checked(ACT_NAME(inlines), true);
 		} else {
@@ -2660,9 +2664,7 @@ ACT_DEF(inlines)
 
 ACT_DEF(rename_inline)
 {
-	vdui_t *vu = get_widget_vdui(ctx->widget);
-	if (ren_inline(vu))
-		vu->cfunc->refresh_func_ctext();
+	ren_inline(get_widget_vdui(ctx->widget));
 	return 0;
 }
 
@@ -2779,32 +2781,55 @@ ACT_DEF(create_inline_sel)
 		return 0;
 
 	if (ctx->widget_type == BWN_DISASM) {
-		mba_ranges_t mbr;
-		mbr.ranges.push_back(range_t(eaBgn, eaEnd));
-		hexrays_failure_t hf;
-		qstring err;
-		XXable_inlines(eaBgn, true);
-		mbl_array_t *mba = gen_microcode(mbr, &hf, NULL, DECOMP_NO_WAIT | DECOMP_NO_FRAME /*| DECOMP_NO_CACHE*/, DEINLINE_MATURITY);
-		XXable_inlines(eaBgn, false);
-		if (mba && hf.code == MERR_OK) {
-			qstring name;
-			name.cat_sprnt("inline_%a_%a", eaBgn, eaEnd);
-			if (inl_create_from_whole_mba(mba, name.c_str(), &err)) {
-				unmark_selection();
+			mba_ranges_t mbr;
+			mbr.ranges.push_back(range_t(eaBgn, eaEnd));
+			hexrays_failure_t hf;
+			qstring err;
+			XXable_inlines(eaBgn, true);
+			mbl_array_t* mba = gen_microcode(mbr, &hf, NULL, DECOMP_NO_WAIT | DECOMP_NO_FRAME /*| DECOMP_NO_CACHE*/, DEINLINE_MATURITY);
+			//TODO: remove assertions, then mba->merge_blocks();
+			XXable_inlines(eaBgn, false);
+			if (mba && hf.code == MERR_OK) {
+				qstring name;
+				name.cat_sprnt("inline_%a_%a", eaBgn, eaEnd);
+				if (inl_create_from_whole_mba(mba, name.c_str(), &err)) {
+					unmark_selection();
+				}
+			} else {
+				err.sprnt("gen_microcode error %d: %s\n", hf.code, hf.desc().c_str());
 			}
-		} else {
-			err.sprnt("gen_microcode error %d: %s\n", hf.code, hf.desc().c_str());
-		}
-		delete mba;
-		if (err.length())
-			warning("[hrt] %s\n", err.c_str());
+			delete mba;
+			if (err.length())
+				warning("[hrt] %s\n", err.c_str());
+			return 0;
+	}
+
+#if IDA_SDK_VERSION >= 930
+	if(ctx->widget_type == BWN_MICROCODE) {
+		func_t* func = get_func(eaBgn);
+		if (!func)
+			return 0;
+		const char format[] =
+			"[hrt] Create Inline\n\n"
+			"Please align these addresses to basic block\n"
+			"or top level microinstructions boundaries\n"
+			"<~F~rom:$:32:32::>\n"
+			"<#Last address is not included in the range#~T~o  :$:32:32::>\n"
+			"\n\n";
+		if (!ask_form(format, &eaBgn, &eaEnd))
+			return 0;
+		selection2inline(eaBgn, eaEnd);
+		XXable_inlines(func->start_ea, false);
+		mark_cfunc_dirty(func->start_ea);
+		COMPAT_open_pseudocode_REUSE(func->start_ea);
 		return 0;
 	}
+#endif //IDA_SDK_VERSION >= 930
 
 	QASSERT(100204, ctx->widget_type == BWN_PSEUDOCODE);
 	vdui_t *vu = get_widget_vdui(ctx->widget);
-
-	//align eaBgn/eaEnd to blocks boundaries
+#if 0
+	//TODO align eaBgn/eaEnd to blocks or minsn boundaries
 	Log(llDebug, "%a-%a: range selected for inline\n", eaBgn, eaEnd);
 	qflow_chart_t fc;
 	fc.create("tmpfc", ctx->cur_func, ctx->cur_func->start_ea, ctx->cur_func->end_ea, 0);
@@ -2817,7 +2842,7 @@ ACT_DEF(create_inline_sel)
 			eaEnd = blk->start_ea;
 	}
 	Log(llDebug, "%a-%a: inline applicant aligned to basic block boundaries\n", eaBgn, eaEnd);
-
+#endif
 	selection2inline(eaBgn, eaEnd);
 	XXable_inlines(vu->cfunc->entry_ea, false);
 	vu->refresh_view(true);
@@ -5297,6 +5322,11 @@ MY_DECLARE_LISTENER(ui_callback)
 		case BWN_TITREE:
 			attach_action_to_popup(widget, p, ACT_NAME(import_unf_types), "Export to header file", SETMENU_INS);
 			break;
+#if IDA_SDK_VERSION >= 930
+		case BWN_MICROCODE:
+			attach_action_to_popup(widget, p, ACT_NAME(create_inline_sel));
+			break;
+#endif //IDA_SDK_VERSION >= 930
 		case BWN_DISASM:
 			attach_action_to_popup(widget, p, ACT_NAME(decrypt_data));
 			attach_action_to_popup(widget, p, ACT_NAME(add_VT_struct));
@@ -5816,7 +5846,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.8.100";
+	addon.version = "3.9.101";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

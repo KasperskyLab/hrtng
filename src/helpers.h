@@ -111,6 +111,9 @@
 #if IDA_SDK_VERSION < 760
 	inline ssize_t idaapi get_ida_notepad_text(qstring *buf) { return root_node.supstr(buf, RIDX_NOTEPAD); }
 	inline void idaapi set_ida_notepad_text(const char *text, size_t size=0) { root_node.supset(RIDX_NOTEPAD, text); }
+	inline void chain_append_list(const chain_t& ch, const mbl_array_t* mba, mlist_t *list) { ch.append_list(list); }
+#else
+	inline void chain_append_list(const chain_t& ch, const mbl_array_t* mba, mlist_t *list) { ch.append_list(mba, list); }
 #endif //IDA_SDK_VERSION < 760
 
 #if IDA_SDK_VERSION < 750

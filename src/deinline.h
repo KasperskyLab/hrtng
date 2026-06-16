@@ -22,8 +22,8 @@ bool deinline(mbl_array_t *mba);
 void deinline_reset(ea_t entry_ea);
 void deinline_reset(vdui_t *vu, bool closeWnd);
 bool hasInlines(vdui_t *vu, bool* bEnabled);
-bool is_nlib_inline(vdui_t *vu);
-bool ren_inline(vdui_t *vu);
+bool is_inline(vdui_t *vu);
+void ren_inline(vdui_t *vu);
 void XXable_inlines(ea_t entry_ea, bool bDisable);
 int  deinline_hint(vdui_t *vu, qstring *result_hint, int *implines);
 bool inl_create_from_whole_mba(mbl_array_t *mba, const char* name, qstring* errorStr);
@@ -36,4 +36,4 @@ void deinline_done();
 //set the same maturity used in gen_microcode and in deinline(mba) call at hxe_glbopt -- MMAT_GLBOPT1, MMAT_GLBOPT2.
 //Care about code may be thrown away by optimization as not used outside snippet
 #define DEINLINE_MATURITY MMAT_GLBOPT2
-#define MIN_LEN_OF_1_BLOCK_INLINE 8
+#define MIN_LEN_OF_1_BLOCK_INLINE 3
