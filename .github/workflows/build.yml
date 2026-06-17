@@ -29,7 +29,7 @@ jobs:
           - runner: ubuntu-latest
             name: linux
             mask: "*.so"
-          - runner: windows-latest
+          - runner: windows-2022
             name: windows
             mask: "Release/*.dll"
           - runner: macos-latest
@@ -54,7 +54,6 @@ jobs:
         uses: TheMrMilchmann/setup-msvc-dev@v4
         with:
           arch: x64
-          toolset: 14.0
 
       - name: Checkout
         uses: actions/checkout@v5
