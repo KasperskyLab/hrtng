@@ -54,6 +54,7 @@ jobs:
         uses: TheMrMilchmann/setup-msvc-dev@v4
         with:
           arch: x64
+          toolset: 14.0
 
       - name: Checkout
         uses: actions/checkout@v5
