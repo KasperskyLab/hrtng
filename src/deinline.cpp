@@ -1540,10 +1540,11 @@ bool inlReplace(mbl_array_t* mba, const sInline* inl, ea_t headEa, const path_t&
 	jmp->l._make_blkref(exitb->serial);
 	headb->insert_into_block(jmp, headb->tail);
 
-	//detach nodes of path (except head)
-	auto node = path.begin();
-	for (node++; node != path.end(); node++) {
-		mblock_t* blk = mba->natural[(*node)->idx];
+	//detach nodes of path (except head and exit)
+	for (auto node : path) {
+		mblock_t* blk = mba->natural[node->idx];
+		if(blk == headb || blk == exitb)
+			continue;
 		blk->succset.clear();
 		blk->predset.clear();
 		blk->type = BLT_NONE;

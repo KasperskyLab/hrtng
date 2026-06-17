@@ -49,11 +49,11 @@ jobs:
         if: matrix.os.name == 'windows'
         uses: microsoft/setup-msbuild@v3
 
-      - name: Setup Visual Studio 2022
+      - name: Setup Visual Studio
         if: matrix.os.name == 'windows'
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: TheMrMilchmann/setup-msvc-dev@v4
         with:
-          vsversion: 2022
+          arch: x64
 
       - name: Checkout
         uses: actions/checkout@v5
