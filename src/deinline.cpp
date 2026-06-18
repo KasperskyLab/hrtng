@@ -428,7 +428,7 @@ struct ida_local sBB {
 		}
 		bool res = (mi == nullptr && matched != nullptr);
 		if (res && last)
-			*last = getf_reginsn(matched->next);
+			*last = matched;
 		return res;
 	}
 	// `this` sBB is pattern, `bb` is compared alive block
@@ -449,9 +449,11 @@ struct ida_local sBB {
 			other = getf_reginsn(other->next);
 		}
 		bool res = (mi == nullptr && firstmatch != nullptr && lastmatch != nullptr);
-		if (res && first && last) {
-			*first = firstmatch;
-			*last = getf_reginsn(lastmatch->next);
+		if(res) {
+			if(first)
+				*first = firstmatch;
+			if(last)
+				*last = lastmatch;
 		}
 		return res;
 	}
@@ -681,10 +683,12 @@ public:
 			errorStr->sprnt("Single block inline applicant at %a has %d microcode instructions, should be at least %d",
 				front()->bgn, front()->instCnt, MIN_LEN_OF_1_BLOCK_INLINE);
 			return false;
-			// do not check single block path for entries/exits
-			if(front()->kind == eBBK_single)
-				return true;
 		}
+
+		// do not check single block path for entries/exits
+		if(front()->kind == eBBK_single)
+			return true;
+
 		// check path has no other entries from outside except head
 		if (size() > 1) {
 			auto pi = begin(); pi++;
@@ -802,7 +806,7 @@ public:
 					if(mi->ea == head_ea) {
 						mhead = mi;
 						head = bb;
-						MSG_DI2(("[hrt] create_from_entry_exit found mi-head %a\n", head->bgn));
+						MSG_DI2(("[hrt] create_from_entry_exit found mi-head %a in blk %d\n", mhead->ea, head->idx));
 						break;
 					}
 			}
@@ -810,10 +814,13 @@ public:
 				//look if exit inside of the block
 				for(minsn_t* mi = getf_reginsn(bb->minsnlst); mi != nullptr; mi = getf_reginsn(mi->next))
 					if(mi->ea == exit_ea) {
-						if(mi != getf_reginsn(bb->minsnlst))
+						if(mi != getf_reginsn(bb->minsnlst)) {
 							mexit = mi;
+							MSG_DI2(("[hrt] create_from_entry_exit found mi-exit %a in blk %d\n", mexit->ea, bb->idx));
+						} else {
+							MSG_DI2(("[hrt] create_from_entry_exit found unaligned mi-exit %a in blk %d\n", mi->ea, bb->idx));
+						}
 						exit = bb;
-						MSG_DI2(("[hrt] create_from_entry_exit found mi-exit %a\n", exit->bgn));
 						break;
 					}
 			}
@@ -829,7 +836,6 @@ public:
 		qstring errorStr;
 		sBB* newhead = nullptr;
 		sBB* newexit = nullptr;
-		bool res = false;
 		if(head == exit && mhead && mexit) {
 			head = head->convert(eBBK_single, mhead, mexit, &errorStr);
 			newhead = head;
@@ -849,18 +855,21 @@ public:
 			serialize(buf);
 			clear();
 			const uchar* ptr = &buf[0];
-			res = deserialize(&ptr, &buf[buf.size()]);
-		}	else {
-			Log(llError, "Inline applicant %a-%a error:%s\n", head_ea, exit_ea, errorStr.c_str());
+			if(!deserialize(&ptr, &buf[buf.size()]))
+				errorStr = "deserialize";
 		}
 		if (newhead)
 			delete newhead;
 		if (newexit)
 			delete newexit;
-		return res;
+		if(errorStr.empty())
+			return true;
+		Log(llError, "Inline applicant %a-%a error:%s\n", head_ea, exit_ea, errorStr.c_str());
+		return false;
 	}
-	void make_matched(paths_t &grp, const bbs_t &src) const
+	void make_matched(const char* name, paths_t &grp, const bbs_t &src) const
 	{
+		MSG_DI2(("[hrt] make_matched %s\n", name));
 		sBB* head1 = front();
 		minsn_t* firstInsn = nullptr;
 		for(auto hi = src.getNextMatched(head1, src.begin(), &firstInsn); hi != src.end(); hi = src.getNextMatched(head1, ++hi, &firstInsn)) {
@@ -874,18 +883,12 @@ public:
 			path_t path2;
 			path2.push_back(head2);
 			if (head1->kind == eBBK_single) {
-				MSG_DI2(("[hrt] single node path: %a\n", head2->bgn));
+				MSG_DI2(("[hrt] single node path '%s': %a\n", name, head2->bgn));
 				path2.exit = head2;
-				qstring errstr;
-				if (path2.validate(&errstr)) {
-					path2.print("matched path");
-					grp[pathEa] = path2;
-				} else {
-					MSG_DI1(("[hrt] %s\n", errstr.c_str()));
-				}
+				grp[pathEa] = path2;
 				continue;
 			}
-			MSG_DI2(("[hrt] start make path from: %a\n", head2->bgn));
+			MSG_DI2(("[hrt] start make path '%s' from: %a\n", name, head2->bgn));
 			bbs_t matched1;
 			bbs_t visited2;
 			pathsStk_t queue;
@@ -954,7 +957,8 @@ public:
 			bb->serialize(b);
 		exit->serialize(b, true);
 		for (auto bb : *this)
-			bb->succs.serialize(b);
+			if(bb->idx != exit->idx)  // skip successors for exit and single blocks
+				bb->succs.serialize(b);
 	}
 	bool deserialize(const uchar **ptr, const uchar *end_)
 	{
@@ -977,6 +981,8 @@ public:
 		exit = exi;
 
 		for (auto bb : *this) {
+			if (bb->idx == exit->idx)  // no successors for exit and single blocks
+				continue;
 			if(!bb->succs.deserialize(allBlocks, ptr, end_))
 				return false;
 		}
@@ -1257,6 +1263,16 @@ bool sInline::create_from_whole_mba(mbl_array_t *mba, const char* name_, qstring
 	return true;
 }
 
+int mreg2regWchk(mreg_t mreg, int width)
+{
+	int reg = mreg2reg(mreg, width);
+	if (reg == -1 || (width == PH.segreg_size && (PH.reg_first_sreg <= reg && reg <= PH.reg_last_sreg))) {// || (reg == ph.reg_code_sreg || reg == ph.reg_data_sreg)))
+		MSG_DI2(("[hrt] ignore bad and segment register %d\n", reg));
+		return -1;
+	}
+	return reg;
+}
+
 bool inlReplace(mbl_array_t* mba, const sInline* inl, ea_t headEa, const path_t& path, mblockset_t& removeBlocks)
 {
 	//---------------------------------------------------------------------------
@@ -1298,11 +1314,11 @@ bool inlReplace(mbl_array_t* mba, const sInline* inl, ea_t headEa, const path_t&
 	mlist_t edefs;
 	int eud = -1; // index of exit block is only set in case eBBK_tail
 	if(iexit->kind == eBBK_tail) {
-		if(!iexit->match(exit, nullptr, &exitlast)) {
+		if(!iexit->match(exit, nullptr, &exitlast) || !exitlast) {
 			Log(llError, " %a: inlReplace mismatch tail\n", headEa);
 			return false;
 		}
-		for(const minsn_t *insn = exitb->head; insn && insn != exitlast; insn = insn->next) {
+		for(const minsn_t *insn = exitb->head; insn && insn != exitlast->next; insn = insn->next) {
 			mlist_t use = headb->build_use_list(*insn, MUST_ACCESS);
 			mlist_t def = headb->build_def_list(*insn, MUST_ACCESS);
 			edefs.add(def);
@@ -1321,7 +1337,6 @@ bool inlReplace(mbl_array_t* mba, const sInline* inl, ea_t headEa, const path_t&
 	//mlist_t spoiled;//collect defines inside "inline" spoils registers
 	mcallinfo_t ci;
 	bool bHave1Ret = false;
-
 	{
 		mbl_graph_t* graph = mba->get_graph();
 		chain_keeper_t ud = graph->get_ud(GC_REGS_AND_STKVARS);
@@ -1371,14 +1386,12 @@ bool inlReplace(mbl_array_t* mba, const sInline* inl, ea_t headEa, const path_t&
 						break;
 					}
 					if (ch.is_reg()) {
-						int reg = mreg2reg(ch.get_reg(), ch.width);
-						if (reg == -1 || (ch.width == PH.segreg_size && (PH.reg_first_sreg <= reg && reg <= PH.reg_last_sreg))) {// || (reg == ph.reg_code_sreg || reg == ph.reg_data_sreg)))
-							MSG_DI2(("[hrt] ignore bad and segment register %d\n", reg));
+						int reg = mreg2regWchk(ch.get_reg(), ch.width);
+						if (reg == -1)
 							break;
-						}
 						a.argloc.set_reg1(reg);
 					} else if (ch.is_stkoff()) {
-						a.argloc.set_stkoff(ch.get_stkoff());
+						a.argloc.set_stkoff(ch.get_stkoff()); //is here IDA or decompiler stkoff?
 					} else {
 						MSG_DI2(("[hrt]  unk chain!!!\n"));
 						break;
@@ -1422,8 +1435,8 @@ bool inlReplace(mbl_array_t* mba, const sInline* inl, ea_t headEa, const path_t&
 					chain_append_list(ch, mba, &defs);
 					MSG_DI2(("[hrt]  %a: %3d defs ext-%d use %s\n", b->start, b->serial, tmp.idx, ch.dstr()));;
 					if (!bHave1Ret && ch.is_reg()) {
-						int reg = mreg2reg(ch.get_reg(), ch.width);
-						if (reg == -1 || (ch.width == PH.segreg_size && (PH.reg_first_sreg <= reg && reg <= PH.reg_last_sreg)))// || (reg == PH.reg_code_sreg || reg == PH.reg_data_sreg)))
+						int reg = mreg2regWchk(ch.get_reg(), ch.width);
+						if (reg == -1)
 							break; // ignore bad and segment registers
 						ci.return_type = get_unk_type(ch.width);
 						if (ci.return_type.empty()) {
@@ -1443,6 +1456,76 @@ bool inlReplace(mbl_array_t* mba, const sInline* inl, ea_t headEa, const path_t&
 			//spoiled.add(b->mustbdef);
 		} // path nodes loop
 	}
+
+	//---------------------------------------------------------------------------
+	// huses may get smth is defined inside head block above hfirst, not in ud chain
+	// add it to arguments too
+	huses.sub(uses); // remove already found
+	uses.add(huses); // add not found
+	minsn_t* hlastNext = hlast;
+	if (hlastNext)
+		hlastNext = hlastNext->next;
+	while(!huses.empty()) {
+		MSG_DI2(("[hrt] huses left: %s\n", huses.dstr()));
+		struct mlist2mop_t : public mlist_mop_visitor_t
+		{
+			mop_t* mop = nullptr;
+			int idaapi visit_mop(mop_t* op) {
+				if (op->is_reg() || op->t == mop_S) {
+					mop = op;
+					return 1;
+				}
+				return 0;
+			}
+		};
+		mlist2mop_t mlist2mop;
+		if (!headb->for_all_uses(&huses, hfirst, hlastNext, mlist2mop) || !mlist2mop.mop) {
+			MSG_DI2(("[hrt] !for_all_uses: %s \n", huses.dstr()));
+			break;
+		}
+		mlist_t mopl;
+		headb->append_use_list(&mopl, *mlist2mop.mop, MUST_ACCESS);
+
+		mcallarg_t a;
+		if (!a.create_from_mlist(mba, mopl, mba->fullsize)) {
+			MSG_DI2(("[hrt] !a.create_from_mlist: %s  %x\n", mopl.dstr()));
+			break;
+		}
+		a.type = get_unk_type(mlist2mop.mop->size);
+		if (a.type.empty()) {
+			MSG_DI2(("[hrt] !get_unk_type: %x\n", mlist2mop.mop->size));
+			break;
+		}
+		if (mlist2mop.mop->is_reg()) {
+			int reg = mreg2regWchk(mlist2mop.mop->r, mlist2mop.mop->size);
+			if (reg == -1)
+				break;
+			a.argloc.set_reg1(reg);
+		} else if (mlist2mop.mop->t == mop_S) {
+			sval_t vdoff;
+			if(!mlist2mop.mop->get_stkoff(&vdoff)) {
+				MSG_DI2(("[hrt] !get_stkoff: %s\n", mlist2mop.mop->dstr()));
+				break;
+			}
+			a.argloc.set_stkoff(vdoff);//is here IDA or decompiler stkoff?
+		} else {
+			MSG_DI2(("[hrt]  unk mop!!!\n"));
+			break;
+		}
+		if (ci.args.add_unique(a)) {
+			MSG_DI2(("[hrt]   add arg: %s\n", a.dstr()));
+		}
+		huses.sub(mopl);
+	}
+	//---------------------------------------------------------------------------
+	// TODO
+	// hdefs of single block may be used inside head block below hlast, but not exist in du chain
+	// also
+	// edefs of exit block may be used inside exit block below exitlast, but not exist in du chain
+	// add it to returns too
+
+	//---------------------------------------------------------------------------
+
 	ci.cc = CM_CC_SPECIAL;
 	ci.solid_args = (int)ci.args.size();
 	ci.spoiled.add(defs); //spoiled);
@@ -1483,7 +1566,7 @@ bool inlReplace(mbl_array_t* mba, const sInline* inl, ea_t headEa, const path_t&
 	//destroy old headb microcode
 	minsn_t* prev = hfirst->prev;
 	minsn_t* ins = hfirst;
-	while (ins && ins != hlast) {
+	while (ins && ins != hlastNext) {
 		MSG_DI2(("[hrt] %a: delete %s in blk %d\n", ins->ea, ins->dstr(), headb->serial));
 		minsn_t* next = headb->remove_from_block(ins);
 		delete ins;
@@ -1500,7 +1583,7 @@ bool inlReplace(mbl_array_t* mba, const sInline* inl, ea_t headEa, const path_t&
 	//destroy old exitb microcode
 	if (exitlast) {
 		minsn_t* ins = exitb->head;
-		while (ins != exitlast) {
+		while (ins != exitlast->next) {
 			minsn_t* next = ins->next;
 			MSG_DI2(("[hrt] %a: delete %s in blk %d\n", ins->ea, ins->dstr(), exitb->serial));
 			exitb->remove_from_block(ins);
@@ -1584,7 +1667,7 @@ struct ida_local sBBGrpMatcher {
 	{
 		for(auto il : inlinesLib) {
 			paths_t grp;
-			il->path.make_matched(grp, allBBs);
+			il->path.make_matched(il->name.c_str(), grp, allBBs);
 			if(grp.size()) {
 				if(il->bTmp) {
 					il->bTmp = false; //unmark temporary inlines
