@@ -804,9 +804,13 @@ public:
 				//look if head inside of the block
 				for(minsn_t* mi = getf_reginsn(bb->minsnlst); mi != nullptr; mi = getf_reginsn(mi->next))
 					if(mi->ea == head_ea) {
-						mhead = mi;
+						if (mi != getf_reginsn(bb->minsnlst)) {
+							mhead = mi;
+							MSG_DI2(("[hrt] create_from_entry_exit found mi-head %a in blk %d\n", mhead->ea, bb->idx));
+						}	else {
+							MSG_DI2(("[hrt] create_from_entry_exit found unaligned mi-head %a in blk %d\n", mhead->ea, bb->idx));
+						}
 						head = bb;
-						MSG_DI2(("[hrt] create_from_entry_exit found mi-head %a in blk %d\n", mhead->ea, head->idx));
 						break;
 					}
 			}
@@ -1273,6 +1277,18 @@ int mreg2regWchk(mreg_t mreg, int width)
 	return reg;
 }
 
+struct ida_local mlist2mop_t : public mlist_mop_visitor_t
+{
+	mop_t* mop = nullptr;
+	int idaapi visit_mop(mop_t* op) {
+		if (op->is_reg() || op->t == mop_S) {
+			mop = op;
+			return 1;
+		}
+		return 0;
+	}
+};
+
 bool inlReplace(mbl_array_t* mba, const sInline* inl, ea_t headEa, const path_t& path, mblockset_t& removeBlocks)
 {
 	//---------------------------------------------------------------------------
@@ -1467,17 +1483,6 @@ bool inlReplace(mbl_array_t* mba, const sInline* inl, ea_t headEa, const path_t&
 		hlastNext = hlastNext->next;
 	while(!huses.empty()) {
 		MSG_DI2(("[hrt] huses left: %s\n", huses.dstr()));
-		struct mlist2mop_t : public mlist_mop_visitor_t
-		{
-			mop_t* mop = nullptr;
-			int idaapi visit_mop(mop_t* op) {
-				if (op->is_reg() || op->t == mop_S) {
-					mop = op;
-					return 1;
-				}
-				return 0;
-			}
-		};
 		mlist2mop_t mlist2mop;
 		if (!headb->for_all_uses(&huses, hfirst, hlastNext, mlist2mop) || !mlist2mop.mop) {
 			MSG_DI2(("[hrt] !for_all_uses: %s \n", huses.dstr()));
@@ -1517,20 +1522,63 @@ bool inlReplace(mbl_array_t* mba, const sInline* inl, ea_t headEa, const path_t&
 		}
 		huses.sub(mopl);
 	}
+
 	//---------------------------------------------------------------------------
-	// TODO
-	// hdefs of single block may be used inside head block below hlast, but not exist in du chain
+	// hdefs of single block may be used inside of the block below hlast, but not exist in du chain
 	// also
-	// edefs of exit block may be used inside exit block below exitlast, but not exist in du chain
+	// edefs of tail block may be used inside of the block below exitlast, but not exist in du chain
 	// add it to returns too
+	if(!bHave1Ret && (iexit->kind == eBBK_tail || ihead->kind == eBBK_single)) {
+		edefs.add(hdefs); // mix all together
+		edefs.sub(defs);  // remove already found
+		defs.add(edefs);
+		mblock_t* blk = headb;
+		minsn_t* first = hlast;
+		if(iexit->kind == eBBK_tail) {
+			blk = exitb;
+			first = exitlast;
+		}
+		if(first && first->next) {
+			first = first->next;
+			//check if tail micro inctructions of the block use any of edefs
+			while(!edefs.empty()) {
+				MSG_DI2(("[hrt] edefs left: %s\n", edefs.dstr()));
+				mlist2mop_t mlist2mop;
+				if (!blk->for_all_uses(&edefs, first, nullptr, mlist2mop) || !mlist2mop.mop) {
+					MSG_DI2(("[hrt] !for_all_uses: %s \n", edefs.dstr()));
+					break;
+				}
+				mlist_t mopl;
+				blk->append_def_list(&mopl, *mlist2mop.mop, MUST_ACCESS);
+				if (mlist2mop.mop->is_reg()) {
+					int reg = mreg2regWchk(mlist2mop.mop->r, mlist2mop.mop->size);
+					if (reg == -1)
+						break; // ignore bad and segment registers
+					ci.return_type = get_unk_type(mlist2mop.mop->size);
+					if (ci.return_type.empty()) {
+						MSG_DI2(("[hrt] !get_unk_type: %x\n", mlist2mop.mop->size));
+						break;
+					}
+					retregs.add(mopl);
+					mop_t& rr = ci.retregs.push_back();
+					rr.create_from_mlist(mba, mopl, mba->fullsize);
+					ci.return_argloc.set_reg1(reg);
+					bHave1Ret = true;
+					MSG_DI2(("[hrt]   add return: %s\n", rr.dstr()));
+					break;
+				}
+				edefs.sub(mopl);
+			}
+		}
+	}
 
 	//---------------------------------------------------------------------------
 
 	ci.cc = CM_CC_SPECIAL;
 	ci.solid_args = (int)ci.args.size();
-	ci.spoiled.add(defs); //spoiled);
-	ci.dead_regs.add(defs);
-	ci.return_regs.add(defs);
+	ci.spoiled.add(defs.reg); //spoiled);
+	ci.dead_regs.add(defs.reg);
+	ci.return_regs.add(defs.reg);
 	if(!bHave1Ret)
 		ci.return_type.create_simple_type(BTF_VOID);
 	else

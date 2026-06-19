@@ -2828,21 +2828,42 @@ ACT_DEF(create_inline_sel)
 
 	QASSERT(100204, ctx->widget_type == BWN_PSEUDOCODE);
 	vdui_t *vu = get_widget_vdui(ctx->widget);
-#if 0
-	//TODO align eaBgn/eaEnd to blocks or minsn boundaries
-	Log(llDebug, "%a-%a: range selected for inline\n", eaBgn, eaEnd);
-	qflow_chart_t fc;
-	fc.create("tmpfc", ctx->cur_func, ctx->cur_func->start_ea, ctx->cur_func->end_ea, 0);
-	for (int n = 0; n < fc.size(); n++) {
-		const qbasic_block_t* blk = &fc.blocks[n];
-		Log(llDebug, "   %d: %a-%a\n", n, blk->start_ea, blk->end_ea);
-		if (blk->start_ea <= eaBgn && eaBgn < blk->end_ea)
-			eaBgn = blk->start_ea;
-		else if (blk->start_ea < eaEnd && eaEnd < blk->end_ea)
-			eaEnd = blk->start_ea;
-	}
-	Log(llDebug, "%a-%a: inline applicant aligned to basic block boundaries\n", eaBgn, eaEnd);
-#endif
+	if (!vu || !vu->mba)
+		return 0; //vu->refresh_view(true);
+
+	//align eaBgn/eaEnd to top minsn boundaries
+	struct ida_local align_selection_t : public minsn_visitor_t
+	{
+		ea_t& eaBgn;
+		ea_t& eaEnd;
+		bool bgnFound = false;
+		bool endFound = false;
+		virtual int idaapi visit_minsn(void) override
+		{
+			if (!bgnFound && (curins->ea == eaBgn ||
+				(((curins->prev && curins->prev->ea < eaBgn) || (!curins->prev && blk->start <= eaBgn))
+					&&
+					((curins->next && curins->next->ea > eaBgn) || (!curins->next && blk->end > eaBgn)))))
+			{
+				eaBgn = curins->ea;
+				bgnFound = true;
+			}
+			if (!endFound && (curins->ea == eaEnd ||
+				(((curins->prev && curins->prev->ea < eaEnd) || (!curins->prev && blk->start <= eaEnd))
+					&&
+					((curins->next && curins->next->ea > eaEnd) || (!curins->next && blk->end > eaEnd)))))
+			{
+				eaEnd = curins->ea;
+				endFound = true;
+			}
+			return bgnFound && endFound; // stop when both found
+		}
+		align_selection_t(ea_t& bgn, ea_t& end) : eaBgn(bgn), eaEnd(end) {}
+	};
+	align_selection_t align_selection(eaBgn, eaEnd);
+	vu->mba->for_all_topinsns(align_selection);
+	Log(llDebug, "inline applicant aligned to %a-%a\n", eaBgn, eaEnd);
+
 	selection2inline(eaBgn, eaEnd);
 	XXable_inlines(vu->cfunc->entry_ea, false);
 	vu->refresh_view(true);
@@ -5846,7 +5867,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.9.103";
+	addon.version = "3.9.104";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {
