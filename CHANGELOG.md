@@ -5,6 +5,7 @@
 - deinline new modes:
 	* split head and exit blocks (#45);
 	* very short inlines are cut from inside a single block (#54)
+	* inlines loading from work-folder too
 	* keep compatibility with earlier inlines library
 - Force update hex-rays's global xrefs cache on "Create MSIG file" in "All user named functions" mode, this reduces re-decompilation time when you need "Global xrefs" update;
 

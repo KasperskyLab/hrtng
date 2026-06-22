@@ -1160,7 +1160,7 @@ struct ida_local sInlinesLib : std::set<sInline*, lessInline>
 		if(cnt)
 			Log(llNotice, "%d inlines saved\n", cnt);
 	}
-	static void loadInlines(const char *dir, sInlinesLib* il)
+	static void loadInlines(const char *dir, sInlinesLib* il, bool subDirs2name)
 	{
 		qstring fname = dir;
 		fname.append("/*");
@@ -1172,7 +1172,7 @@ struct ida_local sInlinesLib : std::set<sInline*, lessInline>
 			fname.append(blk.ff_name);
 			if (0 != (blk.ff_attrib & FA_DIREC)) {
 				if(blk.ff_name[0] != '.')
-					loadInlines(fname.c_str(), il);
+					loadInlines(fname.c_str(), il, subDirs2name);
 			} else {
 				const char *ext = get_file_ext(fname.c_str());
 				if(!ext || qstrcmp(ext, "inl"))
@@ -1187,9 +1187,14 @@ struct ida_local sInlinesLib : std::set<sInline*, lessInline>
 					qfclose(fd);
 
 					qstring inlName = fname.c_str();
-					inlName.remove(0, getBasePath().length() + 1);
-					inlName.remove_last(4);
-					inlName.replace("/", ".");
+					if(subDirs2name) {
+						inlName.remove(0, getBasePath().length() + 1);
+						inlName.remove_last(4);
+						inlName.replace("/", ".");
+					} else {
+						inlName = qbasename(fname.c_str());
+						inlName.remove_last(4);
+					}
 
 					sInline* inlin = new sInline(inlName.c_str());
 					const uchar* ptr = &buf[0];
@@ -1208,9 +1213,16 @@ struct ida_local sInlinesLib : std::set<sInline*, lessInline>
 	void load()
 	{
 		qstring	basePath = getBasePath();
-		loadInlines(basePath.c_str(), this);
-		if(size())
-			Log(llNotice, "%d inlines are loaded\n", (int)size());
+		loadInlines(basePath.c_str(), this, true);
+		size_t loaded = size();
+		if(loaded)
+			Log(llNotice, "%d inlines are loaded from %s\n", (int)size(), basePath.c_str());
+		char dir[QMAXPATH];
+		if(qdirname(dir, QMAXPATH, get_path(PATH_TYPE_IDB))) {
+			loadInlines(dir, this, false);
+			if(size() > loaded)
+				Log(llNotice, "%d inlines are loaded from %s\n", (int)size() - loaded, dir);
+		}
 	}
 };
 
