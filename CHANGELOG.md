@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 ### Added
+### Changed
+### Removed
+### Fixed
+
+## 3.9.105 - 2026-06-25
+### Added
 - deinline new modes:
 	* split head and exit blocks (#45);
 	* very short inlines are cut from inside a single block (#54)
