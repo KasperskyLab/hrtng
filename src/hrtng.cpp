@@ -79,7 +79,7 @@ hexdsp_t *hexdsp = NULL;
 #endif //IDA_SDK_VERSION < 760
 
 bool set_var_type(vdui_t *vu, lvar_t *lv, tinfo_t *ts);
-bool is_arg_var(vdui_t *vu, lvar_t **var = nullptr);
+bool is_arg_var_decl(vdui_t *vu, lvar_t **var = nullptr);
 bool is_call(vdui_t *vu, cexpr_t **call = nullptr, bool argsDeep = false);
 bool is_recastable(vdui_t *vu, tinfo_t *ts = nullptr, cexpr_t **call = nullptr);
 bool is_stack_var_assign(vdui_t *vu, int* varIdx, ea_t *ea, sval_t* size);
@@ -153,7 +153,7 @@ ACT_DECL(clear_if42blocks        , AST_ENABLE_FOR(has_if42blocks(vu->cfunc->entr
 ACT_DECL(rename_func             , AST_ENABLE_FOR_PC)
 #if IDA_SDK_VERSION < 750
 ACT_DECL(remove_rettype      , AST_ENABLE_FOR(vu->item.citype == VDI_FUNC))
-ACT_DECL(remove_argument     , AST_ENABLE_FOR(is_arg_var(vu)))
+ACT_DECL(remove_argument     , AST_ENABLE_FOR(is_arg_var_decl(vu)))
 #endif //IDA_SDK_VERSION < 750
 ACT_DECL(import_unf_types        , return ((ctx->widget_type == BWN_TITREE || ctx->widget_type == BWN_TILIST) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
 ACT_DECL(refactoring             , return (ctx->widget_type == BWN_PSEUDOCODE || ctx->widget_type == BWN_DISASM || ctx->widget_type == BWN_TILIST ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
@@ -227,7 +227,7 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 #if IDA_SDK_VERSION < 750
 		attach_action_to_popup(view, p, ACT_NAME(remove_rettype));
 	}
-	if (is_arg_var(vu))
+	if (is_arg_var_decl(vu))
 		attach_action_to_popup(view, p, ACT_NAME(remove_argument));
 #else // IDA_SDK_VERSION >= 750
 	}
@@ -927,7 +927,7 @@ ACT_DEF(rename_func)
 	ftype.get_func_details(&fti);
 	if(fti.size()) {
 		tinfo_t argt;
-		if(vu->item.citype == VDI_LVAR && is_arg_var(vu, &var)) {
+		if(is_arg_var_decl(vu, &var)) {
 			//if cursor is on argument, selected arg type name is used as prefix
 			argt = var->tif.get_pointed_object();
 		} else {
@@ -967,16 +967,21 @@ ACT_DEF(rename_func)
 	return 0;
 }
 
-bool is_arg_var(vdui_t *vu, lvar_t **var)
+bool is_arg_var(vdui_t *vu, lvar_t **var = nullptr)
 {
-	if(vu->item.citype != VDI_LVAR)
-		return false;
 	lvar_t *v = vu->item.get_lvar();
 	if(!v || !v->is_arg_var())
 		return false;
 	if(var)
 		*var = v;
 	return true;
+}
+
+bool is_arg_var_decl(vdui_t *vu, lvar_t **var /*= nullptr*/)
+{
+	if(vu->item.citype != VDI_LVAR)
+		return false;
+	return is_arg_var(vu, var);
 }
 
 #if IDA_SDK_VERSION < 750
@@ -1220,7 +1225,7 @@ ACT_DEF(var_reuse)
 	}
 
 	if(!utype.empty()) {
-		Log(llNotice, "Existing union has been found for Var reuse '%s'\n", utype.dstr());
+		Log(llInfo, "Existing union has been found for Var reuse '%s'\n", utype.dstr());
 	} else {
 		udt_type_data_t utd;
 		utd.is_union = true;
@@ -2135,12 +2140,13 @@ static inline THREAD_SAFE bool is_like_assign(ctype_t op)
      -> y -> something with type B
 
 */
-static bool is_cast_assign(cfuncptr_t cfunc, cexpr_t * var, tinfo_t * ts)
+static bool is_cast_assign(vdui_t *vu, tinfo_t * ts)
 {
+	cexpr_t * var = vu->item.e;
 	if (!isRenameble(var->op))
 		return false;
 
-	citem_t * prnti = cfunc->body.find_parent_of(var);
+	citem_t * prnti = vu->cfunc->body.find_parent_of(var);
 	if(!prnti->is_expr())
 		return false;
 	cexpr_t *prnt = (cexpr_t *)prnti;
@@ -2156,7 +2162,7 @@ static bool is_cast_assign(cfuncptr_t cfunc, cexpr_t * var, tinfo_t * ts)
 			bDerefPtr = true;
 		else if(!(prnt->op == cot_idx && prnt->x == var && prnt->y->is_zero_const())) // var[0] = smth;
 			return false;
-		prnti = cfunc->body.find_parent_of(prnt);
+		prnti = vu->cfunc->body.find_parent_of(prnt);
 		if(!prnti->is_expr() || !is_like_assign(prnti->op))
 			return false;
 		asg = (cexpr_t *)prnti;
@@ -2180,15 +2186,18 @@ static bool is_cast_assign(cfuncptr_t cfunc, cexpr_t * var, tinfo_t * ts)
 /*
  (cast to type)var;
  or
+ *(cast to pointer type)var;
+ or
  LOBYTE(var)
  //cursor is on var
 */
-static bool is_cast_var(cfuncptr_t cfunc, cexpr_t * var, tinfo_t * ts)
+static bool is_cast_var(vdui_t *vu, tinfo_t * ts)
 {
+	cexpr_t * var = vu->item.e;
 	if(!isRenameble(var->op))
 		return false;
 
-	citem_t * cast_ci = cfunc->body.find_parent_of(var);
+	citem_t * cast_ci = vu->cfunc->body.find_parent_of(var);
 	if(!cast_ci->is_expr())
 		return false;
 
@@ -2216,7 +2225,7 @@ static bool is_cast_var(cfuncptr_t cfunc, cexpr_t * var, tinfo_t * ts)
 	bool ref = false;
 	if(exp->op == cot_ref) {
 		ref = true;
-		cast_ci = cfunc->body.find_parent_of(exp);
+		cast_ci = vu->cfunc->body.find_parent_of(exp);
 		if(cast_ci->is_expr())
 			exp = (cexpr_t *)cast_ci;
 	}
@@ -2225,14 +2234,15 @@ static bool is_cast_var(cfuncptr_t cfunc, cexpr_t * var, tinfo_t * ts)
 		return false;
 
 	//check for ptr deref, ex: *(_OWORD *)var
-	citem_t *pitm = cfunc->body.find_parent_of(exp);
+	citem_t *pitm = vu->cfunc->body.find_parent_of(exp);
 	if(pitm->op == cot_ptr)
 		ref = true;
 
 	if(ts) {
 		*ts = exp->type;
-		if(ref)
+		if(ref && ts->is_ptr() && !is_arg_var(vu)) { //do not deref arguments
 			ts->remove_ptr_or_array();
+		}
 	}
 	return true;
 }
@@ -2430,7 +2440,7 @@ bool is_recastable(vdui_t *vu, tinfo_t *ts /*=nullptr*/, cexpr_t **call /*=nullp
 {
 	if (!vu->item.is_citem())
 		return false;
-	return is_cast_var(vu->cfunc, vu->item.e, ts) || is_cast_assign(vu->cfunc, vu->item.e, ts) || is_call(vu, call);
+	return is_cast_var(vu, ts) || is_cast_assign(vu, ts) || is_call(vu, call);
 }
 
 ACT_DEF(recast_item)
@@ -3938,7 +3948,7 @@ struct ida_local stack_char_assign_locator_t : public ctree_visitor_t
 	bool skip;
 	stack_char_assign_locator_t(cfunc_t *func_, ea_t skipBeforeEa_, bool skipEarlyAssignment = true): ctree_visitor_t(CV_FAST), func(func_), skipBeforeEa(skipBeforeEa_), skip(skipEarlyAssignment)
 	{
-		Log(llInfo, "build stack string: skipBeforeEa %a\n", skipBeforeEa);
+		Log(llDebug, "build stack string: skipBeforeEa %a\n", skipBeforeEa);
 	}
 	int idaapi visit_expr(cexpr_t * e)
 	{
@@ -3950,15 +3960,15 @@ struct ida_local stack_char_assign_locator_t : public ctree_visitor_t
 			if(skip && e->ea == skipBeforeEa) // check if (e->ea < skipBeforeEa) works wrong when blocks are not address orderdered
 				skip = false;
 			if (skip) {
-				Log(llInfo, "%a: build stack string: skip early writing assignment '%s'\n", e->ea, printExp(func, e).c_str());
+				Log(llDebug, "%a: build stack string: skip early writing assignment '%s'\n", e->ea, printExp(func, e).c_str());
 				return 0;
 			}
 			auto it = varVal.find(varIdx);
 			if(it != varVal.end()) {
-				Log(llInfo, "%a: build stack string: skip overwriting assignment '%s'\n", e->ea, printExp(func, e).c_str());
+				Log(llDebug, "%a: build stack string: skip overwriting assignment '%s'\n", e->ea, printExp(func, e).c_str());
 				return 0;
 			}
-			Log(llInfo, "%a: build stack string: use assignment '%s'\n", e->ea, printExp(func, e).c_str());
+			Log(llDebug, "%a: build stack string: use assignment '%s'\n", e->ea, printExp(func, e).c_str());
 			vs.val = val;
 			varVal[varIdx] = vs;
 		}
@@ -4245,12 +4255,12 @@ struct ida_local array_char_assign_locator_t : public ctree_visitor_t
 		if (is_array_char_assign_int(e, &varI, &arrIdx, &val) && varI == varIdx)
 		{
 			if (e->ea < skipBeforeEa) {
-				Log(llInfo, "%a: build array string: skip early writing assignment '%s'\n", val->ea, printExp(func, e).c_str());
+				Log(llDebug, "%a: build array string: skip early writing assignment '%s'\n", val->ea, printExp(func, e).c_str());
 				return 0;
 			}
 			auto it = varVal.find(arrIdx);
 			if (it != varVal.end()) {
-				Log(llInfo, "%a: build array string: skip overwriting assignment '%s'\n", val->ea, printExp(func, e).c_str());
+				Log(llDebug, "%a: build array string: skip overwriting assignment '%s'\n", val->ea, printExp(func, e).c_str());
 				return 0;
 			}
 			QASSERT(100105, val->op == cot_num);
@@ -5867,7 +5877,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.9.105";
+	addon.version = "3.9.106";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

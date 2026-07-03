@@ -208,7 +208,6 @@ tinfo_t getCallInfo(cfunc_t* cfunc, cexpr_t *call, ea_t* dstea);
 void replace_colortag_inplace(char *line, int pos, char prefix, char find, char replace);
 void replaceExp(const cfunc_t *func, cexpr_t *expr, cexpr_t *newExp, bool clean = true);
 qstring printExp(const cfunc_t *func, cexpr_t *expr);
-void printExp2Msg(const cfunc_t *func, cexpr_t *expr, const char* mesg);
 void dump_ctree(cfunc_t* func, const char* fname);
 inline THREAD_SAFE bool isRegOvar(mopt_t mop) { return mop == mop_r || mop == mop_S /*|| mop == mop_l*/; }
 inline THREAD_SAFE cexpr_t* skipCast(cexpr_t* e) {if(e->op == cot_cast) return e->x; return e;}
@@ -249,14 +248,15 @@ struct qstr_printer_t : public vd_printer_t
 enum LogLevel {
 	llError,
 	llWarning,
-	llNotice,
-	llInfo,
+	llNotice, // important messages and stat
+	llInfo,   // changes made by the plugin
 	llDebug,
-	llFlood
+	llFlood  // deep debug meditation
 };
 void LogLevelNames(qstrvec_t *v);
 int Log(LogLevel level, const char *fmt, ...);
 int LogTail(LogLevel level, const char *fmt, ...);
+int LogExpr(LogLevel level, const cfunc_t *func, cexpr_t *expr, const char* mesg);
 
 template< class IsUniqueFunc >
 qstring unique_nameD(const char* name, const char* separator, IsUniqueFunc isUnique)

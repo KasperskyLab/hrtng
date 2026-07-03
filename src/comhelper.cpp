@@ -184,14 +184,14 @@ static bool com_find_guid_type(ea_t ea, flags64_t flags, qstring* tname = NULL)
 			vtname += "Vtbl";
 			if (BADADDR == get_struc_id(vtname.c_str())) {
 				const char* verb = (BADNODE != import_type(get_idati(), -1, vtname.c_str(), 0)) ? "imported" : "not found";
-				Log(llNotice, "%a: type '%s' was %s\n", ea, vtname.c_str(), verb);
+				Log(llInfo, "%a: type '%s' was %s\n", ea, vtname.c_str(), verb);
 			}
 
 			tid_t res = get_struc_id(it->name.c_str());
 			if (BADNODE == res) {
 				res = import_type(get_idati(), -1, it->name.c_str(), 0);
 				const char* verb = (BADNODE != res) ? "imported" : "not found";
-				Log(llNotice, "%a: type %s was %s\n", ea, it->name.c_str(), verb);
+				Log(llInfo, "%a: type %s was %s\n", ea, it->name.c_str(), verb);
 
 			}
 #endif // IDA_SDK_VERSION < 850

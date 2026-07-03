@@ -414,7 +414,7 @@ static bool isStructOffOver(cexpr_t* memref, const cfunc_t *func)
 		while(memref->x->op == cot_memref)
 			memref = memref->x;
 		if(memref->x->op == cot_idx && memref->x->y->op == cot_num && memref->x->y->numval() > 0 /*&& memref->x->type.is_struct()*/) {//is it possible case for union?
-			printExp2Msg(func, memref, "probably invalid struct member access");
+			LogExpr(llDebug, func, memref, "probably invalid struct member access");
 			return true;
 		}
 	}

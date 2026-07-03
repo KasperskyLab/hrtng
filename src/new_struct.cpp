@@ -25,7 +25,7 @@ struct ida_local ptr_checker_t : public ctree_parentee_t
 	lvars_t * lvars;
 
 	bool is_our(ea_t idx)
-	{		
+	{
 		return idxs.find(idx) != idxs.end();
 	}
 
@@ -33,7 +33,7 @@ struct ida_local ptr_checker_t : public ctree_parentee_t
 	{
 		if(!cfunc)
 			return false;
-		
+
 		lvars_t* lvars = cfunc->get_lvars();
 		for(auto p : idxs) {
 			if (p < lvars->size()) {
@@ -59,7 +59,7 @@ struct ida_local ptr_checker_t : public ctree_parentee_t
 	}
 
 	void handle_vtables(bool &is_ptr, uint64 &delta, int i, tinfo_t & t)
-	{		
+	{
 		int j = i;
 		while (j >= 0 && parents[j]->op == cot_cast )
 			j--;
@@ -111,7 +111,7 @@ struct ida_local ptr_checker_t : public ctree_parentee_t
 				if(swaped || (!left && right)) {
 					 idxs.insert(lft_var_idx);
 					 offsets[lft_var_idx] = offset_for_var_idx(rgt_var_idx);
-					 Log(llNotice, "scanning also var '%s'\n", (*lvars)[(size_t)lft_var_idx].name.c_str());
+					 Log(llDebug, "scanning also var '%s'\n", (*lvars)[(size_t)lft_var_idx].name.c_str());
 				}
 			}
 			return 0;
@@ -186,7 +186,7 @@ struct ida_local ptr_checker_t : public ctree_parentee_t
 					if(!is_our(new_var_idx)) {
 						idxs.insert(new_var_idx);
 						offsets[new_var_idx] = cur_var_offset + uval_t(delta);
-						Log(llNotice, "scanning also var '%s' + %a\n", (*lvars)[(size_t)ex->x->v.idx].name.c_str(), uval_t(delta) );
+						Log(llDebug, "scanning also var '%s' + %a\n", (*lvars)[(size_t)ex->x->v.idx].name.c_str(), uval_t(delta) );
 					}
 				}
 			} else if (parents[i]->op == cot_call) {
@@ -204,7 +204,7 @@ struct ida_local ptr_checker_t : public ctree_parentee_t
 						a.arg_num  = (uval_t)idx;
 						a.arg_cnt = (uval_t)call->a->size();
 						fi.argument_numbers[fncea] = a;
-						Log(llNotice, "consider also scanning func %a '%s' arg%u\n", fncea, get_name(fncea).c_str(), a.arg_num);
+						Log(llDebug, "consider also scanning func %a '%s' arg%u\n", fncea, get_name(fncea).c_str(), a.arg_num);
 					}
 				}
 			}
@@ -224,7 +224,7 @@ static bool idx_for_struct_crawler(ctree_item_t & item, vdui_t &vu, ea_t & idx, 
 	lvar_t * lvar =  item.get_lvar();
 	idx = -1;
 	if(lvar)
-	{		
+	{
 		idx = (ea_t)get_idx_of_lvar(vu, lvar);
 		is_global = false;
 		return true;
@@ -235,7 +235,7 @@ static bool idx_for_struct_crawler(ctree_item_t & item, vdui_t &vu, ea_t & idx, 
 		if (!parent)
 			return false;
 		if (parent->op == cot_call && ((cexpr_t*)parent)->x == item.e )
-			return false;		
+			return false;
 		idx = vu.item.e->obj_ea;
 		is_global = true;
 		return true;
@@ -293,9 +293,9 @@ bool can_be_converted_to_ptr(vdui_t &vu, bool bVarTesting)
 
 	if (!is_global) {
 		lvar_t & lv = (*lvars)[(size_t)varidx];
-		Log(llNotice, "%a: scanning var '%s'\n", vu.cfunc->entry_ea, lv.name.c_str());
+		Log(llDebug, "%a: scanning var '%s'\n", vu.cfunc->entry_ea, lv.name.c_str());
 	} else {
-		Log(llNotice, "%a: scanning glbl '%s'\n", vu.cfunc->entry_ea, get_short_name(varidx).c_str());
+		Log(llDebug, "%a: scanning glbl '%s'\n", vu.cfunc->entry_ea, get_short_name(varidx).c_str());
 	}
 
 	ptr_checker_t pc(varidx, lvars);
@@ -303,7 +303,7 @@ bool can_be_converted_to_ptr(vdui_t &vu, bool bVarTesting)
 	pc.collect_scanned_vars(cfunc);
 	for(scanned_variables_t::iterator p = fi.scanned_variables.begin(); p != fi.scanned_variables.end(); p++) {
 		for(qvector<scanned_variable_t>::iterator x = p->second.begin(); x != p->second.end(); x++) {
-			Log(llNotice, "%a: scanned var at defea: %a offset: %a\n", p->first, x->second.defea, x->first);
+			Log(llDebug, "%a: scanned var at defea: %a offset: %a\n", p->first, x->second.defea, x->first);
 		}
 	}
 	if (fi.empty())
@@ -431,20 +431,20 @@ bool field_info_t::flip_enabled_status(uval_t idx, uval_t position)
 	if (iter == end())
 		return false;
 	if (!safe_advance(iter, end(), idx))
-		return false;	
+		return false;
 
 	scan_info_t& si = iter->second;
 	if(si.types.size() > 0) {
 		typevec_t::iterator iter1 = si.types.begin();
 		if (!safe_advance(iter1, si.types.end(), position))
 			return false;
-		
+
 		if(iter1->enabled) {
 			iter1->enabled = false;
 			++si.types.disabled_count;
 		} else {
 			iter1->enabled = true;
-			--si.types.disabled_count;		
+			--si.types.disabled_count;
 		}
 	} else {
 		this->erase(iter);
@@ -458,7 +458,7 @@ void field_info_t::clear()
 	current_offset = 0;
 	max_adjustments.clear();
 	function_adjustments.clear();
-	visited_functions.clear();	
+	visited_functions.clear();
 	argument_numbers.clear();
 	global_pointers.clear();
 	scanned_variables.clear();
@@ -473,7 +473,7 @@ uval_t field_info_t::types_at_idx_qty(uval_t idx) const
 	if(iter == end())
 		return 0;
 	if(!safe_advance(iter, end(), idx))
-		return 0;	
+		return 0;
 	if(iter == end())
 		return 0;
 	return (uval_t)(iter->second).types.size();
@@ -487,7 +487,7 @@ void field_info_t::update_max_offset(uval_t current, uval_t max_)
 	} else {
 		uval_t lastmax = max_adjustments[current];
 		max_adjustments[current] = std::max(lastmax, max_);
-	}	
+	}
 }
 
 field_info_t fi;

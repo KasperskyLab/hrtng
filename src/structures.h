@@ -1,7 +1,7 @@
 //Evolution of structures.h from https://github.com/nihilus/hexrays_tools
 #pragma once
 
-tid_t create_VT_struc(ea_t VT_ea, const char* basename, uval_t idx = BADADDR, unsigned int* vt_len = NULL, bool autoScan = false);
+tid_t create_VT_struc(ea_t VT_ea, const char* basename, uval_t idx = BADADDR, unsigned int* vt_len = NULL, bool autoScan = false, bool *alreadyExist = nullptr);
 int create_VT(tid_t parent, ea_t VT_ea, bool autoScan = false, const char *topStructName = nullptr);
 void auto_vtbls(cfunc_t *cfunc);
 

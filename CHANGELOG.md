@@ -2,9 +2,14 @@
 
 ## [Unreleased]
 ### Added
+- Automatically detect and set base class member inside derived class struct on VTBL-scan
 ### Changed
+- "Recast item": do not deref pointer type in case if `var` is an argument of the function on recasting expressions like `*(type*)var`
+- Reduced number of messages displayed on default logging level
 ### Removed
+-
 ### Fixed
+-
 
 ## 3.9.105 - 2026-06-25
 ### Added

@@ -517,7 +517,7 @@ static FILE* get_pat_file()
 	if (!fptr_pat) {
 		warning("[hrt] idb2pat: Could not open %s for writing!\n", filename.c_str());
 	} else {
-		Log(llInfo, "idb2pat using: %s\n", filename.c_str());
+		Log(llNotice, "idb2pat using: %s\n", filename.c_str());
 	}
 	return fptr_pat;
 }
@@ -537,7 +537,7 @@ static void make_pattern_wcheck(func_t* funcstru, FILE* fptr_pat, PATOPTION* opt
 		return;
 	}
 	if ((funcstru->end_ea - funcstru->start_ea) < MIN_SIG_LENGTH) {
-		Log(llInfo, "idb2pat %a: too short function %s\n", funcstru->start_ea, name.c_str());
+		Log(llDebug, "idb2pat %a: too short function %s\n", funcstru->start_ea, name.c_str());
 		g_skip_ctr++;                     // Inc skiped function counter
 		g_shrt_ctr++;                     // Inc function too Short counter
 		return;

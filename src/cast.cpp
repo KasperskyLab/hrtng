@@ -249,7 +249,7 @@ void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 					qstring typestr;
 					res->type.print(&typestr);
 					mesg.cat_sprnt("%s %x res", typestr.c_str(), (uint32)smem->soff);
-					printExp2Msg(func, res, mesg.c_str());
+					LogExpr(llDebug, func, res, mesg.c_str());
 #endif
 					if (i + 1 < trace.size()) {
 						res = new cexpr_t(cot_memref, res);
@@ -298,7 +298,7 @@ void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 			tid_t cast_to;
 			if (!find_cached_reincast(exp->ea, &cast_to))
 				return false;
-			//printExp2Msg(func, exp, "cached_reincast");
+			//LogExpr(llDebug, func, exp, "cached_reincast");
 
 			cexpr_t *x;
 			uint64 n = 0;

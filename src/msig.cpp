@@ -597,7 +597,7 @@ ACT_DEF(msigSave)
 	}
 
 	if (!msigs.size()) {
-		Log(llNotice, "No any msigs are defined\n");
+		Log(llDebug, "No any msigs are defined\n");
 		return 0;
 	}
 	msigs.save(filename.c_str());

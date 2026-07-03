@@ -700,12 +700,14 @@ qstring printExp(const cfunc_t *func, cexpr_t *expr)
 	return sExp;
 }
 
-void printExp2Msg(const cfunc_t *func, cexpr_t *expr, const char* mesg)
+int LogExpr(LogLevel level, const cfunc_t *func, cexpr_t *expr, const char* mesg)
 {
+	if(level > cfg.logLevel)
+		return 0;
 	qstring SExp = printExp(func, expr);
 	qstring funcname;
 	get_short_name(&funcname, func->entry_ea);
-	Log(llInfo, "%a %s: %s '%s'\n", expr->ea, funcname.c_str(), mesg, SExp.c_str());
+	return Log(level, "%a %s: %s '%s'\n", expr->ea, funcname.c_str(), mesg, SExp.c_str());
 }
 
 void replaceExp(const cfunc_t *func, cexpr_t *expr, cexpr_t *newExp, bool clean)
