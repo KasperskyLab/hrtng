@@ -909,8 +909,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			tinfo_t tif = getCallInfo(func, call, &dstea);
 			bool bAllowTypeChange =  false;
 			if(dstea != BADADDR && !tif.is_from_subtil()) {
-				func_t *f = get_func(dstea);
-				if(f && !(f->flags & FUNC_LIB)) {
+				if(!(get_func_flags(dstea) & FUNC_LIB)) {
 					//do check number of crefs for avoid renaming args in popular funcs like memcpy, alloc, etc
 					uint32 nref = 0;
 					for(ea_t xrefea = get_first_cref_to(dstea); xrefea != BADADDR && ++nref <= cfg.tooPopularFuncCRefCnt; xrefea = get_next_cref_to(dstea, xrefea))

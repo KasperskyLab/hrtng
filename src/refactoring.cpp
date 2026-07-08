@@ -283,10 +283,9 @@ struct ida_local refac_t {
 		// func name, type, local vars and comments
 		size_t funcqty = get_func_qty();
 		for (size_t i = 0; i < funcqty; i++) {
-			func_t* func = getn_func(i);
-			if(!func || (func->flags & FUNC_LIB))
+			ea_t ea = get_func_ea_by_num(i);
+			if(ea == BADADDR || (get_func_flags(ea) & FUNC_LIB))
 				continue;
-			ea_t ea = func->start_ea;
 			qstring eaname = get_name(ea);
 
 			//match name of functions an global vars
@@ -594,8 +593,8 @@ struct ida_local refac_t {
 			case eRF_usrCmts:
 			{
 				user_cmts_t *cmts = nullptr;
-				func_t *fn = get_func(m.ea);
-				if(fn && (cmts = restore_user_cmts(fn->start_ea)) != nullptr) {
+				ea_t start_ea = get_func_start(m.ea);
+				if(start_ea != BADADDR && (cmts = restore_user_cmts(start_ea)) != nullptr) {
 					uint32 changed = 0;
 					for(auto it = user_cmts_begin(cmts); it != user_cmts_end(cmts); it = user_cmts_next(it)) {
 						if(user_cmts_first(it).ea == m.ea) {
@@ -608,7 +607,7 @@ struct ida_local refac_t {
 						}
 					}
 					if(changed) {
-						save_user_cmts(fn->start_ea, cmts);
+						save_user_cmts(start_ea, cmts);
 						user_cmts_free(cmts);
 						count += changed;
 						Log(llInfo, "Refactoring %a: %d local comments replaced\n", m.ea, changed);
@@ -623,8 +622,8 @@ struct ida_local refac_t {
 			case eRF_numFmt:
 			{
 				user_numforms_t *nfs = nullptr;
-				func_t *fn = get_func(m.ea);
-				if(fn && (nfs = restore_user_numforms(fn->start_ea)) != nullptr) {
+				ea_t start_ea = get_func_start(m.ea);
+				if(start_ea != BADADDR && (nfs = restore_user_numforms(start_ea)) != nullptr) {
 					uint32 changed = 0;
 					for(auto it = user_numforms_begin(nfs); it != user_numforms_end(nfs); it = user_numforms_next(it)) {
 						if(user_numforms_first(it).ea == m.ea) {
@@ -637,7 +636,7 @@ struct ida_local refac_t {
 						}
 					}
 					if(changed) {
-						save_user_numforms(fn->start_ea, nfs);
+						save_user_numforms(start_ea, nfs);
 						user_numforms_free(nfs);
 						count += changed;
 						Log(llInfo, "Refactoring %a: %d user defined number formats replaced\n", m.ea, changed);

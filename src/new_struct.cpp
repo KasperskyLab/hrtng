@@ -80,13 +80,8 @@ struct ida_local ptr_checker_t : public ctree_parentee_t
 					t = make_pointer(create_typedef(vtsname.c_str()));
 					for(unsigned int k = 0; k < vt_len; k++) {
 						ea_t fncea = get_ea(obj->obj_ea + k * ea_size);
-						if(is_func(get_flags(fncea))) {
-							//filter out nullsubs
-							func_t * f = get_func(fncea);
-							if (f->empty())
-								continue;
+						if(is_func(get_flags(fncea)))
 							fi.function_adjustments[fncea] = uval_t(delta) + fi.current_offset;
-						}
 					}
 					is_ptr = true;
 				}
@@ -270,9 +265,9 @@ bool can_be_converted_to_ptr(vdui_t &vu, bool bVarTesting)
 	if (is_global) {
 		fi.global_pointers.add_unique(varidx);
 		for(ea_t ea = get_first_dref_to(varidx); ea!=BADADDR; ea = get_next_dref_to(varidx, ea)) {
-			func_t * fnc = get_func(ea);
-			if(fnc)
-				fi.function_adjustments[fnc->start_ea] = 0;
+			ea_t start_ea = get_func_start(ea);
+			if(start_ea != BADADDR)
+				fi.function_adjustments[start_ea] = 0;
 		}
 	}
 

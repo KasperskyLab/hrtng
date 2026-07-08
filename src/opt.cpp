@@ -610,10 +610,15 @@ bool replaceReadOnlyInitedVar2Val(mop_t* op)
 		return false;
 
 	// The variable is in a writable section? (e.g., .data section)
+#if IDA_SDK_VERSION < 940
 	segment_t* s = getseg(op->g);
 	if(!s || s->perm != (SEGPERM_READ | SEGPERM_WRITE)) // TODO: section with IMAGE_SCN_CNT_INITIALIZED_DATA?
 		return false;
-
+#else // IDA_SDK_VERSION >= 940
+	segment_info_t s;
+	if (!get_segment_info(&s, op->g) || s.get_perm() != (SEGPERM_READ | SEGPERM_WRITE)) // TODO: section with IMAGE_SCN_CNT_INITIALIZED_DATA?
+		return false;
+#endif //IDA_SDK_VERSION < 940
 	// The variable doesn't have xrefsTo with write access?
 	xrefblk_t xb;
 	for (bool ok = xb.first_to(op->g, XREF_DATA); ok; ok = xb.next_to())

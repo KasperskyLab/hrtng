@@ -18,13 +18,13 @@
 //  *   The CCITT CRC 16 code written by Ilfak Guilfanov (ig@datarescue.be> and
 //      provided in the FLAIR Utilities v4.21 package. You will need the
 //      "CRC16.CPP" file from this package in order to complile. Also portions
-//      of the plugin originated from the MS VC++ skeleton provided with the 
+//      of the plugin originated from the MS VC++ skeleton provided with the
 //      IDA Pro SDK v4.30.
 //
 //  *   Portions were originally written by Quine (quine@blacksun.res.cmu.edu)
 //      in his  IDV_2_SIG plugin. Quine's IDA Page at http://surf.to/quine_ida
 //      I've tried to reach him at above address regarding the license of his
-//      code but emails to that address bounce. As far as I know it was 
+//      code but emails to that address bounce. As far as I know it was
 //      licensed as freeware but if I'm wrong I would like Quine to contact me.
 //
 //  *   See the "readme.txt" for further information.
@@ -154,13 +154,23 @@ static void set_v_bytes(qvector<bool>& bv, ea_t pos) {
 // -----------------------------------------------------------------------------
 // FUNCTION: make_pattern
 // this is what does the real work
-static void make_pattern(func_t* funcstru, FILE* fptr_pat, PATOPTION* opt_ptr)
+static void make_pattern(ea_t funcea, FILE* fptr_pat, PATOPTION* opt_ptr)
 {
 	typedef std::map<ea_t, ea_t, std::less<ea_t> > ref_map;
 	typedef qvector<bool> bool_vec;
 
-	ea_t start_ea = funcstru->start_ea;           // Get Function Start EA
-	uval_t len = funcstru->end_ea - start_ea;     // Get Function Length
+	rangeset_t rs;
+#if IDA_SDK_VERSION < 940
+	func_t* f = get_func(funcea);
+	if (!f || get_func_ranges(&rs, f) == BADADDR || rs.empty())
+		return;
+#else //IDA_SDK_VERSION >= 940
+	if (get_func_ranges_ea(&rs, funcea) == BADADDR || rs.empty())
+		return;
+#endif //IDA_SDK_VERSION < 940
+	const range_t& r = rs.getrange(0);
+	ea_t start_ea = r.start_ea;           // Get Function Start EA
+	uval_t len = r.end_ea - start_ea;     // Get Function Length
 	bool_vec v_bytes; v_bytes.resize(len);
 	ref_map refs;
 
@@ -401,7 +411,7 @@ static PATOPTION* opt_diaolg(PATOPTION* opt_ptr)
     "**********************************************************************\n"
     "Option: Create Patterns for Public Functions Only                     \n"
     "                                                                      \n"
-    "    This could be useful when dealing with a situation where functions\n" 
+    "    This could be useful when dealing with a situation where functions\n"
     "were once stored in a DLL and are now statically linked in an         \n"
     "executable. It's still may a better bet to build a signature from the \n"
     "DLL and then apply it to the statically linked executable.            \n"
@@ -522,27 +532,27 @@ static FILE* get_pat_file()
 	return fptr_pat;
 }
 
-static void make_pattern_wcheck(func_t* funcstru, FILE* fptr_pat, PATOPTION* opt_ptr)
+static void make_pattern_wcheck(ea_t funcea, FILE* fptr_pat, PATOPTION* opt_ptr)
 {
-	if (!funcstru) {
+	if (funcea == BADADDR) {
 		g_skip_ctr++;                     // Inc skiped function counter
 		g_badf_ctr++;                     // Inc the bad function # counter
 		return;
 	}
-	qstring name = get_name(funcstru->start_ea);
+	qstring name = get_name(funcea);
 	if (name.empty()) {
-		Log(llWarning, "idb2pat %a: get_name() FAILED\n", funcstru->start_ea);
+		Log(llWarning, "idb2pat %a: get_name() FAILED\n", funcea);
 		g_skip_ctr++;                     // Inc skiped function counter
 		g_badn_ctr++;                     // inc the bad name counter
 		return;
 	}
-	if ((funcstru->end_ea - funcstru->start_ea) < MIN_SIG_LENGTH) {
-		Log(llDebug, "idb2pat %a: too short function %s\n", funcstru->start_ea, name.c_str());
+	if (calc_func_size_ea(funcea) < MIN_SIG_LENGTH) {
+		Log(llDebug, "idb2pat %a: too short function %s\n", funcea, name.c_str());
 		g_skip_ctr++;                     // Inc skiped function counter
 		g_shrt_ctr++;                     // Inc function too Short counter
 		return;
 	}
-	make_pattern(funcstru, fptr_pat, opt_ptr);
+	make_pattern(funcea, fptr_pat, opt_ptr);
 }
 
 
@@ -585,39 +595,40 @@ void run_idb2pat()
 	// CASE 5 == RADIO_USR_FUNC  (build pattern for user selected function)
 	if (opt_ptr->radio == RADIO_USR_FUNC) {
 		// Do the "Choose Function" dialog
-		func_t* funcstru = choose_func("Choose Function", -1);
-		make_pattern_wcheck(funcstru, fptr_pat, opt_ptr);
+		ea_t funcea = choose_func_ea("Choose Function", BADADDR);
+		make_pattern_wcheck(funcea, fptr_pat, opt_ptr);
 	} else {
 		for (size_t i = 0; i < funcqty; i++) {
-			func_t* funcstru = getn_func(i);              // get current function
-			if(!funcstru)
+			ea_t funcea = get_func_ea_by_num(i);              // get current function
+			if(funcea == BADADDR)
 				continue;
-			if ((funcstru->flags & FUNC_LIB))
+			uint64 fflg = get_func_flags(funcea);
+			if ((fflg & FUNC_LIB))
 				g_libs_ctr++;                 // Inc the libs counter
-			if (is_public_name(funcstru->start_ea))
+			if (is_public_name(funcea))
 				g_pubs_ctr++;                 // Inc the pubs counter
 
 			switch (opt_ptr->radio) {
 			// CASE 0 == RADIO_NON_FUNC  (pats non auto-named functions)
 			case RADIO_NON_FUNC:
-				if (!(funcstru->flags & FUNC_LIB) && is_uname(get_name(funcstru->start_ea).c_str())) {
-					make_pattern_wcheck(funcstru, fptr_pat, opt_ptr);
+				if (!(fflg & FUNC_LIB) && is_uname(get_name(funcea).c_str())) {
+					make_pattern_wcheck(funcea, fptr_pat, opt_ptr);
 				} else {
 					g_skip_ctr++;         // Inc skiped function counter
 				}
 				break;
 				// CASE 1 == RADIO_LIB_FUNC  (pattern for library functions)
 			case RADIO_LIB_FUNC:
-				if ((funcstru->flags & FUNC_LIB)) {
-					make_pattern_wcheck(funcstru, fptr_pat, opt_ptr);
+				if ((fflg & FUNC_LIB)) {
+					make_pattern_wcheck(funcea, fptr_pat, opt_ptr);
 				} else {
 					g_skip_ctr++;         // Inc skiped function counter
 				}
 				break;
 				// CASE 2 == RADIO_PUB_FUNC  (patterns for public functions)
 			case RADIO_PUB_FUNC:
-				if (is_public_name(funcstru->start_ea)) {
-					make_pattern_wcheck(funcstru, fptr_pat, opt_ptr);
+				if (is_public_name(funcea)) {
+					make_pattern_wcheck(funcea, fptr_pat, opt_ptr);
 				} else {
 					g_skip_ctr++;         // Inc skiped function counter
 				}
@@ -626,7 +637,7 @@ void run_idb2pat()
 				// CASE 3 == RADIO_ALL_FUNC  (patterns for everything)
 			case RADIO_ALL_FUNC:
 				opt_ptr->chkbx = CHKBX_DO_SUBS;
-				make_pattern_wcheck(funcstru, fptr_pat, opt_ptr);
+				make_pattern_wcheck(funcea, fptr_pat, opt_ptr);
 				break;
 
 				// default error

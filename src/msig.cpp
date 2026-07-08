@@ -558,14 +558,13 @@ ACT_DEF(msigSave)
 				return 0;
 			}
 
-			func_t* funcstru = getn_func(i);
-			if (!funcstru || (funcstru->flags & (FUNC_LIB | FUNC_THUNK)) ||
-					(!funcstru->tailqty && funcstru->end_ea - funcstru->start_ea < minMsigLen)) {
+			ea_t func_ea = get_func_ea_by_num(i);
+			if (func_ea == BADADDR || (get_func_flags(func_ea) & (FUNC_LIB | FUNC_THUNK)) || calc_func_size_ea(func_ea) < minMsigLen) {
 				++skipCnt;
 				continue;
 			}
 
-			qstring funcName = get_name(funcstru->start_ea);
+			qstring funcName = get_name(func_ea);
 			if (!is_uname(funcName.c_str())) {
 				++skipCnt;
 				continue;
@@ -573,22 +572,13 @@ ACT_DEF(msigSave)
 
 			replace_wait_box("[hrt] Decompiling %d/%d", i, funcqty);
 			hexrays_failure_t hf;
-#if 1
-			mark_cfunc_dirty(funcstru->start_ea);
-			cfuncptr_t cf = decompile_func(funcstru, &hf, DECOMP_NO_WAIT | DECOMP_GXREFS_FORCE);
+			mark_cfunc_dirty(func_ea);
+			cfuncptr_t cf = decompile_function(get_func_94(func_ea), &hf, DECOMP_NO_WAIT | DECOMP_GXREFS_FORCE);
 			if (cf && hf.code == MERR_OK) {
 				if(!msig_add(cf->mba))
 					++skipCnt;
-			}
-#else
-			mba_t* mba = gen_microcode(funcstru, &hf, NULL, DECOMP_NO_WAIT | DECOMP_NO_CACHE, MMAT_LVARS);
-			if (mba /*&& hf.code == MERR_OK*/) {
-				if(!msig_add(mba))
-					++skipCnt;
-			}
-#endif
-			else {
-				Log(llWarning, "%a: decompile_func(\"%s\") failed with '%s'\n", funcstru->start_ea, funcName.c_str(), hf.desc().c_str());
+			}	else {
+				Log(llWarning, "%a: decompile_func(\"%s\") failed with '%s'\n", func_ea, funcName.c_str(), hf.desc().c_str());
 			}
 		}
 		hide_wait_box();

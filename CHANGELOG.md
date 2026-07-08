@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 ### Added
+- Preliminary IDA 9.4-beta2 support
 - Automatically detect and set base class member inside derived class struct on VTBL-scan
 ### Changed
 - "Recast item": do not deref pointer type in case if `var` is an argument of the function on recasting expressions like `*(type*)var`

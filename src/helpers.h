@@ -50,6 +50,25 @@
 	};\
 	static name ## _t name;
 
+#if IDA_SDK_VERSION < 940
+	inline ssize_t get_func_cmt_ea(qstring * buf, ea_t ea, bool repeatable) { func_t* f = get_func(ea); return f ? get_func_cmt(buf, f, repeatable) : 0; }
+	inline ea_t get_func_start(ea_t ea) { func_t* f = get_func(ea); return f ? f->start_ea : BADADDR; }
+	inline ea_t get_func_ea_by_num(size_t n) { func_t* f = getn_func(n); return f ? f->start_ea : BADADDR; }
+	inline asize_t calc_func_size_ea(ea_t ea) { func_t* f = get_func(ea); return f ? calc_func_size(f) : 0; }
+	inline uint64 get_func_flags(ea_t ea) { func_t* f = get_func(ea); return f ? f->flags : 0; }
+	inline ea_t choose_func_ea(const char* title, ea_t default_ea) { { func_t* f = choose_func(title, default_ea); return f ? f->start_ea : BADADDR; } }
+	inline bool remove_func_tail_ea(ea_t func_ea, ea_t tail_ea) { func_t* f = get_func(func_ea); return f ? remove_func_tail(f, tail_ea) : false; }
+	inline bool append_func_tail_ea(ea_t func_ea, ea_t ea1, ea_t ea2) { func_t* f = get_func(func_ea); return f ? append_func_tail(f, ea1, ea2) : false; }
+	inline void reanalyze_function_ea(ea_t func_ea, ea_t ea1 = 0, ea_t ea2 = BADADDR, bool analyze_parents = false) {	func_t* f = get_func(func_ea); if (f) reanalyze_function_ea(func_ea, ea1, ea2, analyze_parents);}
+	inline func_t* get_func_94(ea_t ea) { return get_func(ea); }
+	inline cfuncptr_t decompile_func_94(ea_t ea, hexrays_failure_t* hf, int decomp_flags) { func_t* f = get_func(ea); return f ? decompile_func(f, hf, decomp_flags) : cfuncptr_t(nullptr); }
+	#define decomp_ranges_t mba_ranges_t
+	#define decompile_function decompile_func
+#else
+	#define get_func_94(ea) ea
+	#define decompile_func_94(ea, hf, decomp_flags) decompile_function(ea, hf, decomp_flags)
+#endif
+
 #if IDA_SDK_VERSION < 930
   #define BWN_TITREE BWN_TICSR
   #define mark_builtin_widgets request_refresh

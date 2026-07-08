@@ -94,12 +94,21 @@ static void show_xrefs(ea_t ea, const gco_info_t &gco, const eavec_t &_xrefs, si
 }
 
 //--------------------------------------------------------------------------
-bool regrefs(ea_t ea, func_t *pfn, gco_info_t &gco)
+bool regrefs(ea_t ea, gco_info_t &gco)
 {
   // generate microcode
   hexrays_failure_t hf;
+#if IDA_SDK_VERSION < 940
+  func_t* pfn = get_func(ea);
+  if (!pfn)
+    return false;
   mba_ranges_t mbr(pfn);
-  mbl_array_t *mba = gen_microcode(mbr, &hf, NULL, DECOMP_WARNINGS, MMAT_PREOPTIMIZED);
+#else // IDA_SDK_VERSION >= 940
+  decomp_ranges_t mbr(ea);
+  if (mbr.func_ea == BADADDR)
+    return false;
+#endif //IDA_SDK_VERSION < 940
+  mbl_array_t* mba = gen_microcode(mbr, &hf, NULL, DECOMP_WARNINGS, MMAT_PREOPTIMIZED);
   if ( mba == nullptr ) {
     warning("[hrt] %a: %s", hf.errea, hf.desc().c_str());
     return true;
@@ -121,7 +130,7 @@ bool regrefs(ea_t ea, func_t *pfn, gco_info_t &gco)
   // we ignore eventual errors and try to show something even if we failed
   // to detect some calling conventions
   if ( ncalls < 0 )
-    Log(llWarning, "%a: failed to determine some calling conventions\n", pfn->start_ea);
+    Log(llWarning, "%a: failed to determine some calling conventions\n", mba->entry_ea);
 
   // prepare mlist for the current operand. we will use to to find references
   // to the current operand in the microcode. usually we do not use operands

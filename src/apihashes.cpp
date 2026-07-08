@@ -464,8 +464,8 @@ void apihashes_init()
 	static ushort alg = 0;
 	static int64 basis = 0;
 	static int64 prime = 0;
-	char buf[QMAXPATH];
-	getPluginsFile(buf, QMAXPATH, "apilist.txt");
+	char fname[QMAXPATH];
+	getPluginsFile(fname, QMAXPATH, "apilist.txt");
 	qstring format =
 		"STARTITEM 1\n"
 		//title
@@ -487,12 +487,12 @@ void apihashes_init()
 								"<#Hash modifier value#~P~rime:l3::20::>\n"
 								"<API list file:f::32::>\n\n\n");
 
-	if(1 != ask_form(format.c_str(), dlg_cb, &alg, &basis, &prime, buf))
+	if(1 != ask_form(format.c_str(), dlg_cb, &alg, &basis, &prime, fname))
 		return;
 
-	FILE* file = fopenRT(buf);
+	FILE* file = fopenRT(fname);
 	if(!file) {
-		warning("[hrt] '%s' not found\n", buf);
+		warning("[hrt] '%s' not found\n", fname);
 		return;
 	}
 
@@ -502,6 +502,7 @@ void apihashes_init()
 	bool bNextIsDll = true;
 	int lines = 0;
 	int collisions = 0;
+	char buf[4096];
 	while(NULL != qfgets(buf, 4096, file)) {
 		lines++;
 		size_t len;
@@ -538,7 +539,7 @@ void apihashes_init()
 		}
 	}
 	hide_wait_box();
-	Log(llNotice, "%d lines, %d hashes, %d collisions\n", lines, (int)hashes.size(), collisions);
+	Log(llNotice, "%s: %d lines, %d hashes, %d collisions\n", fname, lines, (int)hashes.size(), collisions);
 
 	if(!bApihashesInited) {
 		HOOK_CB(HT_IDB, make_callback);

@@ -1069,8 +1069,7 @@ void remove_funcs_tails(ea_t ea)
 {
 	int i = 0;
 	do {
-		func_t *f = get_func(ea);
-		if (!f || !remove_func_tail(f, ea))
+		if (!remove_func_tail_ea(ea, ea))
 			break;
 		MSG_DO(("[hrt] func tail at %a deleted\n", ea));
 	} while (++i > 100);
@@ -1192,12 +1191,23 @@ static ea_t get_nullsub_1()
 
 	ea = inf_get_max_ea();
 	if (is_unknown(get_flags(ea))) {
+#if IDA_SDK_VERSION < 940
 		segment_t s;
 		s.start_ea = ea;
 		s.end_ea = ea + 1;
 		s.perm = SEGPERM_EXEC;
 		s.bitness = is64bit() ? 2 : 1;
 		if (add_segm_ex(&s, "hrt_nullsub", "CODE", ADDSEG_QUIET | ADDSEG_FILLGAP) &&
+#else // IDA_SDK_VERSION >= 940
+		segment_info_t s;
+		s.start_ea = ea;
+		s.end_ea = ea + 1;
+		s.set_perm(SEGPERM_EXEC);
+		s.set_bitness(is64bit() ? 2 : 1);
+		s.set_name("hrt_nullsub");
+		s.set_sclass("CODE");
+		if(add_segment_ex(&s, ADDSEG_QUIET | ADDSEG_FILLGAP) &&
+#endif // IDA_SDK_VERSION < 940
 			put_byte(ea, 0xc3) &&
 			create_insn(ea) &&
 			add_func(ea) &&
@@ -1233,7 +1243,7 @@ void rset2rvec(ea_t eaBgn, const rangeset_t *rs, rangevec_t *rv)
 }
 
 //create func chunks
-func_t *remake_func(ea_t startEA,  const rangeset_t &ranges)
+ea_t remake_func(const ea_t startEA,  const rangeset_t &ranges)
 {
 #if 0
 	//does not help
@@ -1248,38 +1258,37 @@ func_t *remake_func(ea_t startEA,  const rangeset_t &ranges)
 	const range_t *first = ranges.find_range(startEA);
 	if (!first) {
 		MSG_DO(("[hrt] !first (%a)\n", startEA));
-		return NULL;
+		return BADADDR;
 	}
-	add_func(startEA, first->end_ea);
-	func_t *func = get_func(startEA);
-	if (!func) {
+	
+	if (!add_func(startEA, first->end_ea)) {
 		MSG_DO(("[hrt] !add_func(%a, %a)\n", startEA, first->end_ea));
-		return NULL;
+		return BADADDR;
 	}
 	for (auto range : ranges) {
 		if (range != *first) {
 			remove_funcs_tails(range.start_ea);
-			if (!append_func_tail(func, range.start_ea, range.end_ea)) {
+			if (!append_func_tail_ea(startEA, range.start_ea, range.end_ea)) {
 				MSG_DO(("[hrt] !append_func_tail(%a, %a)\n", range.start_ea, range.end_ea));
 			}
 		}
 	}
 	if (first->start_ea != startEA) { //startEA somwhere inside first fange
 		//remove_funcs_tails(first->start_ea);
-		if (!append_func_tail(func, first->start_ea, startEA)) {
+		if (!append_func_tail_ea(startEA, first->start_ea, startEA)) {
 			MSG_DO(("[hrt] !append_func_tail(%a, %a)\n", first->start_ea, startEA));
 		}
 	}
-	reanalyze_function(func);
+	reanalyze_function_ea(startEA);
 	auto_wait();
-	return func;
+	return startEA;
 }
 
 int decompile_obfuscated(ea_t eaBgn)
 {
-	func_t *func = get_func(eaBgn);
-	if (func) {
-		if (ASKBTN_YES != ask_yn(ASKBTN_YES, "[hrt] Func '%s' will be destroyed and recreated from scratch.", get_short_name(func->start_ea).c_str()))
+	ea_t func = get_func_start(eaBgn);
+	if (func != BADADDR) {
+		if (ASKBTN_YES != ask_yn(ASKBTN_YES, "[hrt] Func '%s' will be destroyed and recreated from scratch.", get_short_name(func).c_str()))
 			return 0;
 		if(del_func(eaBgn)) {
 			MSG_DO(("[hrt] func at %a deleted\n", eaBgn));
@@ -1288,7 +1297,7 @@ int decompile_obfuscated(ea_t eaBgn)
 		}	else {
 			Log(llWarning, "%a: del_func failed, please delete it manually\n", eaBgn);
 		}
-		func = NULL;
+		func = BADADDR;
 	}
 
 	const char format[] =
@@ -1358,7 +1367,7 @@ int decompile_obfuscated(ea_t eaBgn)
 
 		MSG_DO(("[hrt] gen_microcode step %d (%d ranges)\n", cnt, rv->size()));
 		hexrays_failure_t hf;
-		mba_ranges_t mbr(*rv);
+		decomp_ranges_t mbr(*rv);
 		mbl_array_t *mba = gen_microcode(mbr, &hf, NULL, DECOMP_NO_WAIT | DECOMP_NO_CACHE | DECOMP_NO_FRAME | DECOMP_WARNINGS | DECOMP_ALL_BLKS, MMAT_GLBOPT3);
 		if (!mba || hf.code != MERR_OK) {
 			hide_wait_box();
@@ -1416,7 +1425,7 @@ int decompile_obfuscated(ea_t eaBgn)
 		replace_wait_box("[hrt] Creating func...");
 		func = remake_func(eaBgn, ranges);
 	} else {
-		func = nullptr;
+		func = BADADDR;
 	}
 	final_pass = true;
 	hide_wait_box();
@@ -1441,9 +1450,9 @@ int decompile_obfuscated(ea_t eaBgn)
 #endif
 	hexrays_failure_t hf;
 	cfuncptr_t cf(nullptr);
-	if (func) {
-		mark_cfunc_dirty(eaBgn);
-		cf = decompile_func(func, &hf, DECOMP_NO_CACHE | DECOMP_WARNINGS | DECOMP_ALL_BLKS);
+	if (func != BADADDR) {
+		mark_cfunc_dirty(func);
+		cf = decompile_func_94(func, &hf, DECOMP_NO_CACHE | DECOMP_WARNINGS | DECOMP_ALL_BLKS);
 	} else {
 		cf = decompile_snippet(ranges.as_rangevec(), &hf, DECOMP_NO_CACHE | DECOMP_NO_FRAME | DECOMP_WARNINGS | DECOMP_ALL_BLKS);
 	}

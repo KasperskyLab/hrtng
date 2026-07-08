@@ -106,7 +106,7 @@ ACT_DECL(apihashes, AST_ENABLE_ALW)
 ACT_DECL(create_dec, return (is_patched() ? AST_ENABLE : AST_DISABLE))
 ACT_DECL(clear_hr_cache, AST_ENABLE_ALW)
 ACT_DECL(decomp_obfus, return ((ctx->widget_type == BWN_DISASM || ctx->widget_type == BWN_PSEUDOCODE) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
-ACT_DECL(decomp_recur, return (((ctx->widget_type == BWN_DISASM && get_func(ctx->cur_ea)) || ctx->widget_type == BWN_PSEUDOCODE) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
+ACT_DECL(decomp_recur, return (((ctx->widget_type == BWN_DISASM && get_func_start(ctx->cur_ea) != BADADDR) || ctx->widget_type == BWN_PSEUDOCODE) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
 ACT_DECL(jmp2xref, return ((ctx->widget_type == BWN_DISASM || ctx->widget_type == BWN_PSEUDOCODE) ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET))
 ACT_DECL(idb2pat, AST_ENABLE_ALW)
 //ACT_DECL(kill_toolbars, AST_ENABLE_ALW)
@@ -512,10 +512,10 @@ static error_t idaapi dump_comments_idc(idc_value_t *argv, idc_value_t *res)
 #endif
 	size_t funcqty = get_func_qty();
 	for (size_t i = 0; i < funcqty; i++) {
-		func_t* func = getn_func(i);
-		if(!func)
+		ea_t start_ea = get_func_ea_by_num(i);
+		if(start_ea == BADADDR)
 			continue;
-		user_cmts_t *cmts = restore_user_cmts(func->start_ea);
+		user_cmts_t *cmts = restore_user_cmts(start_ea);
 		if(cmts) {
 			for(auto it = user_cmts_begin(cmts); it != user_cmts_end(cmts); it = user_cmts_next(it)) {
 				citem_cmt_t &c = user_cmts_second(it);
@@ -559,11 +559,8 @@ static error_t idaapi dump_names_idc(idc_value_t *argv, idc_value_t *res)
 			 continue;
 
 		// library and thunk funcs and local labels inside
-		if(is_code(f)) {
-			func_t* f = get_func(ea);
-			if(f && (f->flags & (FUNC_LIB | FUNC_THUNK)))
-				continue;
-		}
+		if(is_code(f) && (get_func_flags(ea) & (FUNC_LIB | FUNC_THUNK)))
+			continue;
 
 		// dummy prefix
 		const char* name = get_nlist_name(i);
@@ -1356,8 +1353,12 @@ void declSpoiledRegs(cfuncptr_t cfunc, func_type_data_t *fti)
 
 #else
 	// collect all defined registers in early mba then remove from the list registers have been save-restored
-
-	mbl_array_t *mba = gen_microcode(cfunc->mba->mbr, NULL, NULL, DECOMP_NO_CACHE | DECOMP_WARNINGS, MMAT_PREOPTIMIZED);
+#if IDA_SDK_VERSION < 940
+	const mba_ranges_t& dr = cfunc->mba->mbr;
+#else //IDA_SDK_VERSION >= 940
+	const decomp_ranges_t& dr = cfunc->mba->get_decomp_ranges();
+#endif //IDA_SDK_VERSION < 940
+	mbl_array_t *mba = gen_microcode(dr, NULL, NULL, DECOMP_NO_CACHE | DECOMP_WARNINGS, MMAT_PREOPTIMIZED);
   if(!mba || !mba->qty || mba->build_graph() != MERR_OK)
     return;
   mba->analyze_calls(ACFL_GUESS);
@@ -2764,7 +2765,7 @@ ACT_DEF(create_inline_gr)
 				Log(llDebug, "   %d: %a-%a\n", node, bb->start_ea, bb->end_ea);
 				ranges.push_back(range_t(bb->start_ea, bb->end_ea));
 			}
-			mba_ranges_t mbr(ranges);
+			decomp_ranges_t mbr(ranges);
 			hexrays_failure_t hf;
 			ea_t 	entry_ea = ranges.front().start_ea;
 			XXable_inlines(entry_ea, true);
@@ -2791,14 +2792,16 @@ ACT_DEF(create_inline_sel)
 		return 0;
 
 	if (ctx->widget_type == BWN_DISASM) {
-			mba_ranges_t mbr;
-			mbr.ranges.push_back(range_t(eaBgn, eaEnd));
-			hexrays_failure_t hf;
 			qstring err;
+			hexrays_failure_t hf;
+			decomp_ranges_t mbr;
+			mbr.ranges.push_back(range_t(eaBgn, eaEnd));
+
 			XXable_inlines(eaBgn, true);
 			mbl_array_t* mba = gen_microcode(mbr, &hf, NULL, DECOMP_NO_WAIT | DECOMP_NO_FRAME /*| DECOMP_NO_CACHE*/, DEINLINE_MATURITY);
 			//TODO: remove assertions, then mba->merge_blocks();
 			XXable_inlines(eaBgn, false);
+
 			if (mba && hf.code == MERR_OK) {
 				qstring name;
 				name.cat_sprnt("inline_%a_%a", eaBgn, eaEnd);
@@ -2816,8 +2819,8 @@ ACT_DEF(create_inline_sel)
 
 #if IDA_SDK_VERSION >= 930
 	if(ctx->widget_type == BWN_MICROCODE) {
-		func_t* func = get_func(eaBgn);
-		if (!func)
+		ea_t start_ea = get_func_start(eaBgn);
+		if (start_ea == BADADDR)
 			return 0;
 		const char format[] =
 			"[hrt] Create Inline\n\n"
@@ -2829,9 +2832,9 @@ ACT_DEF(create_inline_sel)
 		if (!ask_form(format, &eaBgn, &eaEnd))
 			return 0;
 		selection2inline(eaBgn, eaEnd);
-		XXable_inlines(func->start_ea, false);
-		mark_cfunc_dirty(func->start_ea);
-		COMPAT_open_pseudocode_REUSE(func->start_ea);
+		XXable_inlines(start_ea, false);
+		mark_cfunc_dirty(start_ea);
+		COMPAT_open_pseudocode_REUSE(start_ea);
 		return 0;
 	}
 #endif //IDA_SDK_VERSION >= 930
@@ -3692,8 +3695,7 @@ struct ida_local decompile_recursive_t
 			Log(llFlood, "decompile_recursive %a: too deep\n", entry);
 			return;
 		}
-		func_t* func = get_func(entry);
-		if(!func || func->flags & (FUNC_LIB | FUNC_LUMINA)) {
+		if(get_func_flags(entry) & (FUNC_LIB | FUNC_LUMINA)) {
 			Log(llFlood, "decompile_recursive: no or lib func at %a\n", entry);
 			return;
 		}
@@ -3703,35 +3705,35 @@ struct ida_local decompile_recursive_t
 		}
 
 		//replace_wait_box("[hrt] Decompiling depth %d", level);
-		qstring funcName = get_short_name(func->start_ea);
+		qstring funcName = get_short_name(entry);
 
 		bool userti = true;
 		int decomp_flags = DECOMP_NO_WAIT;
 		tinfo_t t1;
-		if(!is_userti(func->start_ea)) {
+		if(!is_userti(entry)) {
 			userti = false;
 			decomp_flags |= DECOMP_NO_CACHE;
-			get_tinfo(&t1, func->start_ea);
+			get_tinfo(&t1, entry);
 			Log(llDebug, "%a decompile_recursive(%s): 1st pass NO_CACHE for type %s\n", entry, funcName.c_str(), t1.dstr());
 		} else {
 			Log(llDebug, "%a decompile_recursive(%s): 1st pass USE_CACHE\n", entry, funcName.c_str());
 		}
 
 		hexrays_failure_t hf;
-		cfuncptr_t cf = decompile_func(func, &hf, decomp_flags);
+		cfuncptr_t cf = decompile_func_94(entry, &hf, decomp_flags);
 		if(!cf || hf.code != MERR_OK) {
-			Log(llDebug, "%a: 1 decompile_func(\"%s\") failed with '%s'\n", func->start_ea, funcName.c_str(), hf.desc().c_str());
+			Log(llDebug, "%a: 1 decompile_func(\"%s\") failed with '%s'\n", entry, funcName.c_str(), hf.desc().c_str());
 			return;
 		}
 
 		//decompile again if decompile_func changes func type
 		if(!userti) {
 			tinfo_t t2;
-			if(get_tinfo(&t2, func->start_ea) && t1 != t2) {
+			if(get_tinfo(&t2, entry) && t1 != t2) {
 				Log(llFlood, "%a decompile_recursive(%s): type changed from %s to %s\n", entry, funcName.c_str(), t1.dstr(), t2.dstr());
-				cf = decompile_func(func, &hf, DECOMP_NO_WAIT | DECOMP_NO_CACHE);
+				cf = decompile_func_94(entry, &hf, DECOMP_NO_WAIT | DECOMP_NO_CACHE);
 				if(!cf || hf.code != MERR_OK) {
-					Log(llDebug, "%a: 2 decompile_func(\"%s\") failed with '%s'\n", func->start_ea, funcName.c_str(), hf.desc().c_str());
+					Log(llDebug, "%a: 2 decompile_func(\"%s\") failed with '%s'\n", entry, funcName.c_str(), hf.desc().c_str());
 					return;
 				}
 			}
@@ -3758,12 +3760,12 @@ struct ida_local decompile_recursive_t
 			Log(llDebug, "decompile_recursive %a: no changes\n", entry);
 			return;
 		}
-		Log(llDebug, "%a: on recursive decompile(\"%s\", %d) %d types changed\n", func->start_ea, funcName.c_str(), level, g_typeChanged - typeChanged);
+		Log(llDebug, "%a: on recursive decompile(\"%s\", %d) %d types changed\n", entry, funcName.c_str(), level, g_typeChanged - typeChanged);
 
 		// force decompile again if changed
-		cf = decompile_func(func, &hf, DECOMP_NO_WAIT | DECOMP_NO_CACHE);
+		cf = decompile_func_94(entry, &hf, DECOMP_NO_WAIT | DECOMP_NO_CACHE);
 		if(!cf || hf.code != MERR_OK) {
-			Log(llDebug, "%a: 3 decompile_func(\"%s\") failed with '%s'\n", func->start_ea, funcName.c_str(), hf.desc().c_str());
+			Log(llDebug, "%a: 3 decompile_func(\"%s\") failed with '%s'\n", entry, funcName.c_str(), hf.desc().c_str());
 		}
 	}
 };
@@ -3788,10 +3790,10 @@ bool decompile_recursive(ea_t entry)
 ACT_DEF(decomp_recur)
 {
 	if (ctx->widget_type == BWN_DISASM) {
-		func_t *f = get_func(ctx->cur_ea);
-		if(f) {
-			decompile_recursive(f->start_ea);
-			COMPAT_open_pseudocode_REUSE(f->start_ea);
+		ea_t start_ea = get_func_start(ctx->cur_ea);
+		if (start_ea != BADADDR) {
+			decompile_recursive(start_ea);
+			COMPAT_open_pseudocode_REUSE(start_ea);
 		}
 		return 0;
 	}
@@ -3808,15 +3810,9 @@ ACT_DEF(jmp2xref)
 	if (ctx->widget_type == BWN_DISASM) {
 		ea_t ea = get_screen_ea();
 		flags64_t F = get_flags(ea);
-		if (is_code(F)) {
-			func_t *pfn = get_func(ea);
-			if (pfn && pfn->start_ea != ea) {
-				gco_info_t gco;
-				if (get_current_operand(&gco)) {
-					return regrefs(ea, pfn, gco);
-				}
-			}
-		}
+		gco_info_t gco;
+		if (is_code(F) && get_current_operand(&gco))
+			return regrefs(ea, gco);
 		if (is_func(F) || is_data(F))
 			return jump_to_call_or_glbl(ea);
 	}
@@ -4541,12 +4537,12 @@ ACT_DEF(import_unf_types)
 			return 0;
 		}
 
-		func_t* funcstru = getn_func(i);
-		if(funcstru && 0 == (funcstru->flags & (FUNC_LIB | FUNC_THUNK))) {
-			qstring funcName = get_name(funcstru->start_ea);
+		ea_t start_ea = get_func_ea_by_num(i);
+		if(start_ea != BADADDR && 0 == (get_func_flags(start_ea) & (FUNC_LIB | FUNC_THUNK))) {
+			qstring funcName = get_name(start_ea);
 			if (is_uname(funcName.c_str())) {
 				tinfo_t tif;
-				if(get_tinfo(&tif, funcstru->start_ea) && tif.is_func()) {
+				if(get_tinfo(&tif, start_ea) && tif.is_func()) {
 					stripName(&funcName, true);
 #if 1
 					//CHECKME: without NTF_NO_NAMECHK ida creates partially unmangled names probably not suitable for reapplying with signatures, and a lot of "bad name" errors
@@ -4559,7 +4555,7 @@ ACT_DEF(import_unf_types)
 					if(TERR_OK == err)
 						++impCnt;
 					else
-						Log(llError, "%a: import func '%s' type error %d %s\n", funcstru->start_ea, funcName.c_str(), err, tinfo_errstr(err));
+						Log(llError, "%a: import func '%s' type error %d %s\n", start_ea, funcName.c_str(), err, tinfo_errstr(err));
 				}
 			}
 		}
@@ -5367,14 +5363,14 @@ MY_DECLARE_LISTENER(ui_callback)
 			} else {
 				attach_action_to_popup(widget, p, ACT_NAME(create_inline_sel));
 			}
-			func_t* func = get_func(ctx->cur_ea);
-			if (func) {
-				if (func->start_ea != ctx->cur_ea && is_code(get_flags(ctx->cur_ea))) {
+			ea_t start_ea = get_func_start(ctx->cur_ea);
+			if (start_ea != BADADDR) {
+				if (start_ea != ctx->cur_ea && is_code(get_flags(ctx->cur_ea))) {
 					gco_info_t gco;
 					if (get_current_operand(&gco))
 						attach_action_to_popup(widget, p, ACT_NAME(insert_varval));
 				}
-				if(has_varvals(func->start_ea))
+				if(has_varvals(start_ea))
 					attach_action_to_popup(widget, p, ACT_NAME(clear_varvals));
 			}
 			break;
@@ -5438,11 +5434,11 @@ static void progress(const char *new_name)
 	uint32 total = 0;
 	uint32 done = 0;
 	for (size_t i = 0; i < funcqty; i++) {
-		func_t* func = getn_func(i);
-		if(!func || (func->flags & FUNC_LIB))
+		ea_t start_ea = get_func_ea_by_num(i);
+		if(start_ea == BADADDR || (get_func_flags(start_ea) & FUNC_LIB))
 			continue;
 		total++;
-		if(has_user_name(get_flags(func->start_ea)))
+		if(has_user_name(get_flags(start_ea)))
 			done++;
 	}
 	if(!total)
@@ -5815,6 +5811,7 @@ MY_DECLARE_LISTENER(idb_callback)
 			}
 			break;
 		}
+#if IDA_SDK_VERSION < 940
 	case idb_event::op_ti_changed:
 		{
 		//FIXME: only 32bit is affected
@@ -5844,6 +5841,9 @@ MY_DECLARE_LISTENER(idb_callback)
 			}
 			break;
 		}
+#else //IDA_SDK_VERSION >= 940
+		// is it fixed already?
+#endif //IDA_SDK_VERSION < 940
 	}
 	return 0;
 }
@@ -5877,7 +5877,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.9.106";
+	addon.version = "3.9.107";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

@@ -128,13 +128,12 @@ static minsn_t* create_mov(mbl_array_t* mba, const varval_info_t& vv)
 //--------------------------------------------------------------------------
 void vv_insert_assertions(mbl_array_t* mba)
 {
-	func_t* pfn = mba->get_curfunc();
-	if (pfn == NULL)
+	if (mba->is_snippet())
 		return; // currently only functions are supported, not snippets
 
 	// filter out the addresses outside of the decompiled function
 	varvals_info_t varvals;
-	if(!load_varvals(pfn->start_ea, varvals) || varvals.empty())
+	if(!load_varvals(mba->entry_ea, varvals) || varvals.empty())
 		return; // no addresses inside our function
 
 	struct ida_local assertion_inserter_t : public minsn_visitor_t
@@ -212,17 +211,23 @@ ACT_DEF(insert_varval)
 			ea_t ea = get_screen_ea();
 			if (!is_code(get_flags(ea)))
 				break;
-			func_t* pfn = get_func(ea);
-			if (!pfn || pfn->start_ea == ea)
-				break;
 			gco_info_t gco;
 			if (!get_current_operand(&gco))
 				break;
 
 			//There is no way to convert IDA stack offset to hexrays stackvar offset without decompiling
 			//from hexrays.hpp "because they are based on the lowest value of sp in the function"
-			hexrays_failure_t hf;
+#if IDA_SDK_VERSION < 940
+			func_t* pfn = get_func(ea);
+			if (!pfn)
+				break;
 			mba_ranges_t mbr(pfn);
+#else // IDA_SDK_VERSION >= 940
+			decomp_ranges_t mbr(ea);
+			if (mbr.func_ea == BADADDR)
+				break;
+#endif //IDA_SDK_VERSION < 940
+			hexrays_failure_t hf;
 			mba = gen_microcode(mbr, &hf, NULL, DECOMP_NO_CACHE, MMAT_PREOPTIMIZED);
 			if (!mba)
 				break;
@@ -241,7 +246,7 @@ ACT_DEF(insert_varval)
 			} else {
 				fri.var.set_stkoff(op.s->off, op.size);
 			}
-			proc_ea = pfn->start_ea;
+			proc_ea = mba->entry_ea;
 			fri.ea = ea;
 			varname = gco.name;
 			ok = true;
@@ -302,10 +307,9 @@ ACT_DEF(clear_varvals)
 	vdui_t* vu = NULL;
 	ea_t proc_ea;
 	if (ctx->widget_type == BWN_DISASM) {
-		func_t* func = get_func(get_screen_ea());
-		if (!func)
+		proc_ea = get_func_start(get_screen_ea());
+		if (proc_ea == BADADDR)
 			return 0;
-		proc_ea = func->start_ea;
 	} else if (ctx->widget_type == BWN_PSEUDOCODE) {
 		vu = get_widget_vdui(ctx->widget);
 		proc_ea = vu->cfunc->entry_ea;

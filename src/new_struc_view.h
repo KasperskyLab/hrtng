@@ -20,10 +20,7 @@ struct ida_local function_list_t : public chooser_t
 		ea_t ea = functions[n];
 		cols_[0].sprnt("%a", ea);
 		cols_[1] = get_short_name(ea);
-
-		func_t* f = get_func(ea);
-		if (f)
-			get_func_cmt(&cols_[2], f, true);
+		get_func_cmt_ea(&cols_[2], ea, true);
 	}
 };
 

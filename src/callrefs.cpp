@@ -51,14 +51,22 @@ static ea_t find_bb_start(ea_t call_ea)
 }
 
 //-------------------------------------------------------------------------
-static bool determine_decompilation_range(mba_ranges_t *mbr, ea_t call_ea, const tinfo_t &tif)
+static bool determine_decompilation_range(decomp_ranges_t *mbr, ea_t call_ea, const tinfo_t &tif)
 {
+#if IDA_SDK_VERSION < 940
   func_t *pfn = get_func(call_ea);
-  if ( pfn != nullptr && calc_func_size(pfn) <= 4096 )
-  { // a small function, decompile it entirely
+  if ( pfn != nullptr && calc_func_size(pfn) <= 4096 ) { // a small function, decompile it entirely
     mbr->pfn = pfn;
     return true;
   }
+#else //IDA_SDK_VERSION >= 940
+  ea_t func_ea = get_func_start(call_ea);
+  if (func_ea != BADADDR && calc_func_size_ea(func_ea) <= 1024)  { // a small function, decompile it entirely
+    mbr->func_ea = func_ea;
+    return true;
+  }
+#endif //IDA_SDK_VERSION < 940
+
 
   ea_t minea = call_ea;
   ea_t maxea = call_ea;
@@ -86,7 +94,7 @@ static bool determine_decompilation_range(mba_ranges_t *mbr, ea_t call_ea, const
 // decompile the snippet
 static bool generate_call_line(qstring *out, bool *canceled, ea_t call_ea, const tinfo_t &tif)
 {
-  mba_ranges_t mbr;
+  decomp_ranges_t mbr;
   if ( !determine_decompilation_range(&mbr, call_ea, tif) )
     return false;
   hexrays_failure_t hf;

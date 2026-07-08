@@ -54,6 +54,11 @@ ADD_IDA_PLUGIN(hrtng
   varval.cpp
   )
 
+# halves the size of the built binaries on linux, lesser effect on mac
+if(NOT MSVC)
+	add_compile_options(-flto)
+endif()
+
 set(CRYPTOPP_BUILD_TESTING OFF CACHE BOOL "Build library tests")
 add_subdirectory(cryptopp-cmake)
 INCLUDE_DIRECTORIES(${cryptopp_INCLUDE_DIRS})

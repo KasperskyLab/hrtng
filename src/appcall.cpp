@@ -678,41 +678,41 @@ bool Appcaller::runOne(cexpr_t *call)
 bool Appcaller::runAll()
 {
 	//TODO loop first_to next_to get_first_dref_to  
-	std::multimap<func_t*, ea_t> xreffuncs;
+	std::multimap<ea_t, ea_t> xreffuncs;
 	for(ea_t xrefea = get_first_cref_to(funcea); xrefea != BADADDR; xrefea = get_next_cref_to(funcea, xrefea)) {
-		func_t *xreffunc = get_func(xrefea);
-		xreffuncs.insert(std::pair<func_t*, ea_t>(xreffunc, xrefea));
+		ea_t func_ea = get_func_start(xrefea);
+		xreffuncs.insert(std::pair<ea_t, ea_t>(func_ea, xrefea));
 	}
-	func_t *prevxf = NULL;
+	ea_t prev_func = BADADDR;
 	cfuncptr_t cf(nullptr);
 	size_t i = 0;
 	size_t n = xreffuncs.size();
 	show_wait_box("[hrt] Decompiling...");
-	for(std::multimap<func_t*, ea_t>::iterator it = xreffuncs.begin(); it != xreffuncs.end(); it++) {
+	for(auto it : xreffuncs) {
 		if(user_cancelled()) {
 			hide_wait_box();
 			Log(llNotice, "appcall is canceled\n");
 			return false;
 		}
 		appcall_t ac;
-		ac.ea = it->second;
-		if(it->first == NULL) {
+		ac.ea = it.second;
+		if(it.first == BADADDR) {
 			ac.error.sprnt("no func for xref %a", ac.ea);
 			cf.reset();
-		} else if(it->first != prevxf) {
-			prevxf = it->first;
-			replace_wait_box("[hrt] Decompiling %a (%" FMT_Z "/%" FMT_Z ")", it->first->start_ea, i++, n);
+		} else if(it.first != prev_func) {
+			prev_func = it.first;
+			replace_wait_box("[hrt] Decompiling %a (%" FMT_Z "/%" FMT_Z ")", it.first, i++, n);
 			hexrays_failure_t hf;
-			cf = decompile(it->first, &hf, DECOMP_NO_WAIT);
+			cf = decompile(get_func_94(it.first), &hf, DECOMP_NO_WAIT);
 			if(!cf) {
-				ac.error.sprnt("decompile func %a failed at %a with err %d %s (%s)", it->first->start_ea, hf.errea, hf.code, hf.str.c_str(), hf.desc().c_str());
+				ac.error.sprnt("decompile func %a failed at %a with err %d %s (%s)", it.first, hf.errea, hf.code, hf.str.c_str(), hf.desc().c_str());
 				Log(llWarning, "%s\n", ac.error.c_str());
 			}
 		}
 		if(cf) {
-			cexpr_t *call = findCall(cf, it->second, funcea);
+			cexpr_t *call = findCall(cf, it.second, funcea);
 			if(!call) {
-				ac.error.sprnt("smth wrong in finding call at %a", it->second);
+				ac.error.sprnt("smth wrong in finding call at %a", it.second);
 				Log(llWarning, "%s\n", ac.error.c_str());
 			} else {
 				qstring callstr;
@@ -850,6 +850,7 @@ bool Appcaller::run(ea_t dstea, cexpr_t *call)
 	static ea_t initEnd = BADADDR;
 	static ea_t initBgn = BADADDR;
 	if(initBgn == BADADDR && initEnd == BADADDR) {
+#if IDA_SDK_VERSION < 940
 		if(dbg && !qstrcmp(dbg->name, "imul")) {
 			initBgn = inf_get_start_ea();
 			func_t *initFunc = get_func(initBgn);
@@ -857,6 +858,9 @@ bool Appcaller::run(ea_t dstea, cexpr_t *call)
 				initEnd = get_item_head(initFunc->end_ea - 1);
 			else
 				initEnd = get_item_end(initBgn);
+#else //IDA_SDK_VERSION >= 940
+		if (0) {
+#endif //IDA_SDK_VERSION < 940
 		} else {
 			initBgn = 0;
 			initEnd = 0;
