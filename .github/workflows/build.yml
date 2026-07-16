@@ -56,9 +56,13 @@ jobs:
             tag: "v9.4.0-release"
         exclude:
           - os.name: linux-arm
-            ida.ver: ["92", "93"]
+            ida.ver: 92
           - os.name: windows-arm
-            ida.ver: ["92", "93"]
+            ida.ver: 92
+          - os.name: linux-arm
+            ida.ver: 93
+          - os.name: windows-arm
+            ida.ver: 93
 
     steps:
       - name: Setup MSBuild
