@@ -55,9 +55,12 @@ jobs:
             ver: "94"
             tag: "v9.4.0-release"
         exclude:
-          - os.name: windows-arm # https://github.com/weidai11/cryptopp/pull/1351
-          - os.name: linux-arm
-            ida.ver: "92"
+          - os:
+              name: windows-arm # https://github.com/weidai11/cryptopp/pull/1351
+          - os: 
+              name: linux-arm
+            ida:
+              ver: "92"
 
     steps:
       - name: Setup MSBuild
