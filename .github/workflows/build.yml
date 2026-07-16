@@ -29,8 +29,14 @@ jobs:
           - runner: ubuntu-latest
             name: linux
             mask: "*.so"
+          - runner: ubuntu-24.04-arm
+            name: linux-arm
+            mask: "*.so"
           - runner: windows-2022
             name: windows
+            mask: "Release/*.dll"
+          - runner: windows-11-arm
+            name: windows-arm
             mask: "Release/*.dll"
           - runner: macos-latest
             name: macos
@@ -48,14 +54,19 @@ jobs:
           - version: "9.4"
             ver: "94"
             tag: "v9.4.0-release"
+        exclude:
+          - os.name: linux-arm
+            ida.ver: ["92", "93"]
+          - os.name: windows-arm
+            ida.ver: ["92", "93"]
 
     steps:
       - name: Setup MSBuild
-        if: matrix.os.name == 'windows'
+        if: startsWith(matrix.os.name,'windows')
         uses: microsoft/setup-msbuild@v3
 
       - name: Setup Visual Studio
-        if: matrix.os.name == 'windows'
+        if: startsWith(matrix.os.name,'windows')
         uses: TheMrMilchmann/setup-msvc-dev@v4
         with:
           arch: x64
@@ -91,6 +102,20 @@ jobs:
         run: |
           cd ./build
           for i in *.dylib; do mv "$i" "${i/.dylib/_x86_64.dylib}"; done
+
+      - name: Post build rename on linux-arm
+        if: matrix.os.name == 'linux-arm'
+        shell: bash
+        run: |
+          cd ./build
+          for i in *.so; do mv "$i" "${i/.so/_arm64.so}"; done
+
+      - name: Post build rename on windows-arm
+        if: matrix.os.name == 'windows-arm'
+        shell: bash
+        run: |
+          cd ./build/Release
+          for i in *.dll; do mv "$i" "${i/.so/_arm64.dll}"; done
 
       - name: Collect artifacts
         shell: bash
