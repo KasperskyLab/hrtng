@@ -47,13 +47,17 @@ jobs:
         ida:
           - version: "9.2"
             ver: "92"
-            tag: "v9.2"
+            tag: "v9.2.0-release"
           - version: "9.3"
             ver: "93"
-            tag: "v9.3"
+            tag: "v9.3.1-release"
           - version: "9.4"
             ver: "94"
             tag: "v9.4.0-release"
+        exclude:
+          - os.name: windows-arm # https://github.com/weidai11/cryptopp/pull/1351
+          - os.name: linux-arm
+            ida.ver: "92"
 
     steps:
       - name: Setup MSBuild
