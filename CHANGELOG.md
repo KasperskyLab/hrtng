@@ -2,15 +2,20 @@
 
 ## [Unreleased]
 ### Added
-- Preliminary IDA 9.4-beta2 support
+- IDA 9.4 support
 - Automatically detect and set base class member inside derived class struct on VTBL-scan
 ### Changed
 - "Recast item": do not deref pointer type in case if `var` is an argument of the function on recasting expressions like `*(type*)var`
 - Reduced number of messages displayed on default logging level
+- More info and debug messages on vtbl-scan
+- "Rename func" - add wrapper suffix `_w` only for funcs
+- "apilist.txt" for "APIhashes scan" is updated to conform Windows-11
 ### Removed
--
+- "Invert "if" statement" obsolete for IDA 9.4
+- "Fix stack pointer for indirect call" hope fixed in upstream
 ### Fixed
--
+- Limit length of string duplicated to comment (IDA hangs on huge one)
+- CRYPTOPP vs MSVS-2026 compatibility
 
 ## 3.9.105 - 2026-06-25
 ### Added

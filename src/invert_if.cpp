@@ -45,6 +45,7 @@
 #include <hexrays.hpp>
 #include "warn_on.h"
 
+#if IDA_SDK_VERSION < 940
 #include "invert_if.h"
 #include "helpers.h"
 
@@ -215,3 +216,4 @@ void init_invert_if()
   }
   register_action(invert_if_action);
 }
+#endif //IDA_SDK_VERSION < 940

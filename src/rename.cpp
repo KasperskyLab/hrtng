@@ -1077,7 +1077,10 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			qstring strcontent;
 			if (!get_opinfo(&oi, ea, 0, flg))
 				oi.strtype = STRTYPE_C;
-			if (get_strlit_contents(&strcontent, ea, (size_t)(get_item_end(ea) - ea), oi.strtype, NULL, STRCONV_ESCAPE) > 0) {
+			size_t len = get_item_end(ea) - ea;
+			if(len > MAX_NAME_LEN * 2)
+				len = MAX_NAME_LEN * 2;
+			if (get_strlit_contents(&strcontent, ea, len, oi.strtype, NULL, STRCONV_ESCAPE) > 0) {
 				strcontent.insert('"');
 				strcontent.append('"');
 				func->set_user_cmt(loc, strcontent.c_str());

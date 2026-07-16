@@ -939,8 +939,11 @@ ACT_DEF(rename_func)
 	qstring highlight;
 	uint32 hlflg;
 	if(!var && get_highlight(&highlight, ctx->widget, &hlflg)) {
-		if(newName.empty() && get_name_ea_ex(highlight) != BADADDR)
-			mk_name_w(highlight);
+		if(newName.empty()) {
+			ea_t ea = get_name_ea_ex(highlight);
+			if(ea != BADADDR && is_func(get_flags(ea)))
+				mk_name_w(highlight);
+		}
 		newName.append(highlight);
 	} else if(has_user_name(get_flags(vu->cfunc->entry_ea)))
 		newName.append(oldname);
@@ -5025,8 +5028,11 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 			TWidget *form = va_arg(va, TWidget *);
 			TPopupMenu *popup = va_arg(va, TPopupMenu *);
 			vdui_t *vu = va_arg(va, vdui_t *);
+#if IDA_SDK_VERSION < 940
 			if (find_if_statement(vu))
 				attach_action_to_popup(form, popup, INV_IF_ACTION_NAME);
+#endif //IDA_SDK_VERSION < 940
+
 			add_hrt_popup_items(form, popup, vu);
 		}
 		break;
@@ -5120,7 +5126,9 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 				if(!cfg.disable_autorename)
 					autorename_n_pull_comments(cfunc);
 				lit_scan(cfunc); // after autorename_n_pull_comments: to search literals in renamed indirect calls
+#if IDA_SDK_VERSION < 940
 				convert_marked_ifs(cfunc);
+#endif //IDA_SDK_VERSION < 940
 				make_if42blocks(cfunc);
 
 				//there is not found a better place that called once after microcode is completed
@@ -5877,7 +5885,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.9.107";
+	addon.version = "3.9.108";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {
@@ -5903,13 +5911,15 @@ plugmod_t*
 	register_idc_functions();
 	varval_reg_act();
 	registerCtreeGraph();
-	init_invert_if();
 #if IDA_SDK_VERSION <= 730
 	ncast_reg_act();
 #endif //IDA_SDK_VERSION <= 730
 #if IDA_SDK_VERSION < 850
 	structs_reg_act();
 #endif //IDA_SDK_VERSION < 850
+#if IDA_SDK_VERSION < 940
+	init_invert_if();
+#endif //IDA_SDK_VERSION < 940
 	registerMicrocodeExplorer();
 	register_new_struc_place();
 	new_struct_view_reg_act();

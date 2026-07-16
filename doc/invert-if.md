@@ -1,4 +1,7 @@
 ## Invert "if" statement
+
+> ⚠️ Obsolete since IDA 9.4. Available when build with an older SDK.
+
 For example, a statement like
 ```
     if ( cond )

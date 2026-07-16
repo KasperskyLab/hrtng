@@ -1,6 +1,8 @@
 ## Fix stack pointer for indirect call
 Context menu *"Force call type"* or *"Set call type"*
 
+> ⚠️ Turned off since IDA 9.4. Hope fixed in upstream.
+
 Sometimes IDA wrongly calculates stack pointer delta on indirect call. For example:
 ```
 10004D9E 020 40                    inc     eax

@@ -28,10 +28,10 @@ Messages, menu items, popup windows and dialog boxes belong to this plugin are m
 ### Interactive pseudocode transformation
   * [User interactive renaming/retyping assistance](doc/rename-recast.md)
   * [Assists with changing type of structure member or local/global variable](doc/recast.md)
-  * [Invert "if" statement](doc/invert-if.md)
   * [reinterpret_cast](doc/reicast.md)
   * [Collapse selection](doc/collapse.md)
   * ["offsetof" convertor](doc/offsetof.md)
+  * [~~Invert "if" statement~~](doc/invert-if.md)
 
 ### Decryption
   * [String/data/const decryption](doc/decr.md)
@@ -57,14 +57,14 @@ Messages, menu items, popup windows and dialog boxes belong to this plugin are m
   * [Union creation for a variable is reused with different types](doc/var-reuse.md)
   * [List of structures with given size, with given offset](doc/struct-sz-off.md)
   * [Assist in creation of new structure definitions](doc/struct-bld.md)
-  * [Finds structures with same "shape" as is used / Create struct from derefs](doc/struct-shape.md)
+  * [Find structures with same "shape" as is used / Create struct from derefs](doc/struct-shape.md)
   * [~~New functionality in Structures view~~](doc/ex-unp-struc.md)
   * [IDC script for interactive merging types across multiple IDBs](bin/idc/merge_types.idc)
 
 ### Virtual/indirect calls assistance
   * [Virtual calls assistance](doc/virtual-calls.md)
   * [Jump to indirect call destination](doc/ijmp.md)
-  * [Fix stack pointer for indirect call](doc/fix-stack.md)
+  * [~~Fix stack pointer for indirect call~~](doc/fix-stack.md)
  
 ### Function name and type
   * [Smart rename func](doc/rename-func.md)

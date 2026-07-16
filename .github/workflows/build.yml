@@ -41,8 +41,13 @@ jobs:
         ida:
           - version: "9.2"
             ver: "92"
+            tag: "v9.2"
           - version: "9.3"
             ver: "93"
+            tag: "v9.3"
+          - version: "9.4"
+            ver: "94"
+            tag: "v9.4.0-release"
 
     steps:
       - name: Setup MSBuild
@@ -66,7 +71,7 @@ jobs:
         run: |
           git clone https://github.com/HexRaysSA/ida-sdk.git ida-sdk
           cd ida-sdk
-          git checkout v${{ matrix.ida.version }}
+          git checkout ${{ matrix.ida.tag }}
           cd ..
 
       - name: Setup CMake
@@ -113,6 +118,7 @@ jobs:
         ida:
           - version: "9.2"
           - version: "9.3"
+          - version: "9.4"
     steps:
       - name: Checkout
         uses: actions/checkout@v5

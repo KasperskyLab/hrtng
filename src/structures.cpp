@@ -542,7 +542,7 @@ tinfo_t type_by_tid(tid_t tid)
 	return type;
 }
 
-bool compare_struct(const tinfo_t& left, const tinfo_t& right)
+bool compare_struct(const tinfo_t& left, const tinfo_t& right, bool ignoreName)
 {
 	udt_type_data_t l, r;
 	if(!left.get_udt_details(&l) || !right.get_udt_details(&r))
@@ -565,8 +565,9 @@ bool compare_struct(const tinfo_t& left, const tinfo_t& right)
 			 lm.effalign != rm.effalign ||
 			 lm.tafld_bits != rm.tafld_bits ||
 			 lm.fda != rm.fda ||
-			 lm.name != rm.name ||
-			 lm.type != rm.type)
+			 lm.type != rm.type ||
+			 (!ignoreName && lm.name != rm.name)
+			 )
 			return false;
 	}
 	return true;
@@ -703,7 +704,7 @@ tid_t create_VT_struc(ea_t VT_ea, const char * basename, uval_t idx /*= BADADDR*
 		// compare new struc with existing one to avoid duplicates
 		tinfo_t oldType;
 		if(get_tinfo(&oldType, VT_ea) && oldType.is_struct()) {
-			if(compare_struct(oldType, newType)) { //if(oldType.compare_with(newType, TCMP_EQUAL)) { // always returns false
+			if(compare_struct(oldType, newType, autoScan)) { //if(oldType.compare_with(newType, TCMP_EQUAL)) { // always returns false
 				ok = false;
 				newid = BADADDR;
 				qstring oldTname;
@@ -818,8 +819,10 @@ int create_VT(tid_t parent, ea_t VT_ea, bool autoScan/*= false*/, const char *to
 			if(autoScan) {
 				// disable update/duplicate VTBL creation in autoScan mode
 				for(auto vtea: eav)
-					if(vtea == VT_ea)
+					if(vtea == VT_ea) {
+						Log(llDebug, "create_VT: existing VT at %a\n", VT_ea);
 						return 0;
+					}
 			}
 		}
 	}
@@ -911,6 +914,7 @@ int create_VT(tid_t parent, ea_t VT_ea, bool autoScan/*= false*/, const char *to
 				err = struc.set_udm_type(idx, make_pointer(utype));
 				if (err == TERR_OK) {
 #endif //IDA_SDK_VERSION < 850
+					Log(llInfo, "Added %u VTBL %s at %a in class %s\n", eav.size(), type_by_tid(vt_struc_id).dstr(), VT_ea, name.c_str());
 					add_proc2memb_ref(VT_ea, mtid);
 					return 1;
 				}
@@ -961,6 +965,7 @@ int create_VT(tid_t parent, ea_t VT_ea, bool autoScan/*= false*/, const char *to
 			err = vtblType.add_udm(udm, ETF_AUTONAME);
 			if (err == TERR_OK) {
 #endif //IDA_SDK_VERSION < 850
+				Log(llInfo, "Added %u VTBL %s at %a in class %s\n", eav.size(), type_by_tid(vt_struc_id).dstr(), VT_ea, name.c_str());
 				add_proc2memb_ref(VT_ea, mtid);
 				return 1;
 			}
@@ -972,6 +977,7 @@ int create_VT(tid_t parent, ea_t VT_ea, bool autoScan/*= false*/, const char *to
 	//create or update first VTBL
 	tinfo_t type = type_by_tid(vt_struc_id);
 	add_vt_member(struc, 0, VTBL_MEMNAME, make_pointer(type), VT_ea);
+	Log(llInfo, "Added %u VTBL %s at %a in class %s\n", eav.size(), type.dstr(), VT_ea, name.c_str());
 	return 1;
 }
 

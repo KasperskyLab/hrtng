@@ -2,7 +2,7 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.10)
 project(hrtng)
 
 #run ccmake to change IDASDK_VER / IDASDK_DIR
-SET(IDASDK_VER "93" CACHE STRING "93" )
+SET(IDASDK_VER "94" CACHE STRING "94" )
 SET(IDASDK_DIR ${CMAKE_SOURCE_DIR}/../../idasdk${IDASDK_VER} CACHE STRING "ida-sdk/src")
 MESSAGE("${PROJECT_NAME}")
 MESSAGE("Using IDA SDK dir: ${IDASDK_DIR}")
@@ -21,7 +21,7 @@ SET(CMAKE_SKIP_RPATH TRUE)
 
 INCLUDE(ida_plugin.cmake)
 
-ADD_IDA_PLUGIN(hrtng 
+ADD_IDA_PLUGIN(hrtng
   hrtng.cpp
   apihashes.cpp
   appcall.cpp
@@ -59,6 +59,7 @@ if(NOT MSVC)
 	add_compile_options(-flto)
 endif()
 
+set(CRYPTOPP_USE_MASTER_BRANCH TRUE)
 set(CRYPTOPP_BUILD_TESTING OFF CACHE BOOL "Build library tests")
 add_subdirectory(cryptopp-cmake)
 INCLUDE_DIRECTORIES(${cryptopp_INCLUDE_DIRS})
