@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 ### Added
+### Changed
+### Removed
+### Fixed
+
+## 3.9.108 - 2026-07-16
+### Added
 - IDA 9.4 support
 - Automatically detect and set base class member inside derived class struct on VTBL-scan
 ### Changed
