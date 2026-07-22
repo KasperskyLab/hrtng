@@ -816,7 +816,7 @@ struct ida_local rf_chooser_t : public chooser_t
 
 	rf_chooser_t(refac_t* rf_) : chooser_t(
 #if IDA_SDK_VERSION >= 770
-																 CH_HAS_DIRTREE | CH_TM_FULL_TREE | CH_NON_PERSISTED_TREE |
+																 CH_HAS_DIRTREE | CH_TM_FULL_TREE | CH_NON_PERSISTED_TREE | CH_NO_STATUS_BAR |
 #endif //IDA_SDK_VERSION >= 770
 																 CH_CAN_DEL, qnumber(rcwidths), rcwidths, rcheader, "[hrt] Refactoring"), rf(rf_)
 	{
@@ -1046,9 +1046,11 @@ static int idaapi callback(int fid, form_actions_t &fa)
 	return 1;
 }
 
+#define REFACTTITLE "[hrt] Refactoring"
+
 int do_refactoring(action_activation_ctx_t *ctx)
 {
-	TWidget *widget = find_widget("[hrt] Refactoring");
+	TWidget *widget = find_widget(REFACTTITLE);
   if(widget) {
 		activate_widget(widget, true);
     return 0;
@@ -1070,13 +1072,25 @@ int do_refactoring(action_activation_ctx_t *ctx)
     // has no action callback in early IDA versions
 	  "BUTTON CANCEL NONE\n"
 #endif //IDA_SDK_VERSION < 800
-		"[hrt] Refactoring\n"   // title
+		REFACTTITLE         // title
+		"\n\n"
+		"%/%*"              // callback
 		"\n"
-		"%/%*"                    // callback
-		"\n"
-		"<~L~ist:E0:0:100:::>\n"
-		"<~S~earch for:q1:::><|><Re~p~lace with:q2:::>\n"
-		"<~C~ase sensitive:c><|><Whole words onl~y~:c><|><Use re~g~ular expression:c>3>\n\n"; //!!! check RFF_ flags in case of changes in this line
+		"<:E0:0:100:::>\n"
+		"<~S~earch:q1:::><|><Re~p~lace:q2:::><|>"
+		"<#Case sensitive#~C~ase:c><|><#Whole words only#Words:c><|><#Use regular expression for search#Re~g~exp:c>3>"; //!!! check RFF_ flags in case of changes in this line
 	refac->rfform = open_form(form, WOPN_RESTORE, callback, refac, rfch, &selected, &refac->searchFor, &refac->replaceWith, &refac->flags);
+
+	// both docking below works well, but floating Refactoring window is better for my taste
+#if 0
+	// dock on right side of "Output" window -- too small part of the list is visible
+	set_dock_pos(REFACTTITLE, "Output", DP_RIGHT);
+#elif 0
+	// dock on right side of currently active window
+	TWidget *w = get_current_widget();
+	qstring cwt;
+	if(w && get_widget_title(&cwt, w))
+		set_dock_pos(REFACTTITLE, cwt.c_str(), DP_RIGHT);
+#endif
 	return 0;
 }

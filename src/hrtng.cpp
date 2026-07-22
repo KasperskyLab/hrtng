@@ -682,9 +682,9 @@ bool is_VT_assign(vdui_t *vu, tid_t *struc_id, ea_t *vt_ea)
 	uint64 offset;
 	if (vu->item.get_udm(NULL, &parentTi, &offset) == -1 || offset != 0)
 		return false;
-	sid = parentTi.get_tid();
+	sid = parentTi.force_tid();
 	if (sid == BADADDR)
-		return false; //parent.force_tid()
+		return false;
 #endif //IDA_SDK_VERSION < 850
 
 	citem_t* parent = vu->cfunc->body.find_parent_of(vu->item.i);
@@ -3282,10 +3282,10 @@ ACT_DEF(create_dummy_struct)
 				}
 			}
 		}
-		qstring n;
+		//qstring n;
 		if(vu->item.is_citem() &&
 			 isRenameble(vu->item.e->op) &&
-			 !getExpName(vu->cfunc, vu->item.e, &n) &&
+			 /*!getExpName(vu->cfunc, vu->item.e, &n) &&*/
 			 renameExp(vu->item.e->ea, vu->cfunc, vu->item.e, &name, vu))
 			return 1;//vu->refresh_view(true);
 	}
@@ -5155,7 +5155,7 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 			if(!is_user_name)
 				break;
 			if(v->is_arg_var() && qstrcmp(name, v->name.c_str())) { // only arg vars are affected
-				Log(llWarning, "IDA bug: lxe_lvar_name_changed is sent for wrong variable ('%s' instead of '%s')", v->name.c_str(), name);
+				Log(llDebug, "%a: lxe_lvar_name_changed is sent for wrong variable ('%s' instead of '%s')", vu->cfunc->entry_ea, v->name.c_str(), name);
 				lvars_t *vars = vu->cfunc->get_lvars();
 				auto it = vars->begin();
 				for(; it != vars->end(); it++) {
@@ -5163,36 +5163,54 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 						break;
 				}
 				if(it == vars->end()) {
-					LogTail(llWarning, " -- not found\n");
+					LogTail(llDebug, " -- not found, fix directly\n");
 					//variable may not renamed at all (and listed in 'vars' with old name). But the function prototype is changed
-					//try find right var in func prototype
-					tinfo_t ft;
-					//if(vu->cfunc->get_func_type(&ft)) { // this type has the old name too (not renamed)
-					if(get_tinfo(&ft, vu->cfunc->entry_ea)) { // this type is ok (argument is renamed)
-						func_type_data_t fi;
-						if(ft.get_func_details(&fi)) {
-							for(size_t i = 0; i < fi.size(); ++i) {
-								if(fi[i].name == name) {
-									tinfo_t newType = getType4Name(name);
-									if(!newType.empty()) {
+
+					bool fixed = false;
+					tinfo_t newType = getType4Name(name);
+
+					//fix arg-type in func prototype
+					if(!newType.empty()) {
+						tinfo_t ft;
+						//if(vu->cfunc->get_func_type(&ft)) { // this type has the old name too (not renamed)
+						if(get_tinfo(&ft, vu->cfunc->entry_ea)) { // this type is ok (argument is renamed)
+							func_type_data_t fi;
+							if(ft.get_func_details(&fi)) {
+								for(size_t i = 0; i < fi.size(); ++i) {
+									if(fi[i].name == name) {
 										fi[i].type = newType;
 										tinfo_t newFType;
 										if(newFType.create_func(fi) && apply_tinfo(vu->cfunc->entry_ea, newFType, is_userti(vu->cfunc->entry_ea) ? TINFO_DEFINITE : TINFO_GUESSED)) {
+											fixed = true;
 											qstring typeStr;
 											newFType.print(&typeStr);
-											Log(llWarning, "lxe_lvar_name_changed wa %a: Function type was recasted for change arg%d into \"%s\"\n", vu->cfunc->entry_ea, i, typeStr.c_str());
-											vu->refresh_view(true);
+											Log(llInfo, "%a: lxe_lvar_name_changed Function type was recasted for change arg%d into \"%s\"\n", vu->cfunc->entry_ea, i, typeStr.c_str());
 										}
+										break;
 									}
-									break;
 								}
 							}
 						}
 					}
+#if IDA_SDK_VERSION > 750
+					//fix var directly in idb
+					lvar_saved_info_t info;
+					if(locate_lvar(&info.ll, vu->cfunc->entry_ea, v->name.c_str())) {
+						info.name = name;
+						if(!newType.empty())
+							info.type = newType;
+						if(modify_user_lvar_info(vu->cfunc->entry_ea, MLI_NAME | (!newType.empty() ? MLI_TYPE : 0), info)) {
+							fixed = true;
+							Log(llInfo, "%a: lxe_lvar_name_changed var fixed \"%s %s\"\n", vu->cfunc->entry_ea, info.type.dstr(), info.name.c_str());
+						}
+					}
+#endif //IDA_SDK_VERSION > 750
+					if(fixed)
+						vu->refresh_view(true);
 					break;
 				}
 				v = it;
-				LogTail(llWarning, " -- fixed\n");
+				LogTail(llDebug, " -- fixed\n");
 			}
 			if (!v->has_user_type()) {
 			  tinfo_t t = getType4Name(name);
@@ -5885,7 +5903,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.9.108";
+	addon.version = "3.9.109";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

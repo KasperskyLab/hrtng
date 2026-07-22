@@ -3,8 +3,15 @@
 ## [Unreleased]
 ### Added
 ### Changed
+- Made "Refactoring" window smaller and dock friendly
+- Autorename: ignore decompiler generated "nice" names
+- Enable "Add VT" for types derived from external type-library
+- Force renaming var under cursor on "Create dummy struct"
 ### Removed
 ### Fixed
+- Autorename: fix `_vtbl` ban
+- Autorename: avoid renaming vtbl to base class member
+- One more workaround for "lxe_lvar_name_changed is sent for wrong variable" bug
 
 ## 3.9.108 - 2026-07-16
 ### Added

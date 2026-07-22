@@ -43,7 +43,7 @@ bool isIdaInternalComment(const char* comment)
 }
 
 static const char* badVarNames[] = {
-  "inited", "started", "result", "data", "Mem", "Memory", "Block", "String", "ProcName", "ProcAddress", "LibFileName", "ModuleName", "LibraryA", "LibraryW"
+  /*"inited", "started", "result",*/ "data", "Mem", "Memory", "Block", "String"/*, "ProcName", "ProcAddress", "LibFileName", "ModuleName", "LibraryA", "LibraryW"*/
 };
 
 //for Vars and Args only (globals and struct members have own checks)
@@ -74,7 +74,7 @@ static bool isVarNameGood(const char* name)
 	//annoing p_fld_xx renaming with ida 7.6
 	if(name[0] == 'p' && name[1] == '_')
 		name += 2;
-	if(!strncmp(name, "fld_", 4))
+	if(!strncmp(name, "field_", 4))
 		return false;
 #endif // IDA_SDK_VERSION == 760
 
@@ -230,7 +230,7 @@ static bool getEaName(ea_t ea, qstring* name)
 		qstring n;
 		get_ea_name(&n, ea);
 		if(!stristr(n.c_str(), VTBL_SUFFIX)  // avoid renaming derived class vtbl to base one by the redundant assignment in ctor/dtor
-			 || strncmp(n.c_str(), "??_7", 4)) // ignore MSVC vtables (mangled names starting with "??_7")
+			 && strncmp(n.c_str(), "??_7", 4)) // ignore MSVC vtables (mangled names starting with "??_7")
 		{
 			if (name) {
 				*name = n;
@@ -300,7 +300,7 @@ bool renameEa(ea_t refea, ea_t ea, const qstring* name)
 
 bool getVarName(lvar_t * var, qstring* name)
 {
-	if (!var->has_user_name() && !var->has_nice_name())
+	if (!var->has_user_name())
 		return false;
 	if(!isVarNameGood(var->name.c_str()))
 		return false;
@@ -324,7 +324,7 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 	}
 
 	//check if proc doesnt already has such name
-	newName = unique_nameD(newName.c_str(), "_", [&refea, &vars, &var](const qstring &n)
+	newName = unique_nameD(newName.c_str(), "_", [&vars, &var](const qstring &n)
 	{
 		for(auto it = vars->begin(); it != vars->end(); it++) {
 			if(it->name == n) {
@@ -337,7 +337,9 @@ bool renameVar(ea_t refea, cfunc_t *func, ssize_t varIdx, const qstring* name, v
 	});
 
 	qstring oldname = var->name;
-	if(oldname == newName) { // old name is equal to new, why?
+	if(oldname == newName && // old name is equal to new, why?
+		!(var->has_nice_name() && !var->has_user_name())) // pass to process renaming the same decompiler's nice name
+	{
 		if(isVarNameGood(oldname.c_str())) //it possible on renaming to bad name
 			Log(llDebug, "FIXME: renameVar(%a, \"%s\") dup\n", refea, oldname.c_str());
 		return false;
@@ -893,8 +895,13 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			if(rname.empty() && (hasLeft || renameLeft)) {
 				if(!lname.empty())//assume lname more important then comments
 					newName = lname;
-				Log(llFlood, "%a: renaming asgn right side '%s' to '%s'\n", asgn->ea, DSTR(right), newName.c_str());
-				varRenamed |= renameExp(asgn->ea, func, right, &newName);
+
+				if (skipCast(right)->op == cot_obj && (left->op == cot_memptr || left->op == cot_memref) && !left->m) {
+					Log(llDebug, "%a: avoid renaming vtbl to base class member '%s' to '%s'\n", asgn->ea, DSTR(right), newName.c_str());
+				}	else {
+					Log(llFlood, "%a: renaming asgn right side '%s' to '%s'\n", asgn->ea, DSTR(right), newName.c_str());
+					varRenamed |= renameExp(asgn->ea, func, right, &newName);
+				}
 			}
 			return 0;
 		}
@@ -1103,8 +1110,8 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 		void apply_loop()
 		{
 			uint32 i = 0;
-			for(; i < 10; ++i)
-			{
+			for(; i < 10; ++i) {
+				Log(llFlood, "%a %s: autorename pass %u\n", func->entry_ea, funcname.c_str(), i);
 				varRenamed = false;
 				apply_to(&func->body, NULL);
 				if(!varRenamed)
@@ -1135,8 +1142,28 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 				}
 			}
 		}
-
 	};
+#if 0
+	// delete all decompiler generated var-names
+	lvars_t *vars = cfunc->get_lvars();
+	for (size_t varIdx = 0; varIdx < vars->size(); varIdx++) {
+		lvar_t* var = &vars->at(varIdx);
+		if(!var->has_user_name() && var->has_nice_name()
+			 //&& isVarNameGood(var->name.c_str())
+			 //&& var->name[0] == 'p' && var->name[1] == '_'
+			) {
+			Log(llDebug, "%a: kill var-name '%s' defined at %a\n", cfunc->entry_ea, var->name.c_str(), var->defea);
+			qstring newName = unique_nameD(var->is_arg_var() ? "a99" : "v99", "_", [&vars](const qstring &n){	for(auto &v : *vars) if(v.name == n) return false; return true;	});
+#if IDA_SDK_VERSION < 830
+			var->name = newName;
+			var->set_user_name();
+#else // IDA_SDK_VERSION >= 830
+			cfunc->mba->set_lvar_name(*var, newName.c_str(), 0);
+#endif // IDA_SDK_VERSION < 830
+		}
+	}
+#endif
+
 	cblock_visitor_t cbv(cfunc);
 	cbv.apply_loop();
 	//cfunc->verify(ALLOW_UNUSED_LABELS, false);
