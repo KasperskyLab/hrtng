@@ -43,8 +43,18 @@ bool isIdaInternalComment(const char* comment)
 }
 
 static const char* badVarNames[] = {
-  /*"inited", "started", "result",*/ "data", "Mem", "Memory", "Block", "String"/*, "ProcName", "ProcAddress", "LibFileName", "ModuleName", "LibraryA", "LibraryW"*/
+  "inited", "started", "result", "data", "Mem", "Memory", "Block", "String", "ProcName", "ProcAddress", "LibFileName", "ModuleName", "LibraryA", "LibraryW"
 };
+
+inline bool isHex(char x)
+{
+	return (x >= '0' && x <= '9') || (x >= 'A' && x <= 'F');
+}
+
+inline bool isHexa(char x)
+{
+	return isHex(x) || x == 'a';
+}
 
 //for Vars and Args only (globals and struct members have own checks)
 static bool isVarNameGood(const char* name)
@@ -53,7 +63,7 @@ static bool isVarNameGood(const char* name)
 		return false;
 
 	// names like: arg10, a10, arg_10, a_10, a2a
-	//             var10, v10, var_10, v_10
+	//             var10, v10, var_10, v_10, var_1A0
 	// (with and without '_')
 	if ((name[0] == 'a' || name[0] == 'v')) {
 		const char* vname = name + 1;
@@ -62,11 +72,11 @@ static bool isVarNameGood(const char* name)
 			vname = name + 3;
 		if(*vname == '_')
 			vname++;
-		if(
-	  (vname[0] == 0 ||   (vname[0] >= '0' && vname[0] <= '9' &&
-		(vname[1] == 0 || (((vname[1] >= '0' && vname[1] <= '9') || vname[1] == 'a') && //smth like 'a22' or 'a2a'
-		(vname[2] == 0 ||   (vname[2] >= '0' && vname[2] <= '9' &&
-	   vname[3] == 0)))))))
+		if((vname[0] == 0 || (isHex(vname[0]) &&
+			 (vname[1] == 0 || (isHexa(vname[1]) && //smth like 'a22' or 'a2a'
+			 (vname[2] == 0 || (isHexa(vname[2]) &&
+			 (vname[3] == 0 || (isHexa(vname[3]) &&
+			 vname[4] == 0)))))))))
 		return false;
 	}
 
@@ -300,7 +310,7 @@ bool renameEa(ea_t refea, ea_t ea, const qstring* name)
 
 bool getVarName(lvar_t * var, qstring* name)
 {
-	if (!var->has_user_name())
+	if (!var->has_user_name() && !var->has_nice_name())
 		return false;
 	if(!isVarNameGood(var->name.c_str()))
 		return false;

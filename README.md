@@ -114,11 +114,10 @@ Messages, menu items, popup windows and dialog boxes belong to this plugin are m
  * Clone hrtng together with [Crypto++® Library CMake](https://github.com/abdes/cryptopp-cmake) submodule. Or put manually downloaded `cryptopp-cmake` source code to `hrtng/src/cryptopp-cmake` folder.
  
 ```
-cd src
-git clone --recurse-submodules https://github.com/KasperskyLab/hrtng.git
+git clone --depth=1 --recurse-submodules --shallow-submodules https://github.com/KasperskyLab/hrtng.git
 ```
 
- * Copy `IDA_DIR/plugins/hexrays_sdk/include/hexrays.hpp` file to the `include` directory of the IDA SDK. (Not necessary since IDA 9.0/8.5)
+ * For IDA-SDK older version 8.5: copy `IDA_DIR/plugins/hexrays_sdk/include/hexrays.hpp` file to the `include` directory of the IDA SDK.
  * Edit `hrtng/src/CMakeLists.txt` file to set correct path and version of used IDA SDK. To build later with another SDK version you may change cmake's `IDASDK_VER` variable with using `cmake -D`, `ccmake` or `cmake-gui` tools.
  * Create build directory, go into it, configure and build cmake project
 ```
@@ -127,7 +126,7 @@ cmake <path-to/hrtng/src>
 cmake --build . --config Release -j 4 --clean-first
 ```
 
- * On the first build attempt with IDA SDK before version 9.1 there will be compiling error looks like:
+ * For IDA-SDK older version 9.1: On the first build attempt there will be compiling error looks like:
 
 ```
 hrtng/src/deob.cpp:912:60: error: ‘class rangeset_t’ has no member named ‘as_rangevec’

@@ -2,9 +2,9 @@
 
 ## [Unreleased]
 ### Added
+- Autorename: ban names like `var_1A0`
 ### Changed
 - Made "Refactoring" window smaller and dock friendly
-- Autorename: ignore decompiler generated "nice" names
 - Enable "Add VT" for types derived from external type-library
 - Force renaming var under cursor on "Create dummy struct"
 ### Removed
@@ -12,6 +12,7 @@
 - Autorename: fix `_vtbl` ban
 - Autorename: avoid renaming vtbl to base class member
 - One more workaround for "lxe_lvar_name_changed is sent for wrong variable" bug
+- Decrypt: wrong key len in case of key is space-delimited hex string
 
 ## 3.9.108 - 2026-07-16
 ### Added

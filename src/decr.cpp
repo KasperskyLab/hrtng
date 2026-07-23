@@ -49,7 +49,7 @@ enum eAlg {
   eAlg_CustomBlk
 };
 
-static void addComment(vdui_t *vu, const char *comment) 
+static void addComment(vdui_t *vu, const char *comment)
 {
   if (!vu->item.is_citem())
     return;
@@ -148,7 +148,7 @@ static uint64 getNextCharBuf(void* ctx, bool *stop, int size, bool bFwd)
   return res;
 }
 
-template<class charType> 
+template<class charType>
 int32 decrypt_str(charType* buf, int32 len, eAlg algo, bytevec_t &key, getNextChar_t *getNextChar, void* gncCtx, bool bFwd)
 {
   int32 ir = 0;
@@ -373,13 +373,15 @@ static bool decr_set_key(bytevec_t &key, ea_t keyEa, size_t keyLen, qstring *err
       key.resize(keystr.length() / 2);
       size_t i, j;
       for(i = 0, j = 0; i < keystr.length(); i += 2) {
-				if(keystr[i] == ' ')
+				while(keystr[i] == ' ')
 					++i;
         if(!strtobx(&keystr[i], &key[j++]))
           break;
       }
-      if(i == keystr.length())
+			if(i == keystr.length()) {
+				key.resize(j); // remove skipped spaces
         break;
+			}
     }
     error->sprnt("bad key: '%s', expected: 0x_address_of_key or 'key_string' or key_hex_string", keystr.c_str());
     return false;
