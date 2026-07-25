@@ -14,17 +14,17 @@
 AccessibleObjectFromWindow
  2 enum
   OBJID_WINDOW 0x0
-  OBJID_SOUND 0xfffffff5
-  OBJID_ALERT 0xfffffff6
-  OBJID_CURSOR 0xfffffff7
-  OBJID_CARET 0xfffffff8
-  OBJID_SIZEGRIP 0xfffffff9
-  OBJID_HSCROLL 0xfffffffa
-  OBJID_VSCROLL 0xfffffffb
-  OBJID_CLIENT 0xfffffffc
-  OBJID_MENU 0xfffffffd
-  OBJID_TITLEBAR 0xfffffffe
-  OBJID_SYSMENU 0xffffffff
+  OBJID_SOUND 0xfffffffffffffff5
+  OBJID_ALERT 0xfffffffffffffff6
+  OBJID_CURSOR 0xfffffffffffffff7
+  OBJID_CARET 0xfffffffffffffff8
+  OBJID_SIZEGRIP 0xfffffffffffffff9
+  OBJID_HSCROLL 0xfffffffffffffffa
+  OBJID_VSCROLL 0xfffffffffffffffb
+  OBJID_CLIENT 0xfffffffffffffffc
+  OBJID_MENU 0xfffffffffffffffd
+  OBJID_TITLEBAR 0xfffffffffffffffe
+  OBJID_SYSMENU 0xffffffffffffffff
 
 ActivateKeyboardLayout
  1 enum
@@ -3095,14 +3095,14 @@ DebugProc
   WH_DEBUG 0x9
   WH_SHELL 0xa
   WH_CALLWNDPROCRET 0xc
-  WH_MSGFILTER 0xffffffff
+  WH_MSGFILTER 0xffffffffffffffff
 
 DeferWindowPos
  3 enum
   HWND_TOP 0x0
   HWND_BOTTOM 0x1
-  HWND_NOTOPMOST 0xfffffffe
-  HWND_TOPMOST 0xffffffff
+  HWND_NOTOPMOST 0xfffffffffffffffe
+  HWND_TOPMOST 0xffffffffffffffff
  8 enum
   SWP_NOSIZE 0x1
   SWP_NOMOVE 0x2
@@ -3685,35 +3685,35 @@ GetCharacterPlacement
 
 GetClassLong
  2 enum
-  GCL_HICONSM 0xffffffde
-  GCW_ATOM 0xffffffe0
-  GCL_STYLE 0xffffffe6
-  GCL_WNDPROC 0xffffffe8
-  GCL_CBCLSEXTRA 0xffffffec
-  GCL_CBWNDEXTRA 0xffffffee
-  GCL_HMODULE 0xfffffff0
-  GCL_HICON 0xfffffff2
-  GCL_HCURSOR 0xfffffff4
-  GCL_HBRBACKGROUND 0xfffffff6
-  GCL_MENUNAME 0xfffffff8
+  GCL_HICONSM 0xffffffffffffffde
+  GCW_ATOM 0xffffffffffffffe0
+  GCL_STYLE 0xffffffffffffffe6
+  GCL_WNDPROC 0xffffffffffffffe8
+  GCL_CBCLSEXTRA 0xffffffffffffffec
+  GCL_CBWNDEXTRA 0xffffffffffffffee
+  GCL_HMODULE 0xfffffffffffffff0
+  GCL_HICON 0xfffffffffffffff2
+  GCL_HCURSOR 0xfffffffffffffff4
+  GCL_HBRBACKGROUND 0xfffffffffffffff6
+  GCL_MENUNAME 0xfffffffffffffff8
 
 GetClassLongPtr
  2 enum
-  GCLP_HICONSM 0xffffffde
-  GCW_ATOM 0xffffffe0
-  GCL_STYLE 0xffffffe6
-  GCLP_WNDPROC 0xffffffe8
-  GCL_CBCLSEXTRA 0xffffffec
-  GCL_CBWNDEXTRA 0xffffffee
-  GCLP_HMODULE 0xfffffff0
-  GCLP_HICON 0xfffffff2
-  GCLP_HCURSOR 0xfffffff4
-  GCLP_HBRBACKGROUND 0xfffffff6
-  GCLP_MENUNAME 0xfffffff8
+  GCLP_HICONSM 0xffffffffffffffde
+  GCW_ATOM 0xffffffffffffffe0
+  GCL_STYLE 0xffffffffffffffe6
+  GCLP_WNDPROC 0xffffffffffffffe8
+  GCL_CBCLSEXTRA 0xffffffffffffffec
+  GCL_CBWNDEXTRA 0xffffffffffffffee
+  GCLP_HMODULE 0xfffffffffffffff0
+  GCLP_HICON 0xfffffffffffffff2
+  GCLP_HCURSOR 0xfffffffffffffff4
+  GCLP_HBRBACKGROUND 0xfffffffffffffff6
+  GCLP_MENUNAME 0xfffffffffffffff8
 
 GetClassWord
  2 enum
-  GCW_ATOM 0xffffffe0
+  GCW_ATOM 0xffffffffffffffe0
 
 GetClipboardData
  2 enum
@@ -4166,23 +4166,23 @@ GetWindow
 
 GetWindowLong
  2 enum
-  GWL_USERDATA 0xffffffeb
-  GWL_EXSTYLE 0xffffffec
-  GWL_STYLE 0xfffffff0
-  GWL_ID 0xfffffff4
-  GWL_HWNDPARENT 0xfffffff8
-  GWL_HINSTANCE 0xfffffffa
-  GWL_WNDPROC 0xfffffffc
+  GWL_USERDATA 0xffffffffffffffeb
+  GWL_EXSTYLE 0xffffffffffffffec
+  GWL_STYLE 0xfffffffffffffff0
+  GWL_ID 0xfffffffffffffff4
+  GWL_HWNDPARENT 0xfffffffffffffff8
+  GWL_HINSTANCE 0xfffffffffffffffa
+  GWL_WNDPROC 0xfffffffffffffffc
 
 GetWindowLongPtr
  2 enum
-  GWLP_USERDATA 0xffffffeb
-  GWL_EXSTYLE 0xffffffec
-  GWL_STYLE 0xfffffff0
-  GWLP_ID 0xfffffff4
-  GWLP_HWNDPARENT 0xfffffff8
-  GWLP_HINSTANCE 0xfffffffa
-  GWLP_WNDPROC 0xfffffffc
+  GWLP_USERDATA 0xffffffffffffffeb
+  GWL_EXSTYLE 0xffffffffffffffec
+  GWL_STYLE 0xfffffffffffffff0
+  GWLP_ID 0xfffffffffffffff4
+  GWLP_HWNDPARENT 0xfffffffffffffff8
+  GWLP_HINSTANCE 0xfffffffffffffffa
+  GWLP_WNDPROC 0xfffffffffffffffc
 
 GiveFeedback
  1 bits
@@ -7829,28 +7829,28 @@ SetBoundsRect
 
 SetClassLong
  2 enum
-  GCL_HICONSM 0xffffffde
-  GCL_STYLE 0xffffffe6
-  GCL_WNDPROC 0xffffffe8
-  GCL_CBCLSEXTRA 0xffffffec
-  GCL_CBWNDEXTRA 0xffffffee
-  GCL_HMODULE 0xfffffff0
-  GCL_HICON 0xfffffff2
-  GCL_HCURSOR 0xfffffff4
-  GCL_HBRBACKGROUND 0xfffffff6
-  GCL_MENUNAME 0xfffffff8
+  GCL_HICONSM 0xffffffffffffffde
+  GCL_STYLE 0xffffffffffffffe6
+  GCL_WNDPROC 0xffffffffffffffe8
+  GCL_CBCLSEXTRA 0xffffffffffffffec
+  GCL_CBWNDEXTRA 0xffffffffffffffee
+  GCL_HMODULE 0xfffffffffffffff0
+  GCL_HICON 0xfffffffffffffff2
+  GCL_HCURSOR 0xfffffffffffffff4
+  GCL_HBRBACKGROUND 0xfffffffffffffff6
+  GCL_MENUNAME 0xfffffffffffffff8
 
 SetClassLongPtr
  2 enum
-  GCLP_HICONSM 0xffffffde
-  GCL_STYLE 0xffffffe6
-  GCLP_WNDPROC 0xffffffe8
-  GCL_CBCLSEXTRA 0xffffffec
-  GCL_CBWNDEXTRA 0xffffffee
-  GCLP_HMODULE 0xfffffff0
-  GCLP_HICON 0xfffffff2
-  GCLP_HCURSOR 0xfffffff4
-  GCLP_MENUNAME 0xfffffff8
+  GCLP_HICONSM 0xffffffffffffffde
+  GCL_STYLE 0xffffffffffffffe6
+  GCLP_WNDPROC 0xffffffffffffffe8
+  GCL_CBCLSEXTRA 0xffffffffffffffec
+  GCL_CBWNDEXTRA 0xffffffffffffffee
+  GCLP_HMODULE 0xfffffffffffffff0
+  GCLP_HICON 0xfffffffffffffff2
+  GCLP_HCURSOR 0xfffffffffffffff4
+  GCLP_MENUNAME 0xfffffffffffffff8
 
 SetConsoleMode
  2 enum
@@ -8189,9 +8189,9 @@ SetThreadPriority
   THREAD_PRIORITY_ABOVE_NORMAL 0x1
   THREAD_PRIORITY_HIGHEST 0x2
   THREAD_PRIORITY_TIME_CRITICAL 0xf
-  THREAD_PRIORITY_IDLE 0xfffffff1
-  THREAD_PRIORITY_LOWEST 0xfffffffe
-  THREAD_PRIORITY_BELOW_NORMAL 0xffffffff
+  THREAD_PRIORITY_IDLE 0xfffffffffffffff1
+  THREAD_PRIORITY_LOWEST 0xfffffffffffffffe
+  THREAD_PRIORITY_BELOW_NORMAL 0xffffffffffffffff
 
 SetTokenInformation
  3 enum
@@ -8230,28 +8230,28 @@ SetUserObjectSecurity
 
 SetWindowLong
  2 enum
-  GWL_USERDATA 0xffffffeb
-  GWL_EXSTYLE 0xffffffec
-  GWL_STYLE 0xfffffff0
-  GWL_ID 0xfffffff4
-  GWL_HINSTANCE 0xfffffffa
-  GWL_WNDPROC 0xfffffffc
+  GWL_USERDATA 0xffffffffffffffeb
+  GWL_EXSTYLE 0xffffffffffffffec
+  GWL_STYLE 0xfffffffffffffff0
+  GWL_ID 0xfffffffffffffff4
+  GWL_HINSTANCE 0xfffffffffffffffa
+  GWL_WNDPROC 0xfffffffffffffffc
 
 SetWindowLongPtr
  2 enum
-  GWLP_USERDATA 0xffffffeb
-  GWL_EXSTYLE 0xffffffec
-  GWL_STYLE 0xfffffff0
-  GWLP_ID 0xfffffff4
-  GWLP_HINSTANCE 0xfffffffa
-  GWLP_WNDPROC 0xfffffffc
+  GWLP_USERDATA 0xffffffffffffffeb
+  GWL_EXSTYLE 0xffffffffffffffec
+  GWL_STYLE 0xfffffffffffffff0
+  GWLP_ID 0xfffffffffffffff4
+  GWLP_HINSTANCE 0xfffffffffffffffa
+  GWLP_WNDPROC 0xfffffffffffffffc
 
 SetWindowPos
  2 enum
   HWND_TOP 0x0
   HWND_BOTTOM 0x1
-  HWND_NOTOPMOST 0xfffffffe
-  HWND_TOPMOST 0xffffffff
+  HWND_NOTOPMOST 0xfffffffffffffffe
+  HWND_TOPMOST 0xffffffffffffffff
  7 enum
   SWP_NOSIZE 0x1
   SWP_NOMOVE 0x2
@@ -8285,7 +8285,7 @@ SetWindowsHookEx
   WH_CALLWNDPROCRET 0xc
   WH_KEYBOARD_LL 0xd
   WH_MOUSE_LL 0xe
-  WH_MSGFILTER 0xffffffff
+  WH_MSGFILTER 0xffffffffffffffff
 
 ShellProc
  1 enum
@@ -8948,7 +8948,7 @@ WinMain
 
 WinVerifyTrust
  1 enum
-  INVALID_HANDLE_VALUE 0xffffffff
+  INVALID_HANDLE_VALUE 0xffffffffffffffff
 
 WindowProc
  3 enum

@@ -283,6 +283,7 @@ static const char* importEnumFromTil(til_t *til, const char* name, uint64 val)
 	if (limit == (uint32)-1)
 		return NULL;
 #endif //IDA_SDK_VERSION < 840
+	const char* valOnlyTypeName = NULL;
 	for(uint32 ordinal = 1; ordinal < limit; ++ordinal)	{
 		const type_t *type;
 		const p_list *fields;
@@ -292,24 +293,36 @@ static const char* importEnumFromTil(til_t *til, const char* name, uint64 val)
 				enum_type_data_t ed;
 				if (t.get_enum_details(&ed)) {
 					for (auto memb = ed.begin(); memb != ed.end(); memb++) {
-						if (val == memb->value && !qstrcmp(name, memb->name.c_str())) {
-							const char* typeName = get_numbered_type_name(til, ordinal);
-							if (typeName) {
+						// TIL may sign-extend 32-bit enum values (e.g. 0xf0000000 -> 0xfffffffff0000000),
+						// but _value keeps original width. Use (uint32) compare for 32-bit values.
+						if (val <= 0xFFFFFFFF ? (uint32)val == (uint32)memb->value : val == memb->value) {
+							if (!qstrcmp(name, memb->name.c_str())) {
+								const char* typeName = get_numbered_type_name(til, ordinal);
+								if (typeName) {
 #if IDA_SDK_VERSION < 850
-								import_type(til, -1, typeName);
-								Log(llInfo, "import enum \"%s\" from til \"%s\"\n", typeName, til->name);
+									import_type(til, -1, typeName);
+									Log(llInfo, "import enum \"%s\" from til \"%s\"\n", typeName, til->name);
 #endif //IDA_SDK_VERSION < 850
-								return typeName;
+									return typeName;
+								}
+								Log(llWarning, "not named enum for \"%s\" 0x%x \n", name, val);
+								return NULL;
 							}
-							Log(llWarning, "not named enum for \"%s\" 0x%x \n", name, val);
-							return NULL;
+							// value matches but name differs, accept if suffix after 1st '_' matches
+							// e.g. GWL_USERDATA vs GWLP_USERDATA both have _USERDATA
+							if (!valOnlyTypeName) {
+								const char* s1 = qstrchr(name, '_');
+								const char* s2 = qstrchr(memb->name.c_str(), '_');
+								if (s1 && s2 && !qstrcmp(s1, s2))
+									valOnlyTypeName = get_numbered_type_name(til, ordinal);
+							}
 						}
 					}
 				}
 			}
 		}
 	}
-	return NULL;
+	return valOnlyTypeName;
 }
 
 static const char* importEnumFromTils(const char* name, uint64 val)
@@ -422,6 +435,15 @@ bool lit_visitor_t::chkCallArg(cexpr_t *expr, qstring &comment)
 		return false;
 	if(funcname.length() < 2)
 		return false;
+	stripName(&funcname, true);
+	// strip MSVC decorated name suffixes: _Name@N -> Name
+	if (funcname.length() > 2) {
+		const char *at = qstrchr(funcname.c_str(), '@');
+		if (at && at > funcname.c_str())
+			funcname.resize(at - funcname.c_str());
+		if (funcname[0] == '_')
+			funcname.remove(0, 1);
+	}
 	lit_func_t lfunc = lit->find_func(funcname.c_str());
 	if(!lit->is_func(lfunc)) {
 		char lastChar = funcname.last();
