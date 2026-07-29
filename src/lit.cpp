@@ -20,6 +20,7 @@
 #include "warn_off.h"
 #include <hexrays.hpp>
 #include <diskio.hpp>
+#include <demangle.hpp>
 #if IDA_SDK_VERSION < 850
 #include <enum.hpp>
 #endif // IDA_SDK_VERSION < 850
@@ -37,7 +38,37 @@
 ; 4) empty line
  */
 
-typedef std::map<uint64, qstring> literals_t; // value to literal name map
+typedef uint64 litval_t;
+typedef std::map<litval_t, qstring> literals_t; // value to literal name map
+
+bool a2litval(litval_t* val, const char *str)
+{
+	while(*str == ' ' || *str == '\t')
+		str++;
+	bool negative = false;
+	if(*str == '-') {
+		negative = true;
+		str++;
+	}
+	ea_t n;
+	if(!atoea(&n, str))
+		 return false;
+	if(negative)
+		*val = -(litval_t)n;
+	else
+		*val = (litval_t)n;
+	return true;
+}
+
+uint64 bte2mask(bte_t bte)
+{
+	bte_t size = bte & BTE_SIZE_MASK;
+	if(!size || size > 4)
+		size = inf_get_cc_size_e();
+	else
+		size = 1 << (size - 1);
+	return size == 8 ? ~0ULL : ((1ULL << (size * 8)) - 1);
+}
 
 struct ida_local lit_arg_t
 {
@@ -194,12 +225,10 @@ public:
 			case ldLit:
 				if (len >= 5 && buf[0] == ' ' && buf[1] == ' ') {
 					const char* sp = qstrchr(&buf[2], ' ');
-					if (sp) {
-						ea_t n;
-						if (atoea(&n, sp + 1)) {
-							refs->insert(std::pair<uint64, qstring>(uint64(n), qstring(&buf[2], sp - &buf[2])));
-							break;
-						}
+					litval_t val;
+					if(sp && a2litval(&val, sp + 1)) {
+						refs->insert(std::pair<litval_t, qstring>(val, qstring(&buf[2], sp - &buf[2])));
+						break;
 					}
 				}
 				ll_error(line, "literal expected");
@@ -238,12 +267,12 @@ struct ida_local lit_visitor_t : public ctree_visitor_t
 	bool chkStrucMemb(cexpr_t *memb, cexpr_t *cons, qstring &comment);
 	bool chkConstType(cexpr_t *expr, cexpr_t *cons, qstring &comment);
 	cexpr_t* getLiteralExp(cexpr_t *constexp, const literals_t& l, bool exclusive);
-	cexpr_t* makeEnumExpr(const char* name, uint64 val, cexpr_t *constexp);
+	cexpr_t* makeEnumExpr(const char* name, litval_t val, cexpr_t *constexp);
 };
 
-static qstring getLiteralString(uint64 val, const literals_t& l, bool exclusive)
+static qstring getLiteralString(litval_t val, const literals_t& l, bool exclusive)
 {
-	uint64 n = val;
+	litval_t n = val;
 	qstring str;
 	auto i = l.find(val);
 	if (i != l.end()) {
@@ -270,7 +299,7 @@ static qstring getLiteralString(uint64 val, const literals_t& l, bool exclusive)
 	return str;
 }
 
-static const char* importEnumFromTil(til_t *til, const char* name, uint64 val)
+static const char* importEnumFromTil(til_t *til, const char* name, litval_t val)
 {
 	enable_numbered_types(til, true);
 
@@ -291,8 +320,16 @@ static const char* importEnumFromTil(til_t *til, const char* name, uint64 val)
 			if (t.deserialize(til, &type, &fields)) {
 				enum_type_data_t ed;
 				if (t.get_enum_details(&ed)) {
+					uint64 mask = bte2mask(ed.bte);
+					uint64 vm = val & mask;
 					for (auto memb = ed.begin(); memb != ed.end(); memb++) {
-						if (val == memb->value && !qstrcmp(name, memb->name.c_str())) {
+						const char* s1 = nullptr;
+						const char* s2 = nullptr;
+						if (vm == (memb->value & mask) && (!qstrcmp(name, memb->name.c_str()) ||
+							 //HACK GWL_ vs GWLP_ name mismatch. In 64-bit TIL, GWL_USERDATA does not exist - only GWLP_USERDATA.
+							 // value matches but name differs, accept if suffix after 1st '_' matches
+								 (!strncmp(name, "GWL", 3) && (s1 = qstrchr(name, '_'), s2 = qstrchr(memb->name.c_str(), '_'), s1 && s2 && !qstrcmp(s1, s2)))))
+						{
 							const char* typeName = get_numbered_type_name(til, ordinal);
 							if (typeName) {
 #if IDA_SDK_VERSION < 850
@@ -312,7 +349,7 @@ static const char* importEnumFromTil(til_t *til, const char* name, uint64 val)
 	return NULL;
 }
 
-static const char* importEnumFromTils(const char* name, uint64 val)
+static const char* importEnumFromTils(const char* name, litval_t val)
 {
 	Log(llDebug, "find enum memb %s (0x%x) in tils\n", name, val);
 	til_t *til = (til_t *)get_idati();
@@ -332,7 +369,7 @@ static const char* importEnumFromTils(const char* name, uint64 val)
 	return NULL;
 }
 
-cexpr_t* lit_visitor_t::makeEnumExpr(const char* name, uint64 val, cexpr_t *constexp)
+cexpr_t* lit_visitor_t::makeEnumExpr(const char* name, litval_t val, cexpr_t *constexp)
 {
 #if IDA_SDK_VERSION < 850
 	const_t memb = get_enum_member_by_name(name);
@@ -376,7 +413,7 @@ cexpr_t* lit_visitor_t::makeEnumExpr(const char* name, uint64 val, cexpr_t *cons
 
 cexpr_t* lit_visitor_t::getLiteralExp(cexpr_t *constexp, const literals_t& l, bool exclusive)
 {
-	uint64 n = constexp->n->_value;
+	litval_t n = constexp->numval();
 	cexpr_t* exp = NULL;
 	auto i = l.find(n);
 	if (i != l.end()) {
@@ -400,7 +437,7 @@ cexpr_t* lit_visitor_t::getLiteralExp(cexpr_t *constexp, const literals_t& l, bo
 	if(exp) {
 		if(n) {
 			cexpr_t* newexp = new cexpr_t();
-			newexp->put_number(func, n, 4);
+			newexp->put_number(func, n, constexp->n->nf.org_nbytes);
 			exp = new cexpr_t(cot_bor, exp, newexp);
 		}
 		exp->calc_type(true);
@@ -420,8 +457,10 @@ bool lit_visitor_t::chkCallArg(cexpr_t *expr, qstring &comment)
 	qstring funcname;
 	if(!getExpName(func, expr->x, &funcname))
 		return false;
-	if(funcname.length() < 2)
-		return false;
+	stripName(&funcname, true);
+	qstring dname;
+	if(demangle_name(&dname, funcname.c_str(), MNG_NODEFINIT) >= 0)
+		funcname = dname;
 	lit_func_t lfunc = lit->find_func(funcname.c_str());
 	if(!lit->is_func(lfunc)) {
 		char lastChar = funcname.last();
@@ -439,8 +478,7 @@ bool lit_visitor_t::chkCallArg(cexpr_t *expr, qstring &comment)
 		if(arg->op == cot_num && !arg->n->nf.is_enum() && !(arg->n->nf.flags & NF_FIXED)) {
 			const lit_arg_t* larg = lit->find_arg(lfunc, (uint32)i + 1);
 			if (larg) {
-				uint64 val = arg->n->_value; // numval()
-				qstring s = getLiteralString(val, larg->refs, larg->exclusive);
+				qstring s = getLiteralString(arg->numval(), larg->refs, larg->exclusive);
 				appendComment(comment, s);
 				cexpr_t* newExp = getLiteralExp(arg, larg->refs, larg->exclusive);
 				if (newExp) {
@@ -492,8 +530,7 @@ bool lit_visitor_t::chkStrucMemb(cexpr_t *memb, cexpr_t *cons, qstring &comment)
 	if (!f)
 		return false;
 
-	uint64 val = cons->n->_value; // numval()
-	qstring s = getLiteralString(val, f->refs, f->exclusive);
+	qstring s = getLiteralString(cons->numval(), f->refs, f->exclusive);
 	appendComment(comment, s);
 	cexpr_t *newExp = getLiteralExp(cons, f->refs, f->exclusive);
 	if(newExp) {
@@ -534,13 +571,13 @@ bool lit_visitor_t::chkConstType(cexpr_t *expr, cexpr_t *cons, qstring &comment)
 	}
 #if IDA_SDK_VERSION < 750  //ida 7.5 raise INTERR 52378 (type name conflict? "HANDLE" & "MACRO_INVALID_HANDLE")
 	else if (typeName == "HANDLE") {
-		uint64 val = cons->n->_value; // numval()
+		litval_t val = cons->numval();
 		const char* name;
 		switch (val) {
-		case (uint64)-1:  name = "INVALID_HANDLE_VALUE";  break;
-		case (uint64)-10: name = "STD_INPUT_HANDLE";      break;
-		case (uint64)-11: name = "STD_OUTPUT_HANDLE";     break;
-		case (uint64)-12: name = "STD_ERROR_HANDLE";      break;
+		case (litval_t)-1:  name = "INVALID_HANDLE_VALUE";  break;
+		case (litval_t)-10: name = "STD_INPUT_HANDLE";      break;
+		case (litval_t)-11: name = "STD_OUTPUT_HANDLE";     break;
+		case (litval_t)-12: name = "STD_ERROR_HANDLE";      break;
 		default:
 			return false;
 		}
@@ -560,8 +597,7 @@ bool lit_visitor_t::chkConstType(cexpr_t *expr, cexpr_t *cons, qstring &comment)
 	if (!l)
 		return false;
 
-	uint64 val = cons->n->_value; // numval()
-	qstring s = getLiteralString(val, *l, exclusive);
+	qstring s = getLiteralString(cons->numval(), *l, exclusive);
 	appendComment(comment, s);
 	cexpr_t *newExp = getLiteralExp(cons, *l, exclusive);
 	if (newExp) {

@@ -13,6 +13,10 @@
 - Autorename: avoid renaming vtbl to base class member
 - One more workaround for "lxe_lvar_name_changed is sent for wrong variable" bug
 - Decrypt: wrong key len in case of key is space-delimited hex string
+- Enums:
+  * mangled names not recognized
+	* negative constants in literal.txt
+	* GWL_ vs GWLP_ name mismatch in 64-bit TIL
 
 ## 3.9.108 - 2026-07-16
 ### Added
