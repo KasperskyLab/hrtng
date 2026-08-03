@@ -941,7 +941,7 @@ ACT_DEF(rename_func)
 	if(!var && get_highlight(&highlight, ctx->widget, &hlflg)) {
 		if(newName.empty()) {
 			ea_t ea = get_name_ea_ex(highlight);
-			if(ea != BADADDR && is_func(get_flags(ea)))
+			if(ea != BADADDR && isFuncOrFuncptr(ea))
 				mk_name_w(highlight);
 		}
 		newName.append(highlight);
@@ -1879,24 +1879,36 @@ void idaapi structs_shape_t::get_row(qstrvec_t* cols_, int* , chooser_item_attrs
 
 ACT_DEF(recognize_shape)
 {
-	vdui_t &vu = *get_widget_vdui(ctx->widget);
-	lvar_t* var = vu.item.get_lvar();
+	vdui_t *vu = get_widget_vdui(ctx->widget);
+	lvar_t* var = vu->item.get_lvar();
 	if(!var)
 		return 0;
-	lvars_t* lvars = vu.cfunc->get_lvars();
+
+	if(var->type().is_ptr()) {
+		qstring vname = var->name;
+		int answer = ask_yn(ASKBTN_NO, "[hrt] Reset pointer type of '%s'", var->name.c_str());
+		if(answer == ASKBTN_NO || answer == ASKBTN_CANCEL || !vu->set_noptr_lvar(var)) {
+			Log(llNotice, "For recognize var shape please do \"Reset pointer type\" on var '%s' and try again\n", var->name.c_str());
+			return 0;
+		}
+		vu = get_widget_vdui(ctx->widget);
+		if(!vu)
+			return 0;
+		vu->get_current_item(USE_KEYBOARD);
+		var = vu->item.get_lvar();
+		if(!var || vname != var->name) //var under cursor position may be shifted after `vu->set_noptr_lvar(var)`
+			return 0;
+	}
+
+	lvars_t* lvars = vu->cfunc->get_lvars();
 	ssize_t vi = lvars->index(*var);
 	if(vi == -1)
 		return 0;
 
-	if(var->type().is_ptr()) {
-		warning("[hrt]\nPlease do \"Reset pointer type\" \n on var '%s' \n and try again", var->name.c_str());
-		return 0;
-	}
-
 	// additionally display details of the field the cursor is staying at
 	uint64 offset = 0;
-	if(vu.item.is_citem()) {
-		citem_t * ci = vu.cfunc->body.find_parent_of(vu.item.it);
+	if(vu->item.is_citem()) {
+		citem_t * ci = vu->cfunc->body.find_parent_of(vu->item.it);
 		if(ci->is_expr()) {
 			cexpr_t *exp = (cexpr_t *)ci;
 			if(exp->op == cot_add && exp->y->op == cot_num)
@@ -1905,7 +1917,7 @@ ACT_DEF(recognize_shape)
 	}
 
 	offset_locator_t ifi(lvars, (int)vi);
-	ifi.apply_to(&vu.cfunc->body, NULL);
+	ifi.apply_to(&vu->cfunc->body, NULL);
 
 	structs_shape_t rs((asize_t)offset);
 	if(!ifi.offNtypes.empty()) {
@@ -1935,16 +1947,16 @@ ACT_DEF(recognize_shape)
 		get_tid_name(&name, rs.list[choosed-1]);
 
 		tinfo_t ts = create_typedef(name.c_str());
-		vu.set_lvar_type(var, make_pointer(ts));
+		vu->set_lvar_type(var, make_pointer(ts));
 		//if(!getVarName(var, NULL))
 		//	renameVar(var->defea, vu.cfunc, vi, &name, &vu);
-		vu.refresh_view(false);
+		vu->refresh_view(false);
 		return 0;
 	}
 	if (choosed == 0) {
 		//create new
 		udt_type_data_t utd;
-		vu.cfunc->gather_derefs(vu.item, &utd);
+		vu->cfunc->gather_derefs(vu->item, &utd);
 		if(utd.is_union)
 			return 0;
 
@@ -1989,10 +2001,10 @@ ACT_DEF(recognize_shape)
 		qstring tname;
 		if (!confirm_create_struct(ts, tname, restype, NULL))
 			return 0;
-		vu.set_lvar_type(var, make_pointer(ts));
+		vu->set_lvar_type(var, make_pointer(ts));
 		//if(!getVarName(var, NULL))
 		//	renameVar(var->defea, vu.cfunc, vi, &tname, &vu);
-		vu.refresh_view(false);
+		vu->refresh_view(false);
 	}
 	return 0;
 }
@@ -5212,11 +5224,9 @@ static ssize_t idaapi callback(void *, hexrays_event_t event, va_list va)
 				v = it;
 				LogTail(llDebug, " -- fixed\n");
 			}
-			if (!v->has_user_type()) {
-			  tinfo_t t = getType4Name(name);
-				if(!t.empty() && set_var_type(vu, v, &t))
-					Log(llInfo, "%a: type of var '%s' refreshed\n", vu->cfunc->entry_ea, name);
-			}
+		  tinfo_t t = getType4Name(name);
+			if(!t.empty() && set_var_type(vu, v, &t))
+				Log(llInfo, "%a: type of var '%s' refreshed\n", vu->cfunc->entry_ea, name);
 			break;
 		}
 	  case lxe_lvar_type_changed:
@@ -5903,7 +5913,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.9.111";
+	addon.version = "3.9.112";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

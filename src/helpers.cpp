@@ -810,3 +810,18 @@ char* getPluginsFile(char *buf, size_t bufsize, const char *filename)
 		return res;
 	return getsysfile(buf, bufsize, filename, PLG_SUBDIR);
 }
+
+//------------------------------------------------
+bool isFuncOrFuncptr(ea_t ea)
+{
+	flags64_t f = get_flags(ea);
+	if(is_func(f))
+		return true;
+	if(is_ea(f)) {
+		tinfo_t t;
+		if(get_tinfo(&t, ea) && t.is_funcptr())
+			return true;
+	}
+	return false;
+}
+

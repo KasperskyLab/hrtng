@@ -244,7 +244,7 @@ static bool getEaName(ea_t ea, qstring* name)
 		{
 			if (name) {
 				*name = n;
-				stripName(name, is_func(flg));
+				stripName(name, isFuncOrFuncptr(ea));
 			}
 			return true;
 		}

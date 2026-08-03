@@ -313,3 +313,4 @@ qstring unique_nameC(const char* name, const char* separator, IsUniqueFunc isUni
 }
 
 char* getPluginsFile(char *buf, size_t bufsize, const char *filename);
+bool isFuncOrFuncptr(ea_t ea);

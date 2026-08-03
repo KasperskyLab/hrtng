@@ -3,10 +3,13 @@
 ## [Unreleased]
 ### Added
 - Autorename: ban names like `var_1A0`
+- Enums: NTSTATUS, HANDLE, find enums in return statement
 ### Changed
 - Made "Refactoring" window smaller and dock friendly
 - Enable "Add VT" for types derived from external type-library
 - Force renaming var under cursor on "Create dummy struct"
+- Recognize shape: ask to "Reset pointer type"
+- Force set type on var rename
 ### Removed
 ### Fixed
 - Autorename: fix `_vtbl` ban
@@ -17,6 +20,8 @@
   * mangled names not recognized
 	* negative constants in literal.txt
 	* GWL_ vs GWLP_ name mismatch in 64-bit TIL
+	* import from external til
+	* don't touch user fixed numbers
 
 ## 3.9.108 - 2026-07-16
 ### Added
