@@ -2267,19 +2267,17 @@ bool set_var_type(vdui_t *vu, lvar_t *lv, tinfo_t *ts)
 {
 	if(lv->accepts_type(*ts)) {
 		if(lv->has_user_type()) {
-			qstring typestr;
-			ts->print(&typestr);
-			int answer = ask_yn(ASKBTN_NO, "[hrt] Change type of '%s' to '%s'?", lv->name.c_str(), typestr.c_str());
+			if(*ts == lv->type()) // dont ask for same type (terminate chain set_lvar_type => rename-on-set-type => set-type-on-rename => set_lvar_type)
+				return false;
+			int answer = ask_yn(ASKBTN_NO, "[hrt] Change type of '%s'\nfrom '%s' to '%s'?", lv->name.c_str(), lv->type().dstr(), ts->dstr());
 			if(answer == ASKBTN_NO || answer == ASKBTN_CANCEL)
 				return false;
 		}
 		if (vu->set_lvar_type(lv, *ts))
 			return true;
 	}
-	qstring typestr;
-	ts->print(&typestr);
 	warning("[hrt] '%s' var type '%s' not accepted by IDA!\n\nTrick: go to \"Stack Variables\" view and change type of stack var to something simply like BYTE\n",
-		lv->name.c_str(), typestr.c_str());
+		lv->name.c_str(), ts->dstr());
 	return false;
 }
 
@@ -2295,7 +2293,7 @@ bool set_ea_type(ea_t ea, tinfo_t *ts)
 			name = get_short_name(ea);
 		else
 			name.sprnt("0x%a", ea);
-		int answer = ask_yn(ASKBTN_NO, "[hrt] Change type of '%s' to '%s'?", name.c_str(), ts->dstr());
+		int answer = ask_yn(ASKBTN_NO, "[hrt] Change type of '%s'\nfrom '%s' to '%s'?", name.c_str(), oldType.dstr(), ts->dstr());
 		if(answer == ASKBTN_NO || answer ==ASKBTN_CANCEL)
 			return false;
 	}
@@ -4801,7 +4799,15 @@ void auto_comments(cfunc_t *cfunc)
 			if(cit->op == cot_call && cit->ea != BADADDR) {
 				eavec_t callees;
 				int y;
-				if(cxrefs_from(cit->ea, &callees) > 1 && cfunc->find_item_coords(cit, nullptr, &y) && y >= 0 && (size_t)y < cfunc->sv.size()) {
+				if(!cxrefs_from(cit->ea, &callees))
+					continue;
+				//display comment single callee if name doesnt match
+				if(callees.size() == 1) {
+					qstring name1, name2;
+					if(getExpName(cfunc, ((cexpr_t*)(cit))->x, &name1) && getEaName(callees.front(), &name2) && name1 == name2)
+						continue;
+				}
+				if(cfunc->find_item_coords(cit, nullptr, &y) && y >= 0 && (size_t)y < cfunc->sv.size()) {
 					size_t indent = 0;
 					const char *p = cfunc->sv[y].line.c_str();
 					while(*p != 0) {
@@ -5913,7 +5919,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.9.112";
+	addon.version = "3.9.113";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

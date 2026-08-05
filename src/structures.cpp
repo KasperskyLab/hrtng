@@ -1099,8 +1099,23 @@ void auto_vtbls(cfunc_t *cfunc)
 			udm_t m;
 			m.name = vtblName;
 			int midx = unionType.find_udm(&m, STRMEM_NAME);
-			if(midx < 0 || static_cast<decltype(vtbl->m)>(midx) == vtbl->m) {// not found or nothing to change
-				Log(llDebug, "%a selectVT: %s %s\n", call->ea, vtblName.c_str(), midx < 0 ? "not found" : "already selected");
+			if(midx < 0) {// not found. For the types imported from another idb, new vtbl structure with index in name has been created. Search it
+				m.name.remove_last();
+				for(int i = 1; i < 10; i++) { //ATT! currently max 9
+					m.name.cat_sprnt("%d_");
+					midx = unionType.find_udm(&m, STRMEM_NAME);
+					if(midx >= 0)
+						break;
+					m.name.remove_last(2); //ATT! currently max 9
+				}
+				if(midx < 0) {
+					Log(llDebug, "%a selectVT: %s not found\n", call->ea, vtblName.c_str());
+					return 0;
+				}
+			}
+
+			if(static_cast<decltype(vtbl->m)>(midx) == vtbl->m) {// nothing to change
+				Log(llDebug, "%a selectVT: %s already selected\n", call->ea, vtblName.c_str());
 				return 0;
 			}
 			// dynamically change (don't save selection) vtbl union member and type of expression

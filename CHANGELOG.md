@@ -10,6 +10,7 @@
 - Force renaming var under cursor on "Create dummy struct"
 - Recognize shape: ask to "Reset pointer type"
 - Force set type on var rename
+- Auto comments: display comment for a single callee of indirect call if name doesnt match
 ### Removed
 ### Fixed
 - Autorename: fix `_vtbl` ban
@@ -22,6 +23,7 @@
 	* GWL_ vs GWLP_ name mismatch in 64-bit TIL
 	* import from external til
 	* don't touch user fixed numbers
+- selectVT: works with external types
 
 ## 3.9.108 - 2026-07-16
 ### Added

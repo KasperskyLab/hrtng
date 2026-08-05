@@ -211,7 +211,7 @@ static bool getCallName(cfunc_t *func, cexpr_t* call, qstring* name)
 	return false;
 }
 
-static bool getEaName(ea_t ea, qstring* name)
+bool getEaName(ea_t ea, qstring* name)
 {
 	flags64_t flg = get_flags(ea);
 	if(is_tail(flg) && isARM()) {
