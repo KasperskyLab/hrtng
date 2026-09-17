@@ -5,6 +5,7 @@
 ### Changed
 ### Removed
 ### Fixed
+- Autorename (9.4): ignore wrong arg name in expression like `callsmth(p_arg: &p_arg);` it must be `arg`
 
 ## 3.9.114 - 2026-09-02
 ### Added
@@ -24,10 +25,10 @@
 - Decrypt: wrong key len in case of key is space-delimited hex string
 - Enums:
   * mangled names not recognized
-	* negative constants in literal.txt
-	* GWL_ vs GWLP_ name mismatch in 64-bit TIL
-	* import from external til
-	* don't touch user fixed numbers
+  * negative constants in literal.txt
+  * GWL_ vs GWLP_ name mismatch in 64-bit TIL
+  * import from external til
+  * don't touch user fixed numbers
 - selectVT: works with external types
 
 ## 3.9.108 - 2026-07-16

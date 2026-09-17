@@ -979,25 +979,37 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 					bool fiChanged = false;
 					for(size_t i = 0; i < fi.size(); i++) {
 						cexpr_t *arg = &args[i];
-						qstring fiIname = fi[i].name;
-						stripName(&fiIname);
-						qstring argVarName;
-						bool argNamed = getExpName(func, arg, &argVarName, true);
+						qstring paramName = fi[i].name;
+						stripName(&paramName);
+						qstring argName;
+						bool argNamed = getExpName(func, arg, &argName, true);
+
+#if IDA_SDK_VERSION == 940
+						//ignore wrong arg name like `callsmth(p_arg: &p_arg);` it must be `arg`
+						if(argNamed && skipCast(arg)->op == cot_ref &&
+							 paramName[0] == 'p' && paramName[1] == '_' &&
+							 argName[0] == 'p' && argName[1] == '_' && argName[2] == 'p' && argName[3] == '_'
+							 //&& !qstrcmp(&paramName[2], &argName[4])
+							 ) {
+							Log(llFlood, "%a: renaming arg ignore '&%s' for param '%s'\n", call->ea, argName.c_str(), paramName.c_str());
+							argNamed = false;
+						}
+#endif //IDA_SDK_VERSION == 940
 
 						if(argNamed && bCallAssign) {
-							if(i == iL) anL = argVarName;
-							if(i == iR) anR = argVarName;
+							if(i == iL) anL = argName;
+							if(i == iR) anR = argName;
 						}
 
-						if(!argNamed && isArgNameGood(fiIname.c_str())) {
-							Log(llFlood, "%a: renaming arg '%s' to '%s'\n", call->ea, DSTR(arg), fiIname.c_str());
-							varRenamed |= renameExp(call->ea, func, arg, &fiIname, nullptr, true);
-						} else if(argNamed && bAllowTypeChange && !isVarNameGood(fiIname.c_str())) {
-							Log(llDebug, "%a %s: In function %a %s rename arg%d \"%s\" to \"%s\"\n", call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str(), i + 1, fi[i].name.c_str(), argVarName.c_str());
-							fi[i].name = argVarName;
+						if(!argNamed && isArgNameGood(paramName.c_str())) {
+							Log(llFlood, "%a: renaming arg '%s' to '%s'\n", call->ea, DSTR(arg), paramName.c_str());
+							varRenamed |= renameExp(call->ea, func, arg, &paramName, nullptr, true);
+						} else if(argNamed && bAllowTypeChange && !isVarNameGood(paramName.c_str())) {
+							Log(llDebug, "%a %s: In function %a %s rename arg%d \"%s\" to \"%s\"\n", call->ea, funcname.c_str(), dstea, get_short_name(dstea).c_str(), i + 1, fi[i].name.c_str(), argName.c_str());
+							fi[i].name = argName;
 							fiChanged = true;
 							if(isDummyType(fi[i].type.get_decltype())) {
-								tinfo_t argType = getType4Name(argVarName.c_str());
+								tinfo_t argType = getType4Name(argName.c_str());
 								if(argType.empty())
 									argType = getExpType(func, skipCast(arg));
 								if(!isDummyType(argType.get_decltype()) && argType.is_scalar()) {
@@ -1153,27 +1165,6 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 			}
 		}
 	};
-#if 0
-	// delete all decompiler generated var-names
-	lvars_t *vars = cfunc->get_lvars();
-	for (size_t varIdx = 0; varIdx < vars->size(); varIdx++) {
-		lvar_t* var = &vars->at(varIdx);
-		if(!var->has_user_name() && var->has_nice_name()
-			 //&& isVarNameGood(var->name.c_str())
-			 //&& var->name[0] == 'p' && var->name[1] == '_'
-			) {
-			Log(llDebug, "%a: kill var-name '%s' defined at %a\n", cfunc->entry_ea, var->name.c_str(), var->defea);
-			qstring newName = unique_nameD(var->is_arg_var() ? "a99" : "v99", "_", [&vars](const qstring &n){	for(auto &v : *vars) if(v.name == n) return false; return true;	});
-#if IDA_SDK_VERSION < 830
-			var->name = newName;
-			var->set_user_name();
-#else // IDA_SDK_VERSION >= 830
-			cfunc->mba->set_lvar_name(*var, newName.c_str(), 0);
-#endif // IDA_SDK_VERSION < 830
-		}
-	}
-#endif
-
 	cblock_visitor_t cbv(cfunc);
 	cbv.apply_loop();
 	//cfunc->verify(ALLOW_UNUSED_LABELS, false);

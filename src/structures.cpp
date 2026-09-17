@@ -1249,7 +1249,7 @@ ea_t get_memb2proc_ref(tinfo_t& s, uint32 offInBytes)
 	memb.offset = offInBytes;
 	int index = s.find_udm(&memb, STRMEM_AUTO);
 	if(index < 0 || (mtid = s.get_udm_tid(index)) == BADADDR) {
-		Log(llError, "get_memb2proc_ref no memb tid at offset 0x%x in %s\n", offInBytes, s.dstr());
+		Log(llWarning, "get_memb2proc_ref no memb tid at offset 0x%x in %s\n", offInBytes, s.dstr());
 		return BADADDR;
 	}
 #endif
