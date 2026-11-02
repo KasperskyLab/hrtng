@@ -61,12 +61,11 @@ static bool determine_decompilation_range(decomp_ranges_t *mbr, ea_t call_ea, co
   }
 #else //IDA_SDK_VERSION >= 940
   ea_t func_ea = get_func_start(call_ea);
-  if (func_ea != BADADDR && calc_func_size_ea(func_ea) <= 1024)  { // a small function, decompile it entirely
+  if (func_ea != BADADDR && calc_func_size_ea(func_ea) <= 4096)  { // a small function, decompile it entirely
     mbr->func_ea = func_ea;
     return true;
   }
 #endif //IDA_SDK_VERSION < 940
-
 
   ea_t minea = call_ea;
   ea_t maxea = call_ea;
@@ -99,19 +98,23 @@ static bool generate_call_line(qstring *out, bool *canceled, ea_t call_ea, const
     return false;
   hexrays_failure_t hf;
   cfuncptr_t func = decompile(mbr, &hf, DECOMP_NO_WAIT);
-  if ( func == nullptr )
-  {
-    if ( hf.code == MERR_CANCELED )
+  if(!func) {
+    if(hf.code == MERR_CANCELED)
       *canceled = true;
+		Log(llDebug, "%a generate_call_line: decompile(0x%x) failed '%s'\n", call_ea, mbr.start(), hf.desc().c_str());
     return false;
   }
   citem_t *call = func->body.find_closest_addr(call_ea);
-  if ( call == nullptr || call->ea != call_ea )
+	if(!call || call->ea != call_ea ) {
+		Log(llDebug, "%a generate_call_line: find_closest_addr %a\n", call_ea, !call ? 0 : call->ea);
     return false;
+	}
   const strvec_t &sv = func->get_pseudocode();
   int y;
-  if ( !func->find_item_coords(call, nullptr, &y) )
+	if(!func->find_item_coords(call, nullptr, &y)) {
+		Log(llDebug, "%a generate_call_line: !find_item_coords\n", call_ea);
     return false;
+	}
   *out = sv[y].line;
   tag_remove(out);
   // indentation does not convey much info, so remove the leading spaces

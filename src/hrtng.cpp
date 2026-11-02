@@ -939,12 +939,10 @@ ACT_DEF(rename_func)
 	qstring highlight;
 	uint32 hlflg;
 	if(!var && get_highlight(&highlight, ctx->widget, &hlflg)) {
-		if(newName.empty()) {
-			ea_t ea = get_name_ea_ex(highlight);
-			if(ea != BADADDR && isFuncOrFuncptr(ea))
-				mk_name_w(highlight);
-		}
 		newName.append(highlight);
+		ea_t ea = get_name_ea_ex(newName);
+		if(ea != BADADDR && isFuncOrFuncptr(ea))
+			mk_name_w(newName);
 	} else if(has_user_name(get_flags(vu->cfunc->entry_ea)))
 		newName.append(oldname);
 
@@ -5926,7 +5924,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.9.115";
+	addon.version = "3.9.116";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

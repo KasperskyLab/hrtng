@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 ### Added
+- API hashes: case insensitive modes (lower/upper)
 ### Changed
 ### Removed
 ### Fixed

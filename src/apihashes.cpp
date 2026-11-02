@@ -464,6 +464,7 @@ void apihashes_init()
 	static ushort alg = 0;
 	static int64 basis = 0;
 	static int64 prime = 0;
+	static ushort caseSens = 0;
 	char fname[QMAXPATH];
 	getPluginsFile(fname, QMAXPATH, "apilist.txt");
 	qstring format =
@@ -485,9 +486,10 @@ void apihashes_init()
 	}
 	format.append("<#Initial hash value#~B~asis:l2::20::>\n"
 								"<#Hash modifier value#~P~rime:l3::20::>\n"
+								"<Case sensitive:r><|><lower:r><|><UPPER:r>>\n"
 								"<API list file:f::32::>\n\n\n");
 
-	if(1 != ask_form(format.c_str(), dlg_cb, &alg, &basis, &prime, fname))
+	if(1 != ask_form(format.c_str(), dlg_cb, &alg, &basis, &prime, &caseSens, fname))
 		return;
 
 	FILE* file = fopenRT(fname);
@@ -517,6 +519,15 @@ void apihashes_init()
 		if(!len) {
 			bNextIsDll = true;
 			continue;
+		}
+
+		if(caseSens) {
+			for(size_t i = 0; i < len; i++) {
+				if(caseSens == 1 && buf[i] >= 'A' && buf[i] <= 'Z')
+					buf[i] += ' ';
+				else if(caseSens == 2 && buf[i] >= 'a' && buf[i] <= 'z')
+					buf[i] -= ' ';
+			}
 		}
 
 		if(bNextIsDll) {
