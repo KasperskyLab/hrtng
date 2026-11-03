@@ -9,7 +9,7 @@
 - turn off AVX-lifter for 9.5+
 ### Fixed
 - Autorename (9.4+): ignore wrong arg name in expression like `callsmth(p_arg: &p_arg);` it must be `arg`
-- workaround for issue #62 (init_hexrays_plugin returns false)
+- workaround for issue #61 (init_hexrays_plugin returns false)
 
 ## 3.9.114 - 2026-09-02
 ### Added
