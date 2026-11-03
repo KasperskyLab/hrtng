@@ -5911,6 +5911,43 @@ MY_DECLARE_LISTENER(dbg_callback)
 
 //--------------------------------------------------------------------------
 static bool inited = false;
+static qtimer_t deferred_init_timer = nullptr;
+static int deferred_init_attempts = 0;
+static bool hexrays_ready()
+{
+	return get_hexdsp() != nullptr || init_hexrays_plugin();
+}
+
+static int idaapi retry_hexrays_init(void *ud);
+#if IDA_SDK_VERSION < 750
+int idaapi init(void);
+#else
+plugmod_t *idaapi init(void);
+#endif
+
+class deferred_init_request_t : public ui_request_t
+{
+	int attempts = 0;
+public:
+	bool idaapi run() override
+	{
+		if (hexrays_ready()) {
+			init();
+			if (inited)
+				msg("[hrt] deferred initialization completed after Hex-Rays became ready\n");
+			return false;
+		}
+		if (deferred_init_timer == nullptr)
+			deferred_init_timer = register_timer(500, retry_hexrays_init, nullptr);
+		if (deferred_init_timer != nullptr)
+			return false;
+		if (++attempts >= 120) {
+			msg("[hrt] Hex-Rays did not become ready; deferred initialization stopped\n");
+			return false;
+		}
+		return true;
+	}
+};
 
 #if IDA_SDK_VERSION < 750
 int
@@ -5934,9 +5971,10 @@ plugmod_t*
 		return PLUGIN_KEEP;
 	}
 
-	if (!init_hexrays_plugin()) {
-		msg("[hrt] %s does not work without decompiler, sorry\n", addon.id);
-		return PLUGIN_SKIP;
+	if (!hexrays_ready()) {
+		execute_ui_requests(new deferred_init_request_t(), nullptr);
+		msg("[hrt] Hex-Rays is not ready yet; initialization was queued\n");
+		return PLUGIN_KEEP;
 	}
 	configLoad();
 
@@ -5973,12 +6011,36 @@ plugmod_t*
 	if(register_addon(&addon) < 0)
 		Log(llError, "error on register_addon()\n");
 	inited = true;
+	msg("[hrt] %s initialized successfully\n", addon.id);
 	return PLUGIN_KEEP;
+}
+
+//--------------------------------------------------------------------------
+static int idaapi retry_hexrays_init(void *)
+{
+	if (hexrays_ready()) {
+		deferred_init_timer = nullptr;
+		deferred_init_attempts = 0;
+		init();
+		if (inited)
+			msg("[hrt] deferred initialization completed after Hex-Rays became ready\n");
+		return -1;
+	}
+	if (++deferred_init_attempts >= 120) {
+		deferred_init_timer = nullptr;
+		msg("[hrt] Hex-Rays did not become ready; deferred initialization stopped\n");
+		return -1;
+	}
+	return 500;
 }
 
 //--------------------------------------------------------------------------
 void idaapi term(void)
 {
+	if (deferred_init_timer != nullptr) {
+		unregister_timer(deferred_init_timer);
+		deferred_init_timer = nullptr;
+	}
 	if ( inited )
 	{
 		unregisterMicrocodeExplorer();
