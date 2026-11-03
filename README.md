@@ -82,12 +82,12 @@ Messages, menu items, popup windows and dialog boxes belong to this plugin are m
 
 ### Misk features
   * [Get API help](doc/zeal-api-help.md)
-  * [AVX lifter](doc/avx.md)
   * [Dump strings, comments and names from the IDA database](doc/dump-strings.md)
   * [Offsets table creation](doc/offsets-tbl.md)
   * Print reversing progress percent on a proc renaming
   * [Recursively decompile callees](doc/recur-decomp.md)
   * [Refactoring (global Find and Replace)](doc/refactoring.md)
+  * [~~AVX lifter~~](doc/avx.md)
   * [~~Deal with structures with negative offsets or access based on offsets in a middle of structure~~](doc/neg-offs.md)
 
 ### Patching

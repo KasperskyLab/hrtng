@@ -433,7 +433,7 @@ static bool isStructOffOver(cexpr_t* memref, const cfunc_t *func)
 	return false;
 }
 
-bool getUdtMembName(tinfo_t udt, uint32 offset, qstring* name)
+bool getUdtMembName(tinfo_t udt, uint64 offset, qstring* name)
 {
 	udt.remove_ptr_or_array();
 	udm_t memb;
@@ -458,7 +458,7 @@ bool getUdtMembName(tinfo_t udt, uint32 offset, qstring* name)
 	return true;
 }
 
-static bool renameUdtMemb(ea_t refea, tinfo_t udt, uint32 offset, qstring* name)
+static bool renameUdtMemb(ea_t refea, tinfo_t udt, uint64 offset, qstring* name)
 {
 	udt.remove_ptr_or_array();
 	udm_t memb;
@@ -489,7 +489,7 @@ static bool renameUdtMemb(ea_t refea, tinfo_t udt, uint32 offset, qstring* name)
 	if(TERR_OK == udt.rename_udm(midx, newName.c_str())) {
 #else //IDA_SDK_VERSION < 850
 	struc_t* st = get_member_struc(oldName.c_str());
-	if(st && set_member_name(st, offset, newName.c_str())) {
+	if(st && set_member_name(st, (ea_t)offset, newName.c_str())) {
 #endif //IDA_SDK_VERSION >= 850
 		Log(llInfo, "%a: struct member \"%s\" at 0x%x was renamed to %s\n", refea, oldName.c_str(), offset, newName.c_str());
 		return true;
@@ -984,7 +984,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 						qstring argName;
 						bool argNamed = getExpName(func, arg, &argName, true);
 
-#if IDA_SDK_VERSION == 940
+#if IDA_SDK_VERSION >= 940
 						//ignore wrong arg name like `callsmth(p_arg: &p_arg);` it must be `arg`
 						if(argNamed && skipCast(arg)->op == cot_ref &&
 							 paramName[0] == 'p' && paramName[1] == '_' &&
@@ -994,7 +994,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 							Log(llFlood, "%a: renaming arg ignore '&%s' for param '%s'\n", call->ea, argName.c_str(), paramName.c_str());
 							argNamed = false;
 						}
-#endif //IDA_SDK_VERSION == 940
+#endif //IDA_SDK_VERSION >= 940
 
 						if(argNamed && bCallAssign) {
 							if(i == iL) anL = argName;

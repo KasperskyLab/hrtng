@@ -33,7 +33,7 @@ void add_structures_popup_items(TWidget *view, TPopupMenu *p);
 
 ea_t get_memb2proc_ref(struc_t* s, member_t* m);
 #else
-ea_t get_memb2proc_ref(tinfo_t& struc, uint32 membOffInBytes);
+ea_t get_memb2proc_ref(tinfo_t& struc, uint64 membOffInBytes);
 #endif // IDA_SDK_VERSION < 850
 bool add_proc2memb_ref(ea_t proc, tid_t memb);
 void get_proc2memb_refs(ea_t proc, tidvec_t* membs);

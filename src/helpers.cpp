@@ -628,7 +628,7 @@ ea_t get_call_dst(cfunc_t* cfunc, cexpr_t *call)
 	// jump to address in struct member-to-proc-xref (or by VT/comment/name)
 	if(callee->op == cot_memptr || callee->op == cot_memref) {
 		cexpr_t *e = callee;
-		int offset = e->m;
+		uint64 offset = e->m;
 		if (e->x->op == cot_idx)
 			e = e->x;
 		cexpr_t *var = e->x;
@@ -643,7 +643,7 @@ ea_t get_call_dst(cfunc_t* cfunc, cexpr_t *call)
 				if(sid != BADNODE) {
 					struc_t* s = get_struc(sid);
 					if(s) {
-						member_t *m = get_member(s, offset);
+						member_t *m = get_member(s, (asize_t)offset);
 						if(m)
 							dst_ea = get_memb2proc_ref(s, m);
 					}

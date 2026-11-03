@@ -54,6 +54,9 @@ jobs:
           - version: "9.4"
             ver: "94"
             tag: "v9.4.0-release"
+          - version: "9.5"
+            ver: "95"
+            tag: "v9.5.0-release"
         exclude:
           - os:
               name: windows-arm # https://github.com/weidai11/cryptopp/pull/1351
@@ -146,6 +149,7 @@ jobs:
           - version: "9.2"
           - version: "9.3"
           - version: "9.4"
+          - version: "9.5"
     steps:
       - name: Checkout
         uses: actions/checkout@v5

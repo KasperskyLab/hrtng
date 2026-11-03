@@ -1242,7 +1242,7 @@ ea_t get_memb2proc_ref(struc_t* s, member_t *m)
 {
 	tid_t mtid = m->id;
 #else
-ea_t get_memb2proc_ref(tinfo_t& s, uint32 offInBytes)
+ea_t get_memb2proc_ref(tinfo_t& s, uint64 offInBytes)
 {
 	tid_t mtid;
 	udm_t memb;

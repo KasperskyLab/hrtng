@@ -145,9 +145,9 @@ ACT_DECL(create_inline_sel       , return ((ctx->widget_type != BWN_PSEUDOCODE &
 ACT_DECL(create_inline_sel       , return ((ctx->widget_type != BWN_PSEUDOCODE && ctx->widget_type != BWN_DISASM) ?  AST_DISABLE_FOR_WIDGET : (ctx->has_flag(ACF_HAS_SELECTION) ?  AST_ENABLE : AST_DISABLE)))
 #endif //IDA_SDK_VERSION >= 930
 ACT_DECL(unflat                  , AST_ENABLE_FOR(ufIsInGL(vu->cfunc->entry_ea) || ufIsInWL(vu->cfunc->entry_ea)))
-#if IDA_SDK_VERSION >= 750
+#if IDA_SDK_VERSION >= 750 && IDA_SDK_VERSION < 950
 ACT_DECL(mavx                    , AST_ENABLE_FOR(isMicroAvx_avail()))
-#endif //IDA_SDK_VERSION >= 750
+#endif //IDA_SDK_VERSION >= 750 && IDA_SDK_VERSION < 950
 ACT_DECL(selection2block         , return (ctx->widget_type != BWN_PSEUDOCODE ? AST_DISABLE_FOR_WIDGET : (ctx->has_flag(ACF_HAS_SELECTION) ? AST_ENABLE : AST_DISABLE)))
 ACT_DECL(clear_if42blocks        , AST_ENABLE_FOR(has_if42blocks(vu->cfunc->entry_ea)))
 ACT_DECL(rename_func             , AST_ENABLE_FOR_PC)
@@ -189,12 +189,13 @@ static const action_desc_t actions[] =
 	ACT_DESC("[hrt] Rename inline...",                "N", rename_inline),
 	ACT_DESC_CHECK("[hrt] Inlines",                   NULL, inlines),
 	ACT_DESC_CHECK("[hrt] Unflattener",          "Shift-U", unflat),
-#if IDA_SDK_VERSION >= 750
+#if IDA_SDK_VERSION >= 750 && IDA_SDK_VERSION < 950
   ACT_DESC_CHECK("[hrt] AVX lifter",              NULL, mavx),
-#else // IDA_SDK_VERSION < 750
+#endif // IDA_SDK_VERSION < 750 && IDA_SDK_VERSION < 950
+#if IDA_SDK_VERSION < 750
 	ACT_DESC("[hrt] Remove return type",             NULL, remove_rettype),
 	ACT_DESC("[hrt] Remove this argument",           "A", remove_argument),
-#endif //IDA_SDK_VERSION >= 750
+#endif //IDA_SDK_VERSION < 750
 	ACT_DESC("[hrt] ~C~ollapse selection",            NULL, selection2block),
 	ACT_DESC("[hrt] Remove collapsible 'if(42) ...' blocks",  NULL, clear_if42blocks),
 #if IDA_SDK_VERSION < 850
@@ -302,7 +303,7 @@ void add_hrt_popup_items(TWidget *view, TPopupMenu *p, vdui_t* vu)
 		update_action_checked(ACT_NAME(unflat), true);
 		attach_action_to_popup(view, p, ACT_NAME(unflat));
 	}
-#if IDA_SDK_VERSION >= 750
+#if IDA_SDK_VERSION >= 750 && IDA_SDK_VERSION < 950
 	if(isMicroAvx_avail()) {
 		if(isMicroAvx_active())
 			update_action_checked(ACT_NAME(mavx), true);
@@ -3070,7 +3071,7 @@ ACT_DEF(unflat)
 }
 
 //-----------------------------------------------------
-#if IDA_SDK_VERSION >= 750
+#if IDA_SDK_VERSION >= 750 && IDA_SDK_VERSION < 950
 ACT_DEF(mavx)
 {
 	vdui_t* vu = get_widget_vdui(ctx->widget);
@@ -3081,7 +3082,7 @@ ACT_DEF(mavx)
 	vu->refresh_view(true);
 	return 0;
 }
-#endif //IDA_SDK_VERSION >= 750
+#endif //IDA_SDK_VERSION >= 750 && IDA_SDK_VERSION < 950
 //-----------------------------------------------------
 
 static cexpr_t* get_assign_or_helper(vdui_t *vu, citem_t* expr, bool check4helper)
@@ -5909,43 +5910,6 @@ MY_DECLARE_LISTENER(dbg_callback)
 
 //--------------------------------------------------------------------------
 static bool inited = false;
-static qtimer_t deferred_init_timer = nullptr;
-static int deferred_init_attempts = 0;
-static bool hexrays_ready()
-{
-	return get_hexdsp() != nullptr || init_hexrays_plugin();
-}
-
-static int idaapi retry_hexrays_init(void *ud);
-#if IDA_SDK_VERSION < 750
-int idaapi init(void);
-#else
-plugmod_t *idaapi init(void);
-#endif
-
-class deferred_init_request_t : public ui_request_t
-{
-	int attempts = 0;
-public:
-	bool idaapi run() override
-	{
-		if (hexrays_ready()) {
-			init();
-			if (inited)
-				msg("[hrt] deferred initialization completed after Hex-Rays became ready\n");
-			return false;
-		}
-		if (deferred_init_timer == nullptr)
-			deferred_init_timer = register_timer(500, retry_hexrays_init, nullptr);
-		if (deferred_init_timer != nullptr)
-			return false;
-		if (++attempts >= 120) {
-			msg("[hrt] Hex-Rays did not become ready; deferred initialization stopped\n");
-			return false;
-		}
-		return true;
-	}
-};
 
 #if IDA_SDK_VERSION < 750
 int
@@ -5961,7 +5925,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.9.116";
+	addon.version = "3.9.117";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {
@@ -5969,10 +5933,15 @@ plugmod_t*
 		return PLUGIN_KEEP;
 	}
 
-	if (!hexrays_ready()) {
-		execute_ui_requests(new deferred_init_request_t(), nullptr);
-		msg("[hrt] Hex-Rays is not ready yet; initialization was queued\n");
-		return PLUGIN_KEEP;
+	if (!init_hexrays_plugin()
+#if IDA_SDK_VERSION == 940 /* || IDA_SDK_VERSION == 950*/
+		// seems the bug is in ida9.4sp1 and probably in early builds of 9.5 -- init_hexrays_plugin() returns false when decompiler has been successful loaded
+		&& get_hexdsp() == nullptr
+#endif //IDA_SDK_VERSION == 940
+		)
+	{
+		msg("[hrt] %s does not work without decompiler, sorry\n", addon.id);
+		return PLUGIN_SKIP;
 	}
 	configLoad();
 
@@ -6009,36 +5978,13 @@ plugmod_t*
 	if(register_addon(&addon) < 0)
 		Log(llError, "error on register_addon()\n");
 	inited = true;
-	msg("[hrt] %s initialized successfully\n", addon.id);
+	Log(llDebug, "initialized successfully\n");
 	return PLUGIN_KEEP;
-}
-
-//--------------------------------------------------------------------------
-static int idaapi retry_hexrays_init(void *)
-{
-	if (hexrays_ready()) {
-		deferred_init_timer = nullptr;
-		deferred_init_attempts = 0;
-		init();
-		if (inited)
-			msg("[hrt] deferred initialization completed after Hex-Rays became ready\n");
-		return -1;
-	}
-	if (++deferred_init_attempts >= 120) {
-		deferred_init_timer = nullptr;
-		msg("[hrt] Hex-Rays did not become ready; deferred initialization stopped\n");
-		return -1;
-	}
-	return 500;
 }
 
 //--------------------------------------------------------------------------
 void idaapi term(void)
 {
-	if (deferred_init_timer != nullptr) {
-		unregister_timer(deferred_init_timer);
-		deferred_init_timer = nullptr;
-	}
 	if ( inited )
 	{
 		unregisterMicrocodeExplorer();

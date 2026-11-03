@@ -27,7 +27,7 @@
 
 #include "helpers.h"
 
-#if IDA_SDK_VERSION >= 750
+#if IDA_SDK_VERSION >= 750 && IDA_SDK_VERSION < 950
 
 // register widths (bytes)
 #define XMM_SIZE 16
@@ -997,4 +997,4 @@ void MicroAvx_done()
     avx = nullptr;
   }
 }
-#endif //IDA_SDK_VERSION >= 750
+#endif //IDA_SDK_VERSION >= 750 && IDA_SDK_VERSION < 950
