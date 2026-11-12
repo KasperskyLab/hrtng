@@ -542,6 +542,9 @@ bool lit_visitor_t::chkCallArg(cexpr_t *expr, qstring &comment)
 //check struct members
 bool lit_visitor_t::chkStrucMemb(cexpr_t *memb, cexpr_t *cons, qstring &comment)
 {
+	if(isBitfieldAccess(memb))
+		return false;
+
 	tinfo_t type = memb->x->type;
 	type.remove_ptr_or_array();
 	if(!type.is_struct() && !type.is_union()) //t->is_decl_struct()

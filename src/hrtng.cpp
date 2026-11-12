@@ -888,7 +888,7 @@ ACT_DEF(fin_struct)
 					} else {
 						udm_t memb;
 						memb.offset = x.first * 8;
-						if(-1 != fitype.find_udm(&memb, STRMEM_AUTO))
+						if(-1 != fitype.find_udm(&memb, STRMEM_OFFSET))
 							fi.types_cache[x.first] = tt = memb.type;
 					}
 					if(!tt.empty()) {
@@ -1691,7 +1691,7 @@ struct ida_local offset_locator_t : public ctree_parentee_t
 				vidxs.add_unique(e->x->v.idx);
 			return 0;
 		}
-		if (e->op == cot_memptr && e->x->op == cot_var) {
+		if (e->op == cot_memptr && !isBitfieldAccess(e) && e->x->op == cot_var) {
 			cexpr_t *var = e->x;
 			if (vidxs.has(var->v.idx)) {
 				Log(llDebug, "%a var ref1: %s.%x [%s]\n", e->ea, lvars->at(var->v.idx).name.c_str(), e->m, e->type.dstr());
@@ -2513,7 +2513,7 @@ bool is_gap_field(vdui_t *vu, tinfo_t *ts/*= nullptr*/, ea_t *gapMembOff/*= null
 		return false;
 
 	cexpr_t *membacc = vu->item.e;
-	if(membacc->op != cot_memptr && membacc->op != cot_memref)
+	if((membacc->op != cot_memptr && membacc->op != cot_memref) || isBitfieldAccess(membacc))
 		return false;
 
 	tinfo_t st = membacc->x->type;
@@ -5925,7 +5925,7 @@ plugmod_t*
 	addon.producer = "Sergey Belov and Hex-Rays SA, Milan Bohacek, J.C. Roberts, Alexander Pick, Rolf Rolles, Takahiro Haruyama," \
 									 " Karthik Selvaraj, Ali Rahbar, Ali Pezeshk, Elias Bachaalany, Markus Gaasedelen";
 	addon.url = "https://github.com/KasperskyLab/hrtng";
-	addon.version = "3.9.117";
+	addon.version = "3.9.118";
 	msg("[hrt] %s (%s) v%s for IDA%d\n", addon.id, addon.name, addon.version, IDA_SDK_VERSION);
 
 	if(inited) {

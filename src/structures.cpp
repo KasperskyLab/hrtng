@@ -1019,7 +1019,7 @@ void auto_vtbls(cfunc_t *cfunc)
 				return 0;
 
 			cexpr_t *left = asg->x;
-			if(left->op != cot_memptr && left->op != cot_memref)
+			if((left->op != cot_memptr && left->op != cot_memref) || isBitfieldAccess(left))
 				return 0;
 
 			if(left->m != 0) // vtbl member at zero offset only!

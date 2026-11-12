@@ -114,7 +114,7 @@ static bool is_reincastable(cexpr_t *e)
 			return false;
 		break;
 	case cot_memptr:
-		if (remove_pointer(e->x->type).is_union())
+		if (!remove_pointer(e->x->type).is_struct())
 			return false;
 		break;
 	default:
@@ -319,7 +319,7 @@ void convert_offsetof_n_reincasts(cfunc_t *cfunc)
 				break;
 			case cot_memptr:
 				x = exp->x;
-				if (remove_pointer(x->type).is_union())
+				if(!remove_pointer(x->type).is_struct())
 					return false;
 				n = exp->m;
 				ptr = true;

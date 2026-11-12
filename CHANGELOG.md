@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 ### Added
+### Changed
+### Removed
+### Fixed
+
+## 3.9.118 - 2026-11-12
+### Added
 - IDA 9.5 support
 - API hashes: case insensitive modes (lower/upper)
 ### Changed
@@ -9,7 +15,7 @@
 - turn off AVX-lifter for 9.5+
 ### Fixed
 - Autorename (9.4+): ignore wrong arg name in expression like `callsmth(p_arg: &p_arg);` it must be `arg`
-- workaround for issue #61 (init_hexrays_plugin returns false)
+- Workaround for issue #61 (IDA 9.4 sp1 `init_hexrays_plugin` returns `false`)
 
 ## 3.9.114 - 2026-09-02
 ### Added

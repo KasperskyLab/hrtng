@@ -50,6 +50,14 @@
 	};\
 	static name ## _t name;
 
+#if IDA_SDK_VERSION < 950
+  inline bool isBitfieldAccess(cexpr_t* e) {return false;}
+	inline uint64 memrefBitoff(cexpr_t* e) {return e->m * 8;} //!!! be careful, union index is also x8
+#else
+  inline bool isBitfieldAccess(cexpr_t* e) {return e->is_bitfield_access();}
+	inline uint64 memrefBitoff(cexpr_t* e) {return e->memref_bitoff();} //!!! be careful, union index is also x8
+#endif // IDA_SDK_VERSION < 950
+
 #if IDA_SDK_VERSION < 940
 	inline ssize_t get_func_cmt_ea(qstring * buf, ea_t ea, bool repeatable) { func_t* f = get_func(ea); return f ? get_func_cmt(buf, f, repeatable) : 0; }
 	inline ea_t get_func_start(ea_t ea) { func_t* f = get_func(ea); return f ? f->start_ea : BADADDR; }
@@ -67,7 +75,7 @@
 #else
 	#define get_func_94(ea) ea
 	#define decompile_func_94(ea, hf, decomp_flags) decompile_function(ea, hf, decomp_flags)
-#endif
+#endif // IDA_SDK_VERSION < 940
 
 #if IDA_SDK_VERSION < 930
   #define BWN_TITREE BWN_TICSR
@@ -77,7 +85,7 @@
   #define CH_HAS_DIRTREE OBSOLETE_CH_HAS_DIRTREE
   #define CH_TM_FULL_TREE OBSOLETE_CH_TM_FULL_TREE
   #define CH_NON_PERSISTED_TREE OBSOLETE_CH_NON_PERSISTED_TREE
-#endif
+#endif //IDA_SDK_VERSION < 930
 
 #if IDA_SDK_VERSION < 920
   #define MY_DECLARE_LISTENER(name) static ssize_t idaapi name(void *ud, int ncode, va_list va)

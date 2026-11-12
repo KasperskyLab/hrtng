@@ -433,13 +433,22 @@ static bool isStructOffOver(cexpr_t* memref, const cfunc_t *func)
 	return false;
 }
 
-bool getUdtMembName(tinfo_t udt, uint64 offset, qstring* name)
+bool getUdtMembName(tinfo_t udt, uint64 offInBitsOrIdxX8, qstring* name)
 {
 	udt.remove_ptr_or_array();
 	udm_t memb;
-	memb.offset = offset;
-	if(-1 == udt.find_udm(&memb, STRMEM_AUTO))
+	int idx = -1;
+	if(udt.is_struct()) {
+		memb.offset = offInBitsOrIdxX8;
+		idx = udt.find_udm(&memb, STRMEM_OFFSET);
+	} else if(udt.is_union()) {
+		memb.offset = offInBitsOrIdxX8 / 8;
+		idx = udt.find_udm(&memb, STRMEM_INDEX);
+	}
+	if(idx < 0){
+		Log(llWarning, "getUdtMembName: bad type: `%s` or offset 0x%" FMT_64 "X\n", udt.dstr(), offInBitsOrIdxX8);
 		return false;
+	}
 
 	if(memb.name[0] == 'f') {
 		if(!strncmp(memb.name.c_str(), "field_",6))
@@ -458,14 +467,20 @@ bool getUdtMembName(tinfo_t udt, uint64 offset, qstring* name)
 	return true;
 }
 
-static bool renameUdtMemb(ea_t refea, tinfo_t udt, uint64 offset, qstring* name)
+static bool renameUdtMemb(ea_t refea, tinfo_t udt, uint64 offInBitsOrIdxX8, qstring* name)
 {
 	udt.remove_ptr_or_array();
 	udm_t memb;
-	memb.offset = offset;
-	int midx = udt.find_udm(&memb, STRMEM_AUTO);
-	if(-1 == midx) {
-		Log(llDebug, "renameUdtMemb no %x offset inside \"%s\"\n", offset, udt.dstr());
+	int midx = -1;
+	if(udt.is_struct()) {
+		memb.offset = offInBitsOrIdxX8;
+		midx = udt.find_udm(&memb, STRMEM_OFFSET);
+	} else if(udt.is_union()) {
+		memb.offset = offInBitsOrIdxX8 / 8;
+		midx = udt.find_udm(&memb, STRMEM_INDEX);
+	}
+	if(midx < 0){
+		Log(llWarning, "renameUdtMemb: bad type: `%s` or offset 0x%" FMT_64 "X\n", udt.dstr(), offInBitsOrIdxX8);
 		return false;
 	}
 
@@ -489,12 +504,12 @@ static bool renameUdtMemb(ea_t refea, tinfo_t udt, uint64 offset, qstring* name)
 	if(TERR_OK == udt.rename_udm(midx, newName.c_str())) {
 #else //IDA_SDK_VERSION < 850
 	struc_t* st = get_member_struc(oldName.c_str());
-	if(st && set_member_name(st, (ea_t)offset, newName.c_str())) {
+	if(st && set_member_name(st, (ea_t)(offInBitsOrIdxX8 / 8), newName.c_str())) {
 #endif //IDA_SDK_VERSION >= 850
-		Log(llInfo, "%a: struct member \"%s\" at 0x%x was renamed to %s\n", refea, oldName.c_str(), offset, newName.c_str());
+		Log(llInfo, "%a: struct member \"%s\" was renamed to %s\n", refea, oldName.c_str(), newName.c_str());
 		return true;
 	}
-	Log(llWarning, "%a: fail rename struct member \"%s\" at 0x%x to %s\n", refea, oldName.c_str(), offset, newName.c_str());
+	Log(llWarning, "%a: fail rename struct member \"%s\" to %s\n", refea, oldName.c_str(), newName.c_str());
 	return false;
 }
 
@@ -521,7 +536,7 @@ bool getExpName(cfunc_t *func, cexpr_t* exp, qstring* name, bool derefPtr /* =fa
 		return getEaName(exp->obj_ea, name);
 	case cot_memptr:
 	case cot_memref:
-		return !isStructOffOver(exp, func) && getUdtMembName(exp->x->type, exp->m, name);
+		return !isStructOffOver(exp, func) && getUdtMembName(exp->x->type, memrefBitoff(exp), name);
 	case cot_call:
 		return getCallName(func, exp, name);
 	//case cot_fnum:
@@ -657,7 +672,7 @@ bool renameExp(ea_t refea, cfunc_t *func, cexpr_t* exp, qstring* name, vdui_t *v
 	if(exp->op == cot_obj)
 		return renameEa(refea, exp->obj_ea, name);
 	if(exp->op == cot_memptr || exp->op == cot_memref)
-		return !isStructOffOver(exp, func) && renameUdtMemb(refea, exp->x->type, exp->m, name);
+		return !isStructOffOver(exp, func) && renameUdtMemb(refea, exp->x->type, memrefBitoff(exp), name);
 	return false;
 }
 
@@ -683,15 +698,13 @@ tinfo_t getExpType(cfunc_t *func, cexpr_t* exp)
 		}
 	case cot_memptr:
 	case cot_memref:
-		{
+		if(!isBitfieldAccess(exp)) { //FIXME: what to do with bitfield type is allowed only inside struct, convert it to corresponding size int?
 			tinfo_t struc = exp->x->type;
 			struc.remove_ptr_or_array();
-			if(struc.is_decl_struct()) {//is_struct())
-				udm_t memb;
-				memb.offset = exp->m;
-				if(-1 != struc.find_udm(&memb, STRMEM_AUTO))
-					return memb.type;
-			}
+			udm_t memb;
+			memb.offset = exp->m;
+			if(struc.find_udm(&memb, STRMEM_AUTO) >= 0)
+				return memb.type;
 			break;
 		}
 	case cot_ref:
@@ -906,7 +919,7 @@ void autorename_n_pull_comments(cfunc_t *cfunc)
 				if(!lname.empty())//assume lname more important then comments
 					newName = lname;
 
-				if (skipCast(right)->op == cot_obj && (left->op == cot_memptr || left->op == cot_memref) && !left->m) {
+				if (skipCast(right)->op == cot_obj && (left->op == cot_memptr || left->op == cot_memref) && !isBitfieldAccess(left) && !left->m) {
 					Log(llDebug, "%a: avoid renaming vtbl to base class member '%s' to '%s'\n", asgn->ea, DSTR(right), newName.c_str());
 				}	else {
 					Log(llFlood, "%a: renaming asgn right side '%s' to '%s'\n", asgn->ea, DSTR(right), newName.c_str());
